@@ -45,7 +45,18 @@ ok &= check("status", r.status, "present")
 print("3. Night shift 22:00-06:00 crosses midnight -> ONE shift date")
 ok &= check("22:10 Aug10 belongs to", shift_date_for(ist(2026, 8, 10, 22, 10), NIGHT), date(2026, 8, 10))
 ok &= check("01:30 Aug11 belongs to", shift_date_for(ist(2026, 8, 11, 1, 30), NIGHT), date(2026, 8, 10))
-ok &= check("06:05 Aug11 belongs to", shift_date_for(ist(2026, 8, 11, 6, 5), NIGHT), date(2026, 8, 11))
+# The shift ENDS at 06:00, so the punch-out that closes it must file against
+# the night that started yesterday - not the new calendar day.
+ok &= check("06:05 Aug11 belongs to", shift_date_for(ist(2026, 8, 11, 6, 5), NIGHT), date(2026, 8, 10))
+ok &= check("11:00 Aug11 belongs to", shift_date_for(ist(2026, 8, 11, 11, 0), NIGHT), date(2026, 8, 11))
+ok &= check("derived cutover (end 06:00 + 3)", NIGHT.effective_cutover_hour, 9)
+
+print("3b. A cutover configured BELOW the shift end is a mistake - self-heal it")
+BAD = ShiftPolicy(start_time=time(22, 0), end_time=time(6, 0), cutover_hour=2)
+ok &= check("corrected upward", BAD.effective_cutover_hour, 9)
+ok &= check("punch-out still lands on the right night",
+            shift_date_for(ist(2026, 8, 11, 6, 5), BAD), date(2026, 8, 10))
+ok &= check("day shift cutover untouched", DAY.effective_cutover_hour, DAY.cutover_hour)
 r = resolve_day([Punch(ist(2026, 8, 10, 22, 5)), Punch(ist(2026, 8, 11, 6, 2))],
                 NIGHT, date(2026, 8, 10))
 ok &= check("worked_minutes", r.worked_minutes, 477)

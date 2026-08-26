@@ -1,0 +1,31 @@
+{
+  "Comment": "Least-privilege policy for the Boxcode HRMS API user. Attach to a NEW IAM user created for this app only - never reuse a personal or admin key. Replace BUCKET with the real bucket name.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "FaceVerificationOnly",
+      "Effect": "Allow",
+      "Action": [
+        "rekognition:CompareFaces",
+        "rekognition:DetectFaces"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SelfiesAndEnrolmentPhotos",
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject",
+        "s3:GetObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::BUCKET/*"
+    },
+    {
+      "Sid": "ListOwnBucketOnly",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::BUCKET"
+    }
+  ]
+}

@@ -1,10 +1,21 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sqlalchemy==2.0.36
-alembic==1.14.0
-psycopg[binary]==3.2.3
-pydantic==2.10.4
-pydantic-settings==2.7.0
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+# Pinned to versions that have wheels for Python 3.14, which is what a fresh
+# macOS python.org install gives you today. The previous pins were from late
+# 2024 and pydantic-core could not build: its bundled PyO3 refuses any
+# interpreter newer than 3.13, so `pip install` died in a Rust compile.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+sqlalchemy==2.0.52
+alembic==1.19.1
+# psycopg[binary]==3.2.3   # only needed when we move to Postgres
+pydantic==2.13.4
+pydantic-settings==2.15.0
 httpx==0.28.1
+python-multipart==0.0.32
+
+# --- for auth (milestone 2), not imported yet ---------------------------------
+python-jose[cryptography]==3.3.0
+# passlib is deliberately absent. 1.7.4 is its last release (2020) and it is
+# broken two ways on a modern stack: it reads bcrypt.__about__, gone since
+# bcrypt 4.1, and it imports the stdlib `crypt` module, removed in Python 3.13.
+# Use bcrypt directly - hashpw/checkpw is the whole API we need.
+bcrypt==5.0.0

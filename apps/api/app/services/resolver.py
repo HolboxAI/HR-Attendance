@@ -39,6 +39,23 @@ class ShiftPolicy:
     def is_overnight(self) -> bool:
         return self.end_time <= self.start_time
 
+    @property
+    def effective_cutover_hour(self) -> int:
+        """The hour before which a punch belongs to YESTERDAY's shift.
+
+        This must sit AFTER the shift ends, or the punch-out that closes the
+        night is filed against the next day and both days resolve wrong - the
+        night shows "never left" and the morning shows a stray punch.
+
+        A configured value below the shift end is always a mistake, so we
+        correct it rather than silently losing punch-outs. Three hours of slack
+        covers overtime and someone finishing late.
+        """
+        if not self.is_overnight:
+            return self.cutover_hour
+        floor = min(self.end_time.hour + 3, 23)
+        return max(self.cutover_hour, floor)
+
 
 @dataclass
 class ResolvedDay:
@@ -64,7 +81,7 @@ def shift_date_for(ts_utc: datetime, policy: ShiftPolicy) -> date:
     is the wrong key for anything but a plain day shift.
     """
     local = ts_utc.astimezone(ZoneInfo(policy.tz))
-    if policy.is_overnight and local.hour < policy.cutover_hour:
+    if policy.is_overnight and local.hour < policy.effective_cutover_hour:
         return (local - timedelta(days=1)).date()
     return local.date()
 
@@ -95,9 +112,17 @@ def resolve_day(
     *,
     is_holiday: bool = False,
     is_on_leave: bool = False,
+    as_of: datetime | None = None,
 ) -> ResolvedDay:
+    """`as_of` is passed in rather than read from the clock, so this stays pure.
+
+    Without it, a day whose shift has not finished yet resolves to "absent" -
+    so at 10am the whole company looks absent, and every future date in a month
+    view is a wall of red. Nobody is absent until their shift has ended.
+    """
     day = ResolvedDay(shift_date=shift_date)
     tz = ZoneInfo(policy.tz)
+    shift_over = _shift_has_ended(policy, shift_date, as_of)
 
     punches = sorted(punches, key=lambda p: p.ts_utc)
     day.punch_count = len(punches)
@@ -109,8 +134,10 @@ def resolve_day(
             day.status = "holiday"
         elif shift_date.weekday() not in policy.working_days:
             day.status = "weekly_off"
-        else:
+        elif shift_over:
             day.status = "absent"
+        else:
+            day.status = "not_marked"      # today, or the future - not absent
         return day
 
     directed = _infer_directions(punches)
@@ -169,9 +196,19 @@ def resolve_day(
         day.status = "present"
     elif day.worked_minutes >= policy.half_day_after_minutes:
         day.status = "half_day"
-    elif day.has_exception:
+    elif day.has_exception or not shift_over:
+        # Someone who punched in an hour ago is at work, not absent.
         day.status = "not_marked"
     else:
         day.status = "absent"
 
     return day
+
+
+def _shift_has_ended(policy: ShiftPolicy, shift_date: date, as_of: datetime | None) -> bool:
+    if as_of is None:
+        return True                      # no clock supplied: judge the day whole
+    tz = ZoneInfo(policy.tz)
+    end_date = shift_date + timedelta(days=1) if policy.is_overnight else shift_date
+    scheduled_end = datetime.combine(end_date, policy.end_time, tzinfo=tz)
+    return as_of.astimezone(tz) >= scheduled_end

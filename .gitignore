@@ -6,3 +6,7 @@ node_modules/
 .next/
 dist/
 .DS_Store
+data/
+!data/README.md
+sessions/
+*.tsbuildinfo

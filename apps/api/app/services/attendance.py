@@ -1,0 +1,251 @@
+"""Where a punch becomes a day.
+
+Two operations, and the split matters:
+
+  record_punch  - append one immutable row, idempotently
+  recompute_day - throw away the derived day and rebuild it from the raw rows
+
+Nothing ever edits a punch. Nothing ever hand-edits an attendance day. If a
+number looks wrong, you fix the input and recompute - which means the number
+always matches the evidence behind it.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import uuid
+from datetime import date, datetime, time, timedelta, timezone
+
+from sqlalchemy import and_, select
+from sqlalchemy.orm import Session
+
+from app.models.attendance import (
+    AttendanceDay,
+    Device,
+    DeviceEnrollment,
+    PunchEvent,
+    ShiftAssignment,
+    ShiftTemplate,
+)
+from app.models.employee import Employee
+from app.models.enums import AttendanceStatus, PunchDirection, PunchSource
+from app.services.resolver import Punch, ShiftPolicy, resolve_day, shift_date_for
+
+DEFAULT_POLICY = ShiftPolicy(start_time=time(9, 0), end_time=time(18, 0))
+
+
+def dedupe_hash(
+    device_serial: str | None,
+    device_user_id: str | None,
+    employee_code: str | None,
+    ts: datetime,
+) -> str:
+    """Same identity, same second, same row.
+
+    A phone retrying a queued punch, or a reader replaying its buffer, must not
+    create duplicates. The UNIQUE index enforces it; this just produces the key.
+    """
+    stamp = ts.astimezone(timezone.utc).isoformat(timespec="seconds")
+    key = f"{device_serial or ''}|{device_user_id or ''}|{employee_code or ''}|{stamp}"
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def policy_for(db: Session, employee: Employee, on: date) -> tuple[ShiftPolicy, uuid.UUID | None]:
+    """The shift in force for this employee on this date."""
+    stmt = (
+        select(ShiftTemplate, ShiftAssignment.id)
+        .join(ShiftAssignment, ShiftAssignment.shift_template_id == ShiftTemplate.id)
+        .where(
+            and_(
+                ShiftAssignment.employee_id == employee.id,
+                ShiftAssignment.effective_from <= on,
+            )
+        )
+        .order_by(ShiftAssignment.effective_from.desc())
+    )
+    row = db.execute(stmt).first()
+    if row is None:
+        return DEFAULT_POLICY, None
+
+    tpl: ShiftTemplate = row[0]
+    return (
+        ShiftPolicy(
+            start_time=tpl.start_time,
+            end_time=tpl.end_time,
+            break_minutes=tpl.break_minutes,
+            grace_minutes=tpl.grace_minutes,
+            half_day_after_minutes=tpl.half_day_after_minutes,
+            full_day_after_minutes=tpl.full_day_after_minutes,
+            cutover_hour=tpl.cutover_hour,
+            working_days=tuple(tpl.working_days or (0, 1, 2, 3, 4, 5)),
+        ),
+        tpl.id,
+    )
+
+
+def resolve_employee(
+    db: Session, *, employee_code: str | None, device_serial: str | None,
+    device_user_id: str | None,
+) -> Employee | None:
+    if employee_code:
+        return db.scalar(select(Employee).where(Employee.emp_code == employee_code))
+
+    if device_serial and device_user_id:
+        stmt = (
+            select(Employee)
+            .join(DeviceEnrollment, DeviceEnrollment.employee_id == Employee.id)
+            .join(Device, Device.id == DeviceEnrollment.device_id)
+            .where(
+                and_(
+                    Device.serial_no == device_serial,
+                    DeviceEnrollment.device_user_id == device_user_id,
+                )
+            )
+        )
+        return db.scalar(stmt)
+
+    return None
+
+
+def record_punch(
+    db: Session,
+    *,
+    org_id: uuid.UUID,
+    employee: Employee | None,
+    event_ts: datetime,
+    source: PunchSource,
+    direction: PunchDirection = PunchDirection.UNKNOWN,
+    device_id: uuid.UUID | None = None,
+    device_serial: str | None = None,
+    device_user_id: str | None = None,
+    lat: float | None = None,
+    lng: float | None = None,
+    photo_key: str | None = None,
+    geofence_ok: bool | None = None,
+    distance_m: float | None = None,
+    face_ok: bool | None = None,
+    face_similarity: float | None = None,
+    rejection_reason: str | None = None,
+    raw: dict | None = None,
+) -> tuple[PunchEvent, bool]:
+    """Returns (event, created). created=False means we've seen this one before."""
+    digest = dedupe_hash(
+        device_serial, device_user_id,
+        employee.emp_code if employee else None,
+        event_ts,
+    )
+
+    existing = db.scalar(select(PunchEvent).where(PunchEvent.dedupe_hash == digest))
+    if existing is not None:
+        return existing, False
+
+    event = PunchEvent(
+        id=uuid.uuid4(),
+        org_id=org_id,
+        employee_id=employee.id if employee else None,
+        device_id=device_id,
+        source=source,
+        direction=direction,
+        event_ts_utc=event_ts.astimezone(timezone.utc),
+        received_ts_utc=datetime.now(timezone.utc),
+        lat=lat,
+        lng=lng,
+        photo_key=photo_key,
+        geofence_ok=geofence_ok,
+        distance_m=distance_m,
+        face_ok=face_ok,
+        face_similarity=face_similarity,
+        rejection_reason=rejection_reason,
+        raw_payload=raw or {},
+        dedupe_hash=digest,
+        is_unmatched=employee is None,
+    )
+    db.add(event)
+    db.flush()
+    return event, True
+
+
+def recompute_day(db: Session, employee: Employee, shift_date: date) -> AttendanceDay:
+    """Delete nothing, trust nothing, rebuild from the raw punches."""
+    policy, template_id = policy_for(db, employee, shift_date)
+
+    # Pull a generous window and let shift_date_for decide what belongs, so an
+    # overnight shift picks up the punches that land after midnight.
+    window_start = datetime.combine(
+        shift_date - timedelta(days=1), time(0, 0), tzinfo=timezone.utc
+    )
+    window_end = datetime.combine(
+        shift_date + timedelta(days=2), time(0, 0), tzinfo=timezone.utc
+    )
+
+    rows = db.scalars(
+        select(PunchEvent)
+        .where(
+            and_(
+                PunchEvent.employee_id == employee.id,
+                PunchEvent.event_ts_utc >= window_start,
+                PunchEvent.event_ts_utc < window_end,
+                # Rejected punches are kept for the audit trail but must never
+                # count towards hours worked.
+                PunchEvent.rejection_reason.is_(None),
+            )
+        )
+        .order_by(PunchEvent.event_ts_utc)
+    ).all()
+
+    punches = [
+        Punch(ts_utc=_aware(r.event_ts_utc), direction=r.direction.value, source=r.source.value)
+        for r in rows
+        if shift_date_for(_aware(r.event_ts_utc), policy) == shift_date
+    ]
+
+    resolved = resolve_day(punches, policy, shift_date, as_of=datetime.now(timezone.utc))
+
+    day = db.scalar(
+        select(AttendanceDay).where(
+            and_(AttendanceDay.employee_id == employee.id, AttendanceDay.shift_date == shift_date)
+        )
+    )
+    if day is None:
+        day = AttendanceDay(id=uuid.uuid4(), org_id=employee.org_id,
+                            employee_id=employee.id, shift_date=shift_date)
+        db.add(day)
+
+    day.shift_template_id = template_id
+    day.first_in = resolved.first_in
+    day.last_out = resolved.last_out
+    day.worked_minutes = resolved.worked_minutes
+    day.break_minutes = resolved.break_minutes
+    day.late_minutes = resolved.late_minutes
+    day.early_out_minutes = resolved.early_out_minutes
+    day.overtime_minutes = resolved.overtime_minutes
+    day.status = AttendanceStatus(resolved.status)
+    day.punch_count = resolved.punch_count
+    day.has_exception = resolved.has_exception
+    day.exception_note = resolved.exception_note
+    day.computed_at = datetime.now(timezone.utc)
+
+    db.flush()
+    return day
+
+
+def _aware(dt: datetime) -> datetime:
+    """SQLite hands back naive datetimes. Postgres doesn't. Normalise."""
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def next_direction(db: Session, employee: Employee, shift_date: date) -> PunchDirection:
+    """In or out? Whatever the last accepted punch wasn't."""
+    policy, _ = policy_for(db, employee, shift_date)
+    rows = db.scalars(
+        select(PunchEvent)
+        .where(
+            and_(
+                PunchEvent.employee_id == employee.id,
+                PunchEvent.rejection_reason.is_(None),
+            )
+        )
+        .order_by(PunchEvent.event_ts_utc)
+    ).all()
+    today = [r for r in rows if shift_date_for(_aware(r.event_ts_utc), policy) == shift_date]
+    return PunchDirection.OUT if len(today) % 2 == 1 else PunchDirection.IN

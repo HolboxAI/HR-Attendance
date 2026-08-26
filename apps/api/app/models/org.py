@@ -1,7 +1,7 @@
 import uuid
 
 from sqlalchemy import ForeignKey, Numeric, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from app.db.types import GUID, JSONType
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -10,11 +10,11 @@ from app.db.base import Base, TimestampMixin
 class Organization(Base, TimestampMixin):
     __tablename__ = "organizations"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     timezone: Mapped[str] = mapped_column(String(64), default="Asia/Kolkata", nullable=False)
     country: Mapped[str] = mapped_column(String(2), default="IN", nullable=False)
-    settings: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    settings: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
 
     locations: Mapped[list["Location"]] = relationship(back_populates="organization")
 
@@ -24,9 +24,9 @@ class Location(Base, TimestampMixin):
 
     __tablename__ = "locations"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     address: Mapped[str | None] = mapped_column(String(400))
@@ -40,11 +40,11 @@ class Location(Base, TimestampMixin):
 class Department(Base, TimestampMixin):
     __tablename__ = "departments"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("departments.id")
+        GUID(), ForeignKey("departments.id")
     )

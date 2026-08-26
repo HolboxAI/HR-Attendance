@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+/* Same palette as the mobile app - amber on cool graphite - so the two halves
+   read as one product rather than two projects. */
+:root {
+  --ground: #0E1316;
+  --surface: #151C20;
+  --surface-2: #1C252A;
+  --line: #2A353B;
+  --ink: #E8EEF1;
+  --ink-2: #AFBEC6;
+  --ink-3: #7E8F98;
+  --accent: #E8A344;
+
+  /* Status colors are RESERVED. They mean one thing each, they are never
+     reused as decoration, and every one of them ships beside a text label -
+     nothing here is distinguishable by color alone. */
+  --st-present: #5FBF93;
+  --st-late: #E0A94E;
+  --st-half: #7FA9D4;
+  --st-absent: #E07A63;
+  --st-pending: #7E8F98;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-st-present: var(--st-present);
+  --color-st-late: var(--st-late);
+  --color-st-half: var(--st-half);
+  --color-st-absent: var(--st-absent);
+  --color-st-pending: var(--st-pending);
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-feature-settings: "tnum";
+}
+.tnum { font-variant-numeric: tabular-nums; }
+
+@theme inline {
+  --font-display: Archivo, ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}

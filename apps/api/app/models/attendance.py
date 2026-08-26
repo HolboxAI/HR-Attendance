@@ -11,7 +11,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from app.db.types import GUID, JSONType
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -23,12 +23,12 @@ class Device(Base, TimestampMixin):
 
     __tablename__ = "devices"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     location_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("locations.id")
+        GUID(), ForeignKey("locations.id")
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     serial_no: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
@@ -40,7 +40,7 @@ class Device(Base, TimestampMixin):
     clock_offset_seconds: Mapped[int] = mapped_column(default=0, nullable=False)
     reports_direction: Mapped[bool] = mapped_column(default=False, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    config: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
 
 
 class DeviceEnrollment(Base, TimestampMixin):
@@ -55,12 +55,12 @@ class DeviceEnrollment(Base, TimestampMixin):
         UniqueConstraint("device_id", "device_user_id", name="uq_device_user"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     device_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("devices.id"), index=True, nullable=False
+        GUID(), ForeignKey("devices.id"), index=True, nullable=False
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id"), index=True, nullable=False
+        GUID(), ForeignKey("employees.id"), index=True, nullable=False
     )
     device_user_id: Mapped[str] = mapped_column(String(32), nullable=False)
 
@@ -79,15 +79,15 @@ class PunchEvent(Base, TimestampMixin):
         Index("ix_punch_org_ts", "org_id", "event_ts_utc"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     employee_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id"), index=True
+        GUID(), ForeignKey("employees.id"), index=True
     )
     device_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("devices.id")
+        GUID(), ForeignKey("devices.id")
     )
 
     source: Mapped[PunchSource] = mapped_column(nullable=False)
@@ -103,7 +103,19 @@ class PunchEvent(Base, TimestampMixin):
     lng: Mapped[float | None] = mapped_column(Numeric(10, 7))
     photo_key: Mapped[str | None] = mapped_column(String(400))
 
-    raw_payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    # --- verification, recorded whether or not it passed ---
+    # A rejected punch is still stored. Silently dropping them is how you end
+    # up unable to explain a missing day three months later.
+    geofence_ok: Mapped[bool | None] = mapped_column(nullable=True)
+    distance_m: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    face_ok: Mapped[bool | None] = mapped_column(nullable=True)
+    face_similarity: Mapped[float | None] = mapped_column(Numeric(5, 2))
+    rejection_reason: Mapped[str | None] = mapped_column(String(200))
+    mobile_device_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(), ForeignKey("mobile_devices.id")
+    )
+
+    raw_payload: Mapped[dict] = mapped_column(JSONType, default=dict, nullable=False)
     dedupe_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     is_unmatched: Mapped[bool] = mapped_column(default=False, nullable=False)
 
@@ -111,9 +123,9 @@ class PunchEvent(Base, TimestampMixin):
 class ShiftTemplate(Base, TimestampMixin):
     __tablename__ = "shift_templates"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     name: Mapped[str] = mapped_column(String(80), nullable=False)
     start_time: Mapped[time] = mapped_column(Time, nullable=False)
@@ -126,18 +138,18 @@ class ShiftTemplate(Base, TimestampMixin):
     # For night shifts: punches before this hour belong to the PREVIOUS shift date.
     cutover_hour: Mapped[int] = mapped_column(default=5, nullable=False)
     # Mon=0 .. Sun=6
-    working_days: Mapped[list] = mapped_column(JSONB, default=lambda: [0, 1, 2, 3, 4, 5])
+    working_days: Mapped[list] = mapped_column(JSONType, default=lambda: [0, 1, 2, 3, 4, 5])
 
 
 class ShiftAssignment(Base, TimestampMixin):
     __tablename__ = "shift_assignments"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     employee_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id"), index=True, nullable=False
+        GUID(), ForeignKey("employees.id"), index=True, nullable=False
     )
     shift_template_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("shift_templates.id"), nullable=False
+        GUID(), ForeignKey("shift_templates.id"), nullable=False
     )
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     effective_to: Mapped[date | None] = mapped_column(Date)
@@ -152,16 +164,16 @@ class AttendanceDay(Base, TimestampMixin):
         Index("ix_attendance_org_date", "org_id", "shift_date"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id"), nullable=False
+        GUID(), ForeignKey("employees.id"), nullable=False
     )
     shift_date: Mapped[date] = mapped_column(Date, nullable=False)
     shift_template_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("shift_templates.id")
+        GUID(), ForeignKey("shift_templates.id")
     )
 
     first_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

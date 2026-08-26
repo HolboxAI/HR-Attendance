@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import health, ingest
+from app.api.routes import admin, enrolment, health, ingest, mobile
 from app.core.config import settings
 
 app = FastAPI(
@@ -12,7 +12,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,4 +20,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix=settings.api_prefix)
 app.include_router(ingest.router, prefix=settings.api_prefix)
-app.include_router(ingest.adms)          # vendor path is fixed, no prefix
+app.include_router(mobile.router, prefix=settings.api_prefix)
+app.include_router(admin.router, prefix=settings.api_prefix)
+app.include_router(enrolment.router, prefix=settings.api_prefix)
+

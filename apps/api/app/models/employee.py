@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 
 from sqlalchemy import Date, ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from app.db.types import GUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -13,9 +13,9 @@ class Employee(Base, TimestampMixin):
     __tablename__ = "employees"
     __table_args__ = (UniqueConstraint("org_id", "emp_code", name="uq_employee_code_per_org"),)
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     emp_code: Mapped[str] = mapped_column(String(32), nullable=False)
     full_name: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -23,13 +23,13 @@ class Employee(Base, TimestampMixin):
     phone: Mapped[str | None] = mapped_column(String(20))
 
     department_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("departments.id")
+        GUID(), ForeignKey("departments.id")
     )
     location_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("locations.id")
+        GUID(), ForeignKey("locations.id")
     )
     manager_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id")
+        GUID(), ForeignKey("employees.id")
     )
 
     designation: Mapped[str | None] = mapped_column(String(120))
@@ -44,12 +44,12 @@ class User(Base, TimestampMixin):
 
     __tablename__ = "users"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
     org_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("organizations.id"), index=True, nullable=False
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
     )
     employee_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id"), unique=True
+        GUID(), ForeignKey("employees.id"), unique=True
     )
     email: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
