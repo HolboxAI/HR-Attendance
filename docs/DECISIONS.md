@@ -253,3 +253,25 @@ so nobody rediscovers them later:
   the cost of cheating; it does not end it.
 
 Revisit at the pilot, on evidence from real punches rather than on principle.
+
+**Confirmed 27 Aug 2026, after checking what the market actually ships.** The
+question was whether shipping without liveness puts Boxcode behind the system
+it replaces. It does not:
+
+- **MyCo** (the incumbent) is face-recognition attendance on an Android device
+  at the gate, plus geo-tagged selfies for remote staff. Its marketing says the
+  face scan "eliminates buddy punching", which is a claim about face *matching*,
+  not liveness. No anti-spoofing claim anywhere in its material.
+- **Keka** uses Microsoft Face and registers users by "taking a few selfies,
+  which are used to create facial embeddings". Also no liveness claim.
+- Vendors who *do* have liveness advertise it loudly and by certification -
+  Logsafe/FaceMe leads with "iBeta PAD Level 2" and NIST liveness rankings. The
+  absence of such a claim from Keka and MyCo is not proof, but it is a signal.
+  Most Indian products that genuinely have it are dedicated door hardware,
+  which decision 001 already ruled out.
+
+So v1 is at parity with the incumbent on capability and ahead of Keka on data
+handling: Keka stores facial embeddings, we store an S3 key and nothing else,
+which matters under the DPDP Act. **If liveness is ever built, iBeta PAD
+Level 2 is the bar the market recognises** - worth knowing before spending a
+week on something that cannot be certified.
