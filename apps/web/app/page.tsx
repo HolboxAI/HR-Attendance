@@ -4,6 +4,7 @@ import { BoardTable } from '@/components/BoardTable';
 import { Tiles } from '@/components/Tiles';
 import { MyMonth } from '@/components/MyMonth';
 import { getBoard, getMyMonth, getRejected, hhmm } from '@/lib/api';
+import { proxy } from '@/lib/format';
 import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -54,6 +55,17 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
   const board = result.data;
   const rejected = await getRejected();
 
+  // Export the month the viewed date falls in, not always the current one -
+  // looking back at July and downloading August would be a trap.
+  const viewed = new Date(`${board.shift_date}T00:00:00Z`);
+  const monthOf = {
+    year: viewed.getUTCFullYear(),
+    month: viewed.getUTCMonth() + 1,
+    label: viewed.toLocaleDateString('en-IN', {
+      month: 'long', year: 'numeric', timeZone: 'UTC',
+    }),
+  };
+
   const exceptions = board.rows.filter((r) => r.has_exception);
   const day = new Date(`${board.shift_date}T00:00:00Z`);
 
@@ -80,6 +92,26 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
           />
           <button className="rounded bg-accent px-3 py-1.5 font-semibold text-[#1A1206]">Go</button>
         </form>
+      </div>
+
+      {/*
+        Month-end export. A plain link, not a fetch: the browser's own download
+        handling is the "one click" the PRD asks for, and it goes through the
+        gateway so the token is attached server-side rather than being readable
+        by page JavaScript.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-line bg-surface px-5 py-4">
+        <p className="max-w-prose text-sm text-ink-2">
+          <span className="font-medium text-ink">Month-end register.</span>{' '}
+          Every employee, every day, recomputed from the punches at the moment you
+          download it — so it cannot disagree with this board.
+        </p>
+        <a
+          href={proxy(`/api/v1/admin/export/month.csv?year=${monthOf.year}&month=${monthOf.month}`)}
+          className="whitespace-nowrap rounded bg-accent px-3 py-1.5 text-sm font-semibold text-[#1A1206]"
+        >
+          Download {monthOf.label}
+        </a>
       </div>
 
       <Tiles summary={board.summary} />

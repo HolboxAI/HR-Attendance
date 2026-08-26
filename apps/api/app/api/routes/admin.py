@@ -12,6 +12,7 @@ import calendar
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -23,11 +24,11 @@ from app.models.auth import RefreshSession
 from app.models.employee import Employee, User
 from app.models.enums import UserRole
 from app.models.enums import PunchDirection, PunchSource
-from app.models.org import Department
+from app.models.org import Department, Organization
 from app.services.attendance import (
     next_direction, policy_for, recompute_day, record_punch,
 )
-from app.services import devices
+from app.services import devices, export
 from app.services.resolver import shift_date_for
 
 router = APIRouter(
@@ -350,3 +351,35 @@ def clear_device(
         "sessions_signed_out": signed_out,
         "note": "They can register a new phone by signing in on it",
     }
+
+
+@router.get("/export/month.csv")
+def export_month(
+    year: int = Query(...),
+    month: int = Query(ge=1, le=12),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
+) -> Response:
+    """The month-end register, as a file. One click.
+
+    Scoped like the board: a manager exports their own reports, HR exports
+    everyone. The filename carries the month so a folder of these stays
+    readable a year later.
+    """
+    employees = visible_employees(db, user)
+    rows = export.build(db, employees=employees, year=year, month=month)
+    org = db.get(Organization, user.org_id)
+    body = export.to_csv(
+        rows, year=year, month=month, org_name=org.name if org else "Boxcode",
+    )
+    db.commit()
+
+    name = f"attendance-{year}-{month:02d}.csv"
+    return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )

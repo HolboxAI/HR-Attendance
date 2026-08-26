@@ -22,6 +22,7 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_enrolment.py   # 19 groups
     apps/api/.venv/bin/python apps/api/tests/test_auth.py        # the auth checklist
     apps/api/.venv/bin/python apps/api/tests/test_leave.py       # the leave checklist
+    apps/api/.venv/bin/python apps/api/tests/test_export.py      # month-end register
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd apps/web && npx tsc --noEmit
     cd apps/mobile && npx tsc --noEmit
@@ -127,6 +128,20 @@ translate; the core is vendor-neutral.
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
 and leave. Mobile app runs in Expo Go. All tests pass.
 
+**Month-end export is built.** `GET /admin/export/month.csv` returns the
+attendance register - one row per employee, one column per day, coded
+P/HD/A/L/WO/PH - plus totals, hours, late and OT. There is a download button on
+the board that exports the month you are looking at, not always the current one.
+
+- **CSV, not .xlsx, deliberately.** Excel opens it, it needs no dependency, and
+  unlike a binary workbook it can be diffed and grepped. Revisit only if HR
+  asks for formatting.
+- **Recomputed at export time**, like the board, so the document someone gets
+  paid from cannot disagree with the punches behind it.
+- **`days_payable` is the only payroll-shaped opinion in the file** and it
+  states its own formula in the CSV header. Unpaid (LOP) leave is broken out
+  separately so payroll can apply a different rule.
+
 **Leave is built, and it is wired into attendance.** That wiring was the point:
 `recompute_day()` now looks up approved leave and holidays and passes
 `is_holiday` / `leave_fraction` into `resolve_day()`. Before this, both read as
@@ -167,16 +182,28 @@ the dashboard. They are fixed by state notification, not arithmetic. A wrong
 holiday marks the whole company off on the wrong day.
 
 Not built yet, in priority order:
-1. **Carry-forward at year end** - the flags and the cap are stored and
+1. **Correction UI** - the API endpoint works; HR should not need curl. The PRD
+   flow is employee requests -> manager approves -> day recomputes, which does
+   not exist yet: corrections are HR-only and direct.
+2. **The mobile app lies about offline punches.** On a network failure it says
+   "saved on your phone and will sync automatically" and persists NOTHING. The
+   punch is lost. Either build the queue or change the message - telling
+   someone they are recorded when they are not is the failure this project
+   cares most about avoiding.
+3. **Selfie retention.** The PRD requires punch selfies deleted after 90 days.
+   No job does this. `storage.punch_key` folders them by date precisely so a
+   purge can be a directory delete.
+4. **Alembic migrations.** None exist - the schema is `create_all` only, so
+   "Postgres is one connection string away" is not yet true.
+5. **Carry-forward at year end** - the flags and the cap are stored and
    editable, but nothing yet runs the roll-over that moves EL into next year's
    `opening` and lapses CL/SL.
-2. **Manager relationships** - `manager_id` exists and the scoping works
+6. **Manager relationships** - `manager_id` exists and the scoping works
    (`visible_employees`), but the seed sets nobody's manager, so no one is a
    manager in practice.
-3. **A "Check in" entry point on the dashboard**, so an admin can mark their own
+7. **A "Check in" entry point on the dashboard**, so an admin can mark their own
    attendance without reaching for their phone.
-4. **Correction UI** - the API endpoint works; HR should not need curl.
-5. Then payroll (India: PF, ESI, PT, TDS, Form 16).
+8. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish
 
