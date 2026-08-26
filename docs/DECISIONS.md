@@ -211,3 +211,45 @@ office stays open, so they must not resolve to "holiday" for everyone.
 **Still open.** Year-end carry-forward is stored and editable but nothing runs
 the roll-over yet: at 31 December, EL should move into next year's `opening` up
 to the cap and CL/SL should lapse.
+
+## 007 - Liveness is out of v1, and the gap is written down  (Aug 2026)
+
+**Decision.** The face check stays 1:1 `CompareFaces` with no liveness. The PRD
+acceptance line "a photo of a colleague held up to the camera is refused" is
+struck, because it asked for an outcome the same document ruled out the
+mechanism for.
+
+**Why it was a contradiction, not a trade-off.** `CompareFaces` answers *is this
+the same face as the enrolled photo*. A print, or the person's face on a second
+phone screen, answers that correctly - it genuinely is their face. Nothing in
+the comparison asks *is a living person in front of this camera*. Refusing a
+held-up photo requires liveness detection, which the PRD listed under "not in
+v1". One of the two had to give, and pretending the criterion was met would
+have been the worst option: an acceptance test nobody could pass, quietly
+failing in the pilot.
+
+**What is genuinely open.** Not the careless case - a stranger's face does not
+match. The open case is co-operative buddy punching: an employee hands their
+bound phone to a colleague at the office, along with a photo of themselves.
+Device binding and the geofence do not close it. They raise it from "anyone,
+anywhere" to "two willing people, on the victim's handset, inside the
+building".
+
+**Why accept it at this size.** Seven people who all know each other. The cheat
+needs collusion and physical presence, and every punch selfie is stored, so it
+is detectable after the fact rather than invisible. Accepting costs nothing;
+the alternative puts a per-check fee and a new SDK on the critical path of a
+flow with an 8-second budget.
+
+**When it is built, it is ours.** Not AWS Face Liveness. A server-chosen
+challenge at punch time - blink, or turn your head - verified across a short
+burst of frames, which defeats a static print. Two honest caveats recorded now
+so nobody rediscovers them later:
+
+- True *passive* liveness from one still image is an adversarial research
+  problem, not a weekend feature. The achievable own-build is
+  challenge-response.
+- Challenge-response is still beatable by a prepared video replay. It raises
+  the cost of cheating; it does not end it.
+
+Revisit at the pilot, on evidence from real punches rather than on principle.

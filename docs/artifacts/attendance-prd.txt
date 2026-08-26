@@ -1,11 +1,10 @@
 # Boxcode Attendance PRD
 
-Recovered from a Claude artifact on 2026-08-26.
+Recovered 26 Aug 2026 from a Claude artifact and kept in the repo.
 Rendered version: docs/artifacts/attendance-prd.html
+Last amended: 27 Aug 2026 (liveness decision).
 
 ---
-
-Boxcode Attendance PRD
 
 Product requirements · v1 · attendance
 Everyone checks in from inside the building
@@ -184,7 +183,7 @@ A faked GPS location is refused.
 
 Someone else's phone cannot punch for an employee — the binding refuses it.
 
-A photo of a colleague held up to the camera is refused by the face check.
+A photo of a colleague held up to the camera is refused by the face check.accepted gap in v1 — see below
 
 A punch by someone with no enrolled photo is either refused or recorded as not checked — never as a passing check. fixed
 
@@ -262,7 +261,17 @@ next
 Dual-run against MyCo for a week and explain every mismatch before anyone else moves across. Tighten to wifi_required based on what the building actually does. Only then does deployment become a question worth asking.
 
 Not in v1, deliberately
-Payroll, expenses, CRM, field tracking, tasks, liveness detection, gate hardware, a second office, and a web punch page. Every one of these is a real thing we want — and every one of them is a reason attendance ships late. They start after M6.
+Payroll, expenses, CRM, field tracking, tasks, gate hardware, a second office, and a web punch page. Every one of these is a real thing we want — and every one of them is a reason attendance ships late. They start after M6.
+
+Liveness stays out of v1 — decided 27 Aug 2026, with the gap stated rather than left implied.
+
+The acceptance criteria used to ask for a held-up photo to be refused while this list ruled out the only mechanism that does it. That was a contradiction, not a scope call. CompareFaces asks one question — is this the same face as the enrolled photo — and a printed photo or a face on a second screen answers it correctly. It never asks is this a live person. So that criterion has been struck.
+
+What this actually leaves open. Not a stranger punching for someone — their face will not match. The open case is co-operative: an employee lends their bound phone to a colleague at the office along with a photo of themselves. Device binding and the geofence do not stop that, they only make it require physical collusion, on the victim’s handset, inside the building.
+
+Why that is acceptable at this size. Seven people who all know each other, in one room. The cheat needs two willing participants and someone physically present anyway. Every punch selfie is stored, so if it does happen it is visible after the fact rather than invisible. Cost of accepting: nothing. Cost of the alternative: a per-check fee and a new SDK on the critical path of an 8-second flow.
+
+When we do build it, we build it ourselves. Not AWS Face Liveness. A server-chosen challenge at punch time — blink, or turn your head one way — verified from a short burst of frames, which defeats a static print. Worth being honest that this is the achievable version: true passive liveness from a single still is an adversarial research problem, and a challenge-response scheme is still beatable by a prepared video replay. It raises the cost of cheating; it does not end it. Revisit at the pilot, on evidence.
 
 07
 Non-negotiables

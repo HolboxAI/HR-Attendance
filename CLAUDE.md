@@ -58,7 +58,13 @@ translate; the core is vendor-neutral.
    adapter is parked, intact and unwired, at `app/adapters/zkteco_adms.py`.
 2. **AWS Rekognition, 1:1 CompareFaces** — not 1:N search. `FACE_PROVIDER=stub`
    until there is an AWS account. No embeddings or image bytes in the DB, only
-   an S3 key.
+   an S3 key. **No liveness in v1, deliberately** — `CompareFaces` answers "same
+   face", never "live person", so a photo of the right person held to the camera
+   passes and is *expected* to. Device binding plus the geofence narrow that to
+   co-operative buddy punching on the victim's own handset, inside the office;
+   at seven people that is accepted and every selfie is stored, so it is
+   visible after the fact. Do not add a test asserting a held-up photo is
+   refused — it cannot pass. See DECISIONS.md 007.
 3. **Local files, no server.** SQLite at `data/boxcode.db`, photos in
    `data/uploads/`. Column types are dialect-portable (`app/db/types.py`), so
    Postgres is one connection string, not a rewrite.
