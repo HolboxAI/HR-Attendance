@@ -15,15 +15,24 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_role
+from app.models.employee import User
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.employee import Employee
+from app.models.enums import UserRole
 from app.models.org import Department
 from app.services.enrolment import (
     active_enrolment, enrol, history, retire, storage,
 )
 
-router = APIRouter(prefix="/admin/enrolments", tags=["enrolment"])
+# Reference photos are biometric data about identifiable people. HR and above,
+# with no per-route exceptions.
+router = APIRouter(
+    prefix="/admin/enrolments",
+    tags=["enrolment"],
+    dependencies=[Depends(require_role(UserRole.HR_ADMIN))],
+)
 
 
 class EnrolmentRow(BaseModel):
@@ -102,11 +111,14 @@ async def create_enrolment(
     db: Session = Depends(get_db),
     photo: UploadFile = File(...),
     employee_code: str = Form(...),
+    actor: User = Depends(require_role(UserRole.HR_ADMIN)),
 ) -> EnrolResponse:
     emp = _employee(db, employee_code)
     image = await photo.read()
 
-    record, result = enrol(db, employee=emp, image=image)
+    # enrolled_by comes from the token. The model has always had the column;
+    # until auth existed there was nothing truthful to put in it.
+    record, result = enrol(db, employee=emp, image=image, actor_id=actor.id)
     if record is None:
         # A rejected photo is not an error condition worth a 500 - it is a
         # normal outcome HR needs to read and act on, so it comes back 400

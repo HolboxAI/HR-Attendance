@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-import { hhmm, hours, type BoardRow } from '@/lib/api';
+import { hhmm, hours, type BoardRow } from '@/lib/format';
 import { Status } from './Status';
 
 export function BoardTable({ rows }: { rows: BoardRow[] }) {

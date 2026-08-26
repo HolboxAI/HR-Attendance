@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 
-import { API, dayMonth, enrolmentPhotoUrl, type EnrolmentRow } from '@/lib/api';
+import { dayMonth, enrolmentPhotoUrl, proxy, type EnrolmentRow } from '@/lib/format';
 
 type Busy = { code: string; what: 'upload' | 'remove' } | null;
 
@@ -27,7 +27,7 @@ export function EnrolmentTable({ rows }: { rows: EnrolmentRow[] }) {
     body.append('photo', file);
     body.append('employee_code', code);
     try {
-      const res = await fetch(`${API}/api/v1/admin/enrolments`, { method: 'POST', body });
+      const res = await fetch(proxy('/api/v1/admin/enrolments'), { method: 'POST', body });
       if (!res.ok) {
         const detail = await res.json().catch(() => null);
         setError({ code, message: detail?.detail ?? `Upload failed (${res.status})` });
@@ -47,7 +47,7 @@ export function EnrolmentTable({ rows }: { rows: EnrolmentRow[] }) {
     setError(null);
     setBusy({ code, what: 'remove' });
     try {
-      const res = await fetch(`${API}/api/v1/admin/enrolments/${code}`, { method: 'DELETE' });
+      const res = await fetch(proxy(`/api/v1/admin/enrolments/${code}`), { method: 'DELETE' });
       if (!res.ok) {
         setError({ code, message: `Could not withdraw (${res.status})` });
       } else {

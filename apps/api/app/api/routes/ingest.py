@@ -8,11 +8,13 @@ one. The core does not know or care which produced a punch.
 from __future__ import annotations
 
 import hashlib
+import secrets
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.enums import PunchDirection, PunchSource
 from app.schemas.punch import PunchAccepted, PunchBatchIn, PunchIn
@@ -55,6 +57,14 @@ def ingest_punch(
     db: Session = Depends(get_db),
     x_device_key: str | None = Header(default=None),
 ) -> PunchAccepted:
+    # This path is parked (see app/adapters/zkteco_adms.py) and _store is still
+    # a stub. It is closed anyway rather than left open against the day someone
+    # finishes it: an unauthenticated endpoint that files attendance for
+    # arbitrary employees is the same hole we just spent this milestone closing.
+    if not settings.device_ingest_key:
+        raise HTTPException(503, "Device ingest is not enabled")
+    if not x_device_key or not secrets.compare_digest(x_device_key, settings.device_ingest_key):
+        raise HTTPException(401, "Unrecognised device")
     if not body.punches:
         raise HTTPException(400, "No punches in payload")
     return _store(db, body.punches)

@@ -112,6 +112,7 @@ def resolve_day(
     *,
     is_holiday: bool = False,
     is_on_leave: bool = False,
+    leave_fraction: float | None = None,
     as_of: datetime | None = None,
 ) -> ResolvedDay:
     """`as_of` is passed in rather than read from the clock, so this stays pure.
@@ -119,8 +120,16 @@ def resolve_day(
     Without it, a day whose shift has not finished yet resolves to "absent" -
     so at 10am the whole company looks absent, and every future date in a month
     view is a wall of red. Nobody is absent until their shift has ended.
+
+    `leave_fraction` is 0.5 for a half day and 1.0 for a whole one;
+    `is_on_leave` is the boolean shorthand for a whole day. Half a day of leave
+    plus half a day worked is a FULL day, not an absence - getting that wrong
+    docks people for a day they were partly at work.
     """
     day = ResolvedDay(shift_date=shift_date)
+    if leave_fraction is None:
+        leave_fraction = 1.0 if is_on_leave else 0.0
+    on_leave = leave_fraction > 0
     tz = ZoneInfo(policy.tz)
     shift_over = _shift_has_ended(policy, shift_date, as_of)
 
@@ -128,8 +137,12 @@ def resolve_day(
     day.punch_count = len(punches)
 
     if not punches:
-        if is_on_leave:
+        if leave_fraction >= 1.0:
             day.status = "on_leave"
+        elif on_leave:
+            # Half day booked, nothing worked. Still a half day of leave, not a
+            # whole day of absence.
+            day.status = "half_day"
         elif is_holiday:
             day.status = "holiday"
         elif shift_date.weekday() not in policy.working_days:
@@ -190,8 +203,18 @@ def resolve_day(
         over = (day.last_out.astimezone(tz) - scheduled_end).total_seconds() / 60
         day.overtime_minutes = max(0, int(over))
 
-    if is_on_leave:
+    if leave_fraction >= 1.0:
         day.status = "on_leave"
+        # They were on approved leave and came in anyway. Both facts are true.
+        # Do not swallow the punch and do not cancel the leave - surface it and
+        # let a human decide which one was the mistake.
+        day.has_exception = True
+        day.exception_note = "Worked on an approved leave day - HR to confirm"
+    elif on_leave and day.worked_minutes >= policy.half_day_after_minutes:
+        # Half leave + half worked = a full day.
+        day.status = "present"
+    elif on_leave:
+        day.status = "half_day"
     elif day.worked_minutes >= policy.full_day_after_minutes:
         day.status = "present"
     elif day.worked_minutes >= policy.half_day_after_minutes:

@@ -25,3 +25,22 @@ export type SimulateCase =
   | 'wrong_wifi'
   | 'face_mismatch'
   | 'no_signal';
+
+export type LeaveBalance = {
+  code: string;
+  name: string;
+  isPaid: boolean;
+  available: number;
+  accrued: number;
+  used: number;
+};
+
+export type LeaveRequestItem = {
+  id: string;
+  code: string;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  note: string | null;
+};

@@ -1,4 +1,4 @@
-import type { Board } from '@/lib/api';
+import type { Board } from '@/lib/format';
 
 /**
  * Stat tiles, not a chart. The data's job here is a handful of headline

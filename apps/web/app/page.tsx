@@ -2,7 +2,9 @@ import Link from 'next/link';
 
 import { BoardTable } from '@/components/BoardTable';
 import { Tiles } from '@/components/Tiles';
-import { getBoard, getRejected, hhmm } from '@/lib/api';
+import { MyMonth } from '@/components/MyMonth';
+import { getBoard, getMyMonth, getRejected, hhmm } from '@/lib/api';
+import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,20 +14,45 @@ export default async function BoardPage({
   searchParams: Promise<{ on?: string }>;
 }) {
   const { on } = await searchParams;
-  const [board, rejected] = await Promise.all([getBoard(on), getRejected()]);
+  const me = await currentIdentity();
+  const result = await getBoard(on);
 
-  if (!board) {
+  // A plain employee has no company board to see, and telling them the server
+  // is broken would be a lie. They get their own attendance instead - which is
+  // the thing they actually came for.
+  if (!result.ok && result.reason === 'forbidden') {
+    const now = new Date();
+    const mine = await getMyMonth(now.getUTCFullYear(), now.getUTCMonth() + 1);
+    return <MyMonth data={mine} name={me?.full_name ?? null} />;
+  }
+
+  if (!result.ok) {
     return (
       <div className="rounded border border-st-absent/50 bg-surface p-6">
-        <h2 className="text-lg font-semibold">The API isn&apos;t running</h2>
-        <p className="mt-2 max-w-prose text-sm text-ink-2">
-          Start it and this page will fill in:
-        </p>
-        <pre className="mt-3 overflow-x-auto rounded bg-surface-2 p-3 text-xs text-ink-2">
+        <h2 className="text-lg font-semibold">
+          {result.reason === 'unreachable'
+            ? "The API isn't running"
+            : 'Could not load the board'}
+        </h2>
+        {result.reason === 'unreachable' ? (
+          <>
+            <p className="mt-2 max-w-prose text-sm text-ink-2">
+              Start it and this page will fill in:
+            </p>
+            <pre className="mt-3 overflow-x-auto rounded bg-surface-2 p-3 text-xs text-ink-2">
 cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
+          </>
+        ) : (
+          <p className="mt-2 max-w-prose text-sm text-ink-2">
+            The server answered with {result.status}. Try signing out and back in.
+          </p>
+        )}
       </div>
     );
   }
+
+  const board = result.data;
+  const rejected = await getRejected();
 
   const exceptions = board.rows.filter((r) => r.has_exception);
   const day = new Date(`${board.shift_date}T00:00:00Z`);

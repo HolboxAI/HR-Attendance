@@ -16,17 +16,47 @@ from pydantic import BaseModel
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from app.api.deps import RANK, require_role
 from app.db.session import get_db
 from app.models.attendance import PunchEvent
-from app.models.employee import Employee
+from app.models.auth import RefreshSession
+from app.models.employee import Employee, User
+from app.models.enums import UserRole
 from app.models.enums import PunchDirection, PunchSource
 from app.models.org import Department
 from app.services.attendance import (
     next_direction, policy_for, recompute_day, record_punch,
 )
+from app.services import devices
 from app.services.resolver import shift_date_for
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(require_role(UserRole.MANAGER))],
+)
+
+# HR and above. Applied per-route rather than to the whole router because a
+# manager legitimately needs the board - just not the whole company on it.
+hr_only = Depends(require_role(UserRole.HR_ADMIN))
+
+
+def visible_employees(db: Session, user: User) -> list[Employee]:
+    """Who this account is allowed to see.
+
+    A manager sees the people who report to them, and themselves. Anyone from
+    hr_admin up sees everyone. Doing this in one place is the point: scattering
+    the rule across each endpoint is how one of them ends up missing it.
+    """
+    everyone = db.scalars(
+        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.emp_code)
+    ).all()
+    if RANK.get(user.role, -1) >= RANK[UserRole.HR_ADMIN]:
+        return list(everyone)
+    return [
+        e for e in everyone
+        if e.manager_id == user.employee_id or e.id == user.employee_id
+    ]
 
 
 class BoardRow(BaseModel):
@@ -78,22 +108,23 @@ class CorrectionRequest(BaseModel):
     at: datetime
     direction: PunchDirection
     reason: str
-    actor: str
+    # No `actor` field. Who made a correction is taken from the token, never
+    # from the request body - an audit trail the caller gets to fill in for
+    # itself is not an audit trail.
 
 
 @router.get("/board", response_model=BoardResponse)
 def board(
     on: date | None = Query(default=None, description="Shift date. Defaults to today."),
     db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
 ) -> BoardResponse:
     day = on or datetime.now(timezone.utc).date()
     rows: list[BoardRow] = []
     counts = {"present": 0, "late": 0, "absent": 0, "on_leave": 0,
               "weekly_off": 0, "exceptions": 0, "currently_in": 0}
 
-    employees = db.scalars(
-        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.emp_code)
-    ).all()
+    employees = visible_employees(db, user)
 
     for emp in employees:
         policy, _ = policy_for(db, emp, day)
@@ -139,6 +170,7 @@ def board(
 def rejected(
     days: int = Query(default=7, ge=1, le=90),
     db: Session = Depends(get_db),
+    _: User = hr_only,
 ) -> list[RejectedPunch]:
     """Punches that were refused.
 
@@ -173,9 +205,15 @@ def month(
     year: int,
     month: int,
     db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
 ) -> dict:
     emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
     if emp is None:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+    # 404 rather than 403 for someone outside your scope: a manager should not
+    # be able to enumerate the company by watching which codes come back
+    # "forbidden" and which come back "not found".
+    if emp.id not in {e.id for e in visible_employees(db, user)}:
         raise HTTPException(404, f"No employee with code {employee_code}")
 
     _, last = calendar.monthrange(year, month)
@@ -210,7 +248,9 @@ def month(
 
 
 @router.post("/correct")
-def correct(body: CorrectionRequest, db: Session = Depends(get_db)) -> dict:
+def correct(
+    body: CorrectionRequest, db: Session = Depends(get_db), _: User = hr_only,
+) -> dict:
     """Add a missing punch.
 
     Note what this does NOT do: it does not edit anything. A correction is a new
@@ -229,7 +269,8 @@ def correct(body: CorrectionRequest, db: Session = Depends(get_db)) -> dict:
         db, org_id=emp.org_id, employee=emp, event_ts=body.at,
         source=PunchSource.MANUAL, direction=body.direction,
         geofence_ok=None, face_ok=None,
-        raw={"correction": True, "reason": body.reason, "actor": body.actor},
+        raw={"correction": True, "reason": body.reason,
+             "actor": _.email, "actor_user_id": str(_.id)},
     )
     day = recompute_day(db, emp, body.shift_date)
     db.commit()
@@ -241,4 +282,71 @@ def correct(body: CorrectionRequest, db: Session = Depends(get_db)) -> dict:
         "worked_minutes": day.worked_minutes,
         "has_exception": day.has_exception,
         "note": None if created else "That punch already existed - nothing changed",
+    }
+
+
+class DeviceRow(BaseModel):
+    employee_code: str
+    full_name: str
+    bound: bool
+    platform: str | None
+    model: str | None
+    last_seen_at: datetime | None
+
+
+@router.get("/devices", response_model=list[DeviceRow])
+def list_devices(db: Session = Depends(get_db), _: User = hr_only) -> list[DeviceRow]:
+    rows = []
+    for emp in db.scalars(
+        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.emp_code)
+    ).all():
+        d = devices.active_binding(db, emp)
+        rows.append(DeviceRow(
+            employee_code=emp.emp_code, full_name=emp.full_name,
+            bound=d is not None,
+            platform=d.platform if d else None,
+            model=d.model if d else None,
+            last_seen_at=d.last_seen_at if d else None,
+        ))
+    return rows
+
+
+@router.delete("/devices/{employee_code}")
+def clear_device(
+    employee_code: str, db: Session = Depends(get_db), _: User = hr_only,
+) -> dict:
+    """Unbind someone's phone so they can set up a new handset.
+
+    This is the escape hatch that makes binding acceptable to live with. It
+    deactivates the binding and signs out that phone's sessions, so a lost
+    handset cannot keep refreshing its way back in.
+    """
+    emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
+    if emp is None:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+
+    device = devices.active_binding(db, emp)
+    if device is None:
+        raise HTTPException(404, f"{employee_code} has no phone registered")
+
+    install_id = device.install_id
+    devices.clear(db, emp)
+
+    now = datetime.now(timezone.utc)
+    signed_out = 0
+    for session in db.scalars(
+        select(RefreshSession).where(
+            RefreshSession.install_id == install_id,
+            RefreshSession.revoked_at.is_(None),
+        )
+    ).all():
+        session.revoked_at = now
+        signed_out += 1
+
+    db.commit()
+    return {
+        "cleared": True,
+        "employee_code": employee_code,
+        "sessions_signed_out": signed_out,
+        "note": "They can register a new phone by signing in on it",
     }

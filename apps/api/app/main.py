@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import admin, enrolment, health, ingest, mobile
+from app.api.routes import (
+    admin, admin_leave, auth, enrolment, health, ingest, leave, mobile,
+)
 from app.core.config import settings
 
 app = FastAPI(
@@ -19,8 +21,11 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix=settings.api_prefix)
+app.include_router(auth.router, prefix=settings.api_prefix)
 app.include_router(ingest.router, prefix=settings.api_prefix)
 app.include_router(mobile.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)
 app.include_router(enrolment.router, prefix=settings.api_prefix)
+app.include_router(leave.router, prefix=settings.api_prefix)
+app.include_router(admin_leave.router, prefix=settings.api_prefix)
 

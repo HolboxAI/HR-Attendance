@@ -20,12 +20,20 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_resolver.py    # 30+ assertions
     apps/api/.venv/bin/python apps/api/tests/test_geofence.py    # 15 groups
     apps/api/.venv/bin/python apps/api/tests/test_enrolment.py   # 19 groups
+    apps/api/.venv/bin/python apps/api/tests/test_auth.py        # the auth checklist
+    apps/api/.venv/bin/python apps/api/tests/test_leave.py       # the leave checklist
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd apps/web && npx tsc --noEmit
     cd apps/mobile && npx tsc --noEmit
 
-`demo_day.py` posts real punches through the real HTTP API and prints what HR
-would see. It has caught three real bugs. Run it after touching attendance.
+`test_auth.py` and `test_leave.py` each print the "Definition of done" checklist
+from their brief with every box ticked or not. Read that summary, not the word
+"passing".
+
+`demo_day.py` signs in over HTTP, registers a handset, posts real punches, and
+prints what HR would see. It has caught three real bugs. Run it after touching
+attendance. It uses a throwaway database in a temp directory, so it neither
+needs a real password nor leaves demo punches in `data/boxcode.db`.
 
 ## Architecture — the one rule
 
@@ -86,43 +94,83 @@ translate; the core is vendor-neutral.
 - **`run.sh` traps EXIT with `kill 0`.** Killing one of its children takes the
   whole stack down with it, dashboard included. Restart with `./run.sh` rather
   than trying to revive half of it.
+- **The dashboard's gateway must export every HTTP method it forwards.** A
+  missing `export async function PUT` in `app/api/gateway/[...path]/route.ts`
+  gives a 405 that looks like an auth failure. Next also caches a route's
+  method map in dev - after adding one, restart rather than trusting HMR.
+- **Adding a leave type or holiday changes attendance.** Anything that touches
+  `holidays` or an approved `leave_requests` row must recompute the affected
+  dates, or the board keeps showing the old answer.
+- **Next 16 renamed `middleware.ts` to `proxy.ts`.** Do not confuse the root
+  `proxy.ts` (auth redirect + token refresh) with `app/api/gateway`, which is
+  the pass-through browser code uses to reach the API.
+- **A 403 is not "the API is down".** `apiFetch` in `apps/web/lib/session.ts`
+  reports WHY a call failed. Collapsing them into `null` is how an employee got
+  told the server was broken when the page simply was not theirs.
+- **`lib/format.ts` vs `lib/api.ts`.** Client components may only import the
+  former; `lib/api.ts` reads cookies via `next/headers` and cannot be bundled
+  into browser code.
+- **bcrypt hashes a SHA-256 digest, not the raw password** (`app/core/security.py`).
+  bcrypt ignores everything past 72 bytes; digesting first covers any length.
 - **`node_modules` and `.venv` are platform-specific.** Installing them from one
   machine and running on another fails with native-module errors. `run.sh`
   detects this and rebuilds.
 
 ## Status
 
-Working: punch → verify → store → resolve → HR dashboard, and face enrolment.
-Mobile app runs in Expo Go. All tests pass.
+Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
+and leave. Mobile app runs in Expo Go. All tests pass.
 
-**Face enrolment is built** (`/enrolment` in the dashboard). HR adds, replaces
-and withdraws one reference photo per person; the punch endpoint compares each
-selfie against it. Nobody is enrolled yet, so read the next paragraph before
-assuming the face check is doing anything.
+**Leave is built, and it is wired into attendance.** That wiring was the point:
+`recompute_day()` now looks up approved leave and holidays and passes
+`is_holiday` / `leave_fraction` into `resolve_day()`. Before this, both read as
+"absent" no matter what HR approved.
 
-`REQUIRE_FACE_ENROLMENT` (default `false`) decides what happens to someone with
-no reference photo. While it is false they still punch, and the punch is stored
-with `face_ok = NULL` and `raw_payload.face_checked = false` — never
-`face_ok = true`. That distinction is the whole point: the database must not
-claim a match against a photo that does not exist. Flip it to `true` once the
-enrolment screen reads 100%, which is the moment the face check starts being
-load-bearing. Note that `FACE_PROVIDER` is still `stub`, which accepts any
-selfie that has *something* to compare against — it proves the plumbing, not
-the person. Real matching needs an AWS account.
+- **Approving or cancelling recomputes every affected day inside the service
+  call** (`decide()` / `cancel()` in `app/services/leave.py`), not in the route.
+  A route that forgets to recompute leaves the board contradicting the
+  approval, so it must not be possible to forget.
+- **Adding or removing a holiday recomputes those dates for everyone**, for the
+  same reason.
+- **A punch on an approved leave day is flagged, never swallowed.** The day
+  stays `on_leave`, gets `has_exception`, and HR decides which fact was the
+  mistake. The leave is not auto-cancelled and the punch is not dropped.
+- **Half a day of leave plus half a day worked is a full day**, not an absence.
+- **HR owns the policy** at `/leave/policy` (hr_admin only): leave year, quotas,
+  accrual, carry-forward and cap, sandwich rule, backdating window, and the
+  holiday calendar. Nothing lives in a config file.
+- **A policy change never rewrites history.** Editing a quota applies from the
+  next accrual run; balances already accrued are untouched, the page says so
+  before saving, and every edit writes an audit row with old and new values.
+- **Accrual is idempotent.** `leave_accrual_runs` has a unique key per
+  employee/type/period/month, so running the job twice is a no-op. Never derive
+  "what should they have by now" from the current quota - that silently
+  rewrites history the moment a quota changes.
+- Approvals are scoped: a manager decides for their reports, HR for everyone,
+  and **nobody decides their own leave, admin included**.
+
+Defaults shipped for Krish to confirm: Jan-Dec leave year; CL 12, SL 6, EL 15
+(carries forward, cap 30), LOP unlimited unpaid; sandwich rule OFF; backdating
+7 days.
+
+**The holiday dates need checking.** 2026 is seeded with India's national
+holidays plus Gujarat's. The fixed-date ones are reliable; the 16 lunar-calendar
+festivals (Holi, both Eids, Janmashtami, Diwali, and the rest) are seeded from a
+best estimate and marked `is_confirmed=False`, which shows as "Check date" in
+the dashboard. They are fixed by state notification, not arithmetic. A wrong
+holiday marks the whole company off on the wrong day.
 
 Not built yet, in priority order:
-1. **Auth** — `EMPLOYEE_CODE` in `apps/mobile/src/api.ts` stands in for login.
-   Anyone can edit it and punch as someone else. Must not survive the pilot.
-   Note `passlib` is deliberately not a dependency; use `bcrypt` directly
-   (see the comment in `apps/api/requirements.txt`).
-2. **Enrol from the mobile app** — HR currently uploads on the employee's
-   behalf from the dashboard. Self-enrolment needs auth first, or anyone can
-   enrol their own face as someone else's.
-3. **Correction UI** — the API endpoint works; HR should not need curl.
-4. Then leave, then payroll (India: PF, ESI, PT, TDS, Form 16).
-
-Deliberately out of scope until attendance is closed end to end: payroll,
-expenses, CRM, field tracking, tasks, liveness detection.
+1. **Carry-forward at year end** - the flags and the cap are stored and
+   editable, but nothing yet runs the roll-over that moves EL into next year's
+   `opening` and lapses CL/SL.
+2. **Manager relationships** - `manager_id` exists and the scoping works
+   (`visible_employees`), but the seed sets nobody's manager, so no one is a
+   manager in practice.
+3. **A "Check in" entry point on the dashboard**, so an admin can mark their own
+   attendance without reaching for their phone.
+4. **Correction UI** - the API endpoint works; HR should not need curl.
+5. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish
 

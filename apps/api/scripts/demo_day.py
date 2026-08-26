@@ -1,33 +1,79 @@
 """End-to-end proof, in two parts.
 
-PART 1 posts real multipart requests to the real FastAPI app and shows the
-verification path: accepted, too far, faked GPS. Nothing is mocked below HTTP.
+PART 1 signs in over HTTP and posts real multipart requests to the real FastAPI
+app: it logs in, gets a bearer token, registers the phone, and punches. Nothing
+is mocked below HTTP, and the punch path is exercised exactly as the app
+exercises it - there is no way to punch here that a real client could not.
 
 PART 2 writes a backdated day through the service layer, because the endpoint
 deliberately stamps punches with SERVER time - a phone's clock is attacker
 controlled and must never decide when someone arrived. That is the right call
 for production and it means a demo cannot fake times over HTTP.
 
+Runs against a throwaway database in a temp directory, NOT data/boxcode.db.
+That is what lets it create accounts with known passwords and sign in properly,
+and it means running the demo twice does not pile demo punches into the real
+prototype data.
+
     .venv/bin/python scripts/demo_day.py
 """
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+SCRATCH = Path(tempfile.mkdtemp(prefix="boxcode-demo-"))
+os.environ["DATABASE_URL"] = f"sqlite:///{SCRATCH / 'demo.db'}"
+os.environ["STORAGE_DIR"] = str(SCRATCH / "uploads")
 
 from fastapi.testclient import TestClient          # noqa: E402
 from sqlalchemy import delete, select              # noqa: E402
 
-from app.db.session import SessionLocal            # noqa: E402
+from app.core.security import hash_password        # noqa: E402
+from app.db.base import Base                       # noqa: E402
+from app.db.session import SessionLocal, engine    # noqa: E402
+import app.models                                  # noqa: F401,E402
 from app.main import app                           # noqa: E402
 from app.models.attendance import AttendanceDay, PunchEvent   # noqa: E402
-from app.models.employee import Employee           # noqa: E402
-from app.models.enums import PunchDirection, PunchSource      # noqa: E402
+from app.models.employee import Employee, User     # noqa: E402
+from app.models.enums import PunchDirection, PunchSource, UserRole   # noqa: E402
 from app.services.attendance import recompute_day, record_punch   # noqa: E402
+
+import seed                                        # noqa: E402
+
+DEMO_PASSWORD = "demo-only-not-a-real-password"
+
+Base.metadata.create_all(engine)
+seed.main()
+print()
+
+
+def _ensure_logins() -> None:
+    """Give every seeded employee an account, so PART 1 can sign in as them."""
+    db = SessionLocal()
+    try:
+        roles = {"BX001": UserRole.SUPER_ADMIN, "BX006": UserRole.HR_ADMIN}
+        for emp in db.scalars(select(Employee)).all():
+            if db.scalar(select(User).where(User.employee_id == emp.id)):
+                continue
+            db.add(User(
+                org_id=emp.org_id, employee_id=emp.id, email=emp.email.lower(),
+                password_hash=hash_password(DEMO_PASSWORD),
+                role=roles.get(emp.emp_code, UserRole.EMPLOYEE),
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+
+_ensure_logins()
 
 IST = ZoneInfo("Asia/Kolkata")
 OFFICE = (23.0315, 72.5298)
@@ -40,20 +86,45 @@ YESTERDAY = TODAY - timedelta(days=1)
 client = TestClient(app)
 
 
+def sign_in(code: str) -> tuple[str, str]:
+    """Log in as this employee and register their phone. Returns (token, install_id).
+
+    This is the whole point of PART 1 now: identity comes from the token, and
+    the phone has to be one we know about. There is no employee_code parameter
+    on the punch endpoint any more, so there is no way to punch as someone else.
+    """
+    db = SessionLocal()
+    try:
+        emp = db.scalar(select(Employee).where(Employee.emp_code == code))
+        email = emp.email
+    finally:
+        db.close()
+
+    install_id = f"demo-handset-{code}"
+    res = client.post("/api/v1/auth/login", json={
+        "email": email, "password": DEMO_PASSWORD,
+        "install_id": install_id, "platform": "ios", "device_model": "iPhone 15",
+    })
+    if res.status_code != 200:
+        raise SystemExit(f"demo login failed for {code}: {res.status_code} {res.text}")
+    return res.json()["access_token"], install_id
+
+
 def http_punch(code: str, coords: tuple[float, float], mocked: bool = False):
+    token, install_id = sign_in(code)
     res = client.post(
         "/api/v1/mobile/punch",
         files={"selfie": ("punch.jpg", JPEG, "image/jpeg")},
         data={
-            "employee_code": code,
             "lat": str(coords[0]), "lng": str(coords[1]),
             "accuracy_m": "12", "is_mocked": str(mocked).lower(),
         },
+        headers={"Authorization": f"Bearer {token}", "X-Install-Id": install_id},
     )
     return res.json()
 
 
-print("\nPART 1 - live punches through the HTTP API")
+print("\nPART 1 - live punches through the HTTP API, signed in as each person")
 print("=" * 78)
 for code, label, coords, mocked in [
     ("BX001", "at the office",  OFFICE, False),

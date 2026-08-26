@@ -107,3 +107,107 @@ you never get is a manufactured pass.
 **Still true and still the gap.** `FACE_PROVIDER=stub` accepts any selfie that
 has a reference photo to compare against. Enrolment makes the plumbing real;
 only Rekognition makes the *matching* real.
+
+## 006 - Identity comes from the token, and the parameter is gone  (Aug 2026)
+
+**Decision.** One login for everybody at `POST /auth/login`. Roles stack and are
+checked as "at least this rank". The punch endpoint's `employee_code` parameter
+and the mobile app's `EMPLOYEE_CODE` constant were DELETED, not deprecated.
+
+**Why the deletion matters more than the auth.** Adding tokens while leaving
+`employee_code` accepted would have changed nothing: the old curl still works,
+anyone can still punch as anyone, and the system now *looks* secure, which is
+worse than visibly insecure. The parameter is the vulnerability; authentication
+around it is not a fix. `test_auth.py` asserts against the OpenAPI schema that
+the field does not exist, and separately that smuggling it in has no effect.
+
+**Roles stack; they are never exclusive.** Krish is the super admin and punches
+in every morning. Ashley runs Operations and punches in. `require_role` takes a
+MINIMUM rank, so hr_admin includes manager includes employee. The failure mode
+being avoided is the ordinary one where "admin" becomes a separate kind of
+account and the two people who run the system can no longer use it.
+
+**One credential per person, no signup.** Two login systems means two sets of
+credentials to disable the day someone leaves, and that is the one that gets
+forgotten. HR creates accounts with `scripts/seed_users.py`; passwords are
+printed once and stored only as a hash.
+
+**Consequences worth knowing.**
+
+- Access tokens are short (30 min) and carry the role; refresh tokens are long,
+  rotated on every use, and recorded in `refresh_sessions` so logout means
+  something. Role changes and deactivations therefore take effect within one
+  access-token lifetime with no revocation machinery for the short half.
+- The dashboard holds tokens in httpOnly cookies, so page JavaScript cannot
+  read them and an XSS bug does not hand over an admin session. The cost is
+  that browser code cannot call the API directly: it goes through
+  `app/api/gateway`, which attaches the token server-side. That cost was
+  accepted deliberately.
+- **Phone binding**, one handset per employee, checked on every punch. The
+  escape hatch is what makes it liveable: HR clears a binding, which
+  deactivates it, keeps the row, and signs that handset's sessions out. A
+  reinstall produces a new install id and so reads as a new phone - the
+  conservative answer, and one HR can resolve in ten seconds.
+- A manager sees only their reports (`visible_employees`). Out-of-scope lookups
+  return 404 rather than 403, so the roster cannot be enumerated by watching
+  which codes come back "forbidden".
+- Corrections record the actor from the token. An audit trail the caller fills
+  in for itself is not an audit trail.
+
+**Still open.** Nobody has a `manager_id` set in the seed, so the manager tier
+is exercised by tests rather than by anyone real. And the dashboard has no
+check-in flow yet, so an admin still marks their own attendance on their phone.
+
+## 007 - Leave is an attendance feature, not a CRUD module  (Aug 2026)
+
+**Decision.** `recompute_day()` looks up approved leave and holidays and passes
+them into `resolve_day()`. Approving, cancelling, or changing the holiday
+calendar recomputes every affected day *inside the service call*, before it
+returns.
+
+**Why this and not the CRUD.** `resolve_day()` had accepted `is_holiday` and
+`is_on_leave` from the beginning; nothing ever passed them. So approved leave
+and public holidays both resolved to "absent" - the day Ashley approved Dhruv's
+Diwali leave, the board still showed him absent, and so did his month. A leave
+module that stores requests and leaves that untouched has delivered nothing.
+
+The recompute lives in `decide()` and `cancel()` rather than in the routes, so
+a new caller cannot forget it. A route that forgets leaves the board
+contradicting an approval that is sitting right there in the database, and
+nobody would find out until someone queried their own attendance.
+
+**A policy change never rewrites history.** This is the trap worth naming.
+
+- Editing a quota applies from the next accrual run forward. Balances already
+  earned stay as they are, the page says so before saving, and the edit writes
+  an audit row with the old and new values.
+- `LeaveRequest.days_consumed` is FROZEN at decision time, not recomputed on
+  read. Turning the sandwich rule on in August must not make a leave taken in
+  March retroactively cost two more days.
+- `AccrualRun` records each month actually credited, with a unique key per
+  employee/type/period/month. Accrual is therefore idempotent, and "how much
+  have they earned" is a sum of what was granted rather than a calculation from
+  today's quota - which would change the answer every time HR edits a number.
+
+**Three cases the resolver now gets right.**
+
+- **A punch on an approved leave day** keeps the day `on_leave`, sets
+  `has_exception`, and says so. Both facts are true; a human decides which was
+  the mistake. Silently ignoring the punch, or silently cancelling the leave,
+  would each destroy evidence.
+- **Leave across a weekend or holiday** consumes only working days, unless the
+  sandwich rule is on. Leading and trailing non-working days never count -
+  applying for "Saturday to Monday" should not bill you for Saturday.
+- **Half a day of leave plus half a day worked** is a full day, not an absence.
+
+**Holiday dates are marked confirmed or not.** The fixed-date holidays are
+arithmetic; the lunar-calendar festivals are fixed by Gujarat government
+notification and move every year. Seeding a guess as fact would mark the whole
+company off on the wrong day, so the 16 uncertain ones carry
+`is_confirmed=False` and surface in the dashboard as "Check date". Optional
+(restricted) holidays are excluded from the closed-office lookup entirely - the
+office stays open, so they must not resolve to "holiday" for everyone.
+
+**Still open.** Year-end carry-forward is stored and editable but nothing runs
+the roll-over yet: at 31 December, EL should move into next year's `opening` up
+to the cap and CL/SL should lapse.

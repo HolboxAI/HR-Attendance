@@ -1,4 +1,7 @@
-import type { PunchDirection, PunchResult, SimulateCase, TodayStatus } from './types';
+import { authHeaders, signOut } from './session';
+import type {
+  LeaveBalance, LeaveRequestItem, PunchDirection, PunchResult, SimulateCase, TodayStatus,
+} from './types';
 
 /**
  * Two implementations behind one interface.
@@ -23,8 +26,14 @@ import type { PunchDirection, PunchResult, SimulateCase, TodayStatus } from './t
 export const USE_MOCK = true;
 export const API_BASE = 'http://192.168.1.10:8000';
 
-/** Stands in for auth until login exists. Matches emp_code in the seed. */
-export const EMPLOYEE_CODE = 'BX001';
+/*
+ * There is deliberately no EMPLOYEE_CODE constant here any more.
+ *
+ * It used to decide who you were, which meant anyone could edit one line and
+ * punch as a colleague. Identity now comes from the access token, and the
+ * punch endpoint has no employee parameter at all - so there is nothing to
+ * put back even if someone wanted to.
+ */
 
 const OFFICE_NAME = 'Boxcode - IIMA Ventures';
 
@@ -47,9 +56,13 @@ export async function getToday(): Promise<TodayStatus> {
     await wait(300);
     return { ...mockState };
   }
-  const res = await fetch(
-    `${API_BASE}/api/v1/mobile/me?employee_code=${encodeURIComponent(EMPLOYEE_CODE)}`,
-  );
+  const res = await fetch(`${API_BASE}/api/v1/mobile/me`, {
+    headers: await authHeaders(),
+  });
+  if (res.status === 401) {
+    await signOut();
+    throw new Error('Session expired - sign in again');
+  }
   if (!res.ok) throw new Error(`me failed: ${res.status}`);
   const j = await res.json();
   return {
@@ -121,9 +134,16 @@ export async function submitPunch(args: {
   form.append('accuracy_m', String(args.accuracyM ?? ''));
   form.append('is_mocked', String(args.isMocked));
   form.append('direction', args.direction);
-  form.append('employee_code', EMPLOYEE_CODE);
 
-  const res = await fetch(`${API_BASE}/api/v1/mobile/punch`, { method: 'POST', body: form });
+  const res = await fetch(`${API_BASE}/api/v1/mobile/punch`, {
+    method: 'POST',
+    body: form,
+    headers: await authHeaders(),
+  });
+  if (res.status === 401) {
+    await signOut();
+    throw new Error('Session expired - sign in again');
+  }
   const j = await res.json();
   return {
     accepted: !!j.accepted,
@@ -141,3 +161,92 @@ export function resetMock() {
 }
 
 export { OFFICE_NAME };
+
+/* ---------------------------------------------------------------------------
+ * Leave
+ * ------------------------------------------------------------------------ */
+
+const MOCK_BALANCES: LeaveBalance[] = [
+  { code: 'CL', name: 'Casual Leave', isPaid: true, available: 8, accrued: 8, used: 0 },
+  { code: 'SL', name: 'Sick Leave', isPaid: true, available: 4, accrued: 4, used: 0 },
+  { code: 'EL', name: 'Earned Leave', isPaid: true, available: 10, accrued: 10, used: 0 },
+];
+let mockRequests: LeaveRequestItem[] = [];
+
+export async function getLeaveBalance(): Promise<LeaveBalance[]> {
+  if (USE_MOCK) {
+    await wait(250);
+    return MOCK_BALANCES;
+  }
+  const res = await fetch(`${API_BASE}/api/v1/leave/balance`, {
+    headers: await authHeaders(),
+  });
+  if (res.status === 401) { await signOut(); throw new Error('Session expired'); }
+  if (!res.ok) throw new Error(`balance failed: ${res.status}`);
+  const rows = await res.json();
+  return rows
+    .filter((b: Record<string, unknown>) => b.is_paid)
+    .map((b: Record<string, number | string | boolean>) => ({
+      code: b.code as string, name: b.name as string, isPaid: true,
+      available: b.available as number, accrued: b.accrued as number,
+      used: b.used as number,
+    }));
+}
+
+export async function getMyLeave(): Promise<LeaveRequestItem[]> {
+  if (USE_MOCK) {
+    await wait(250);
+    return [...mockRequests];
+  }
+  const res = await fetch(`${API_BASE}/api/v1/leave/my-requests`, {
+    headers: await authHeaders(),
+  });
+  if (res.status === 401) { await signOut(); throw new Error('Session expired'); }
+  if (!res.ok) throw new Error(`requests failed: ${res.status}`);
+  const rows = await res.json();
+  return rows.map((r: Record<string, string | number>) => ({
+    id: r.id as string, code: r.leave_type_code as string,
+    fromDate: r.from_date as string, toDate: r.to_date as string,
+    days: r.days as number, status: r.status as LeaveRequestItem['status'],
+    note: (r.decided_note ?? r.reason ?? null) as string | null,
+  }));
+}
+
+/** Returns null on success, or the server's reason for refusing. */
+export async function applyForLeave(args: {
+  code: string; from: string; to: string; halfDay: boolean; reason: string;
+}): Promise<string | null> {
+  if (USE_MOCK) {
+    await wait(400);
+    mockRequests = [{
+      id: String(mockRequests.length + 1), code: args.code, fromDate: args.from,
+      toDate: args.to || args.from, days: 1, status: 'pending', note: args.reason || null,
+    }, ...mockRequests];
+    return null;
+  }
+  const res = await fetch(`${API_BASE}/api/v1/leave/request`, {
+    method: 'POST',
+    headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      leave_type_code: args.code, from_date: args.from, to_date: args.to || args.from,
+      half_day_start: args.halfDay, reason: args.reason || null,
+    }),
+  });
+  if (res.status === 401) { await signOut(); return 'Session expired - sign in again'; }
+  if (res.ok) return null;
+  // The API refuses with the numbers in it - how many days you have, what
+  // clashes. Passing that straight through is more use than "failed".
+  const body = await res.json().catch(() => null);
+  return body?.detail ?? `Could not apply (${res.status})`;
+}
+
+export async function cancelLeave(id: string): Promise<void> {
+  if (USE_MOCK) {
+    mockRequests = mockRequests.map((r) =>
+      (r.id === id ? { ...r, status: 'cancelled' as const } : r));
+    return;
+  }
+  await fetch(`${API_BASE}/api/v1/leave/${id}/cancel`, {
+    method: 'POST', headers: await authHeaders(),
+  });
+}

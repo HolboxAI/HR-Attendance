@@ -199,7 +199,17 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
         if shift_date_for(_aware(r.event_ts_utc), policy) == shift_date
     ]
 
-    resolved = resolve_day(punches, policy, shift_date, as_of=datetime.now(timezone.utc))
+    # The integration this milestone exists for. resolve_day has always
+    # accepted these two; until now nothing passed them, so approved leave and
+    # public holidays both came out as "absent".
+    from app.services.leave import is_holiday, leave_fraction_on
+
+    resolved = resolve_day(
+        punches, policy, shift_date,
+        is_holiday=is_holiday(db, employee, shift_date),
+        leave_fraction=leave_fraction_on(db, employee, shift_date),
+        as_of=datetime.now(timezone.utc),
+    )
 
     day = db.scalar(
         select(AttendanceDay).where(

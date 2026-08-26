@@ -16,6 +16,17 @@ class Settings(BaseSettings):
     database_url: str = f"sqlite:///{DATA_DIR / 'boxcode.db'}"
 
     jwt_secret: str = "dev-only-change-before-anyone-real-uses-this"
+
+    # 30 minutes is short enough that a role change or a deactivation takes
+    # effect quickly without revocation machinery, and long enough that the
+    # phone is not refreshing constantly. The refresh token is what stops
+    # anyone being asked for a password every morning.
+    access_token_minutes: int = 30
+    refresh_token_days: int = 30
+
+    # Reject a punch from a phone that has not been bound to its employee.
+    # See app/services/devices.py for what binding means and how HR clears one.
+    require_device_binding: bool = True
     default_tz: str = "Asia/Kolkata"
     api_prefix: str = "/api/v1"
 
@@ -36,6 +47,11 @@ class Settings(BaseSettings):
 
     # Photos are files on disk for now, S3 later. Same interface either way.
     storage_dir: Path = DATA_DIR / "uploads"
+
+    # Shared secret for the parked gate-reader ingest path. Empty means the
+    # endpoint is closed: a reader that cannot authenticate must not be able to
+    # file attendance for anyone.
+    device_ingest_key: str = ""
 
     default_geofence_radius_m: int = 200
 

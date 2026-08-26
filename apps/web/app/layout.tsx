@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { SignOut } from '@/components/SignOut';
+import { currentIdentity } from '@/lib/session';
+
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -8,7 +11,10 @@ export const metadata: Metadata = {
   description: 'Live attendance board',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Null on the login screen, and on any page reached without a session.
+  const me = await currentIdentity();
+
   return (
     <html lang="en" className="h-full antialiased">
       <head>
@@ -33,12 +39,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <span className="font-display text-lg font-extrabold tracking-tight">Boxcode</span>
                 <span className="text-xs uppercase tracking-[0.16em] text-accent">Attendance</span>
               </Link>
-              <nav className="flex items-baseline gap-4 text-sm">
-                <Link href="/" className="text-ink-2 hover:text-ink">Board</Link>
-                <Link href="/enrolment" className="text-ink-2 hover:text-ink">Enrolment</Link>
-              </nav>
+              {/*
+                Nav follows the role. Enrolment is HR and above, so a manager
+                is not shown a link that would only 403 - but note the link is
+                the courtesy, not the control: the API refuses regardless.
+              */}
+              {me && (
+                <nav className="flex items-baseline gap-4 text-sm">
+                  <Link href="/" className="text-ink-2 hover:text-ink">Board</Link>
+                  <Link href="/leave" className="text-ink-2 hover:text-ink">Leave</Link>
+                  {me.is_admin && (
+                    <Link href="/enrolment" className="text-ink-2 hover:text-ink">Enrolment</Link>
+                  )}
+                </nav>
+              )}
             </div>
-            <span className="text-xs text-ink-3">IIMA Ventures, Ahmedabad</span>
+            {me
+              ? <SignOut email={me.email} role={me.role} />
+              : <span className="text-xs text-ink-3">IIMA Ventures, Ahmedabad</span>}
           </div>
         </header>
         <main className="mx-auto max-w-[1180px] px-6 py-8">{children}</main>

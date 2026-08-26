@@ -12,8 +12,9 @@ unwinnable three months later.
 
 from __future__ import annotations
 
+import calendar
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -21,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import get_current_employee, install_id_header
 from app.core.config import settings
 from app.core.office import OFFICE
 from app.db.session import get_db
@@ -30,6 +32,7 @@ from app.models.org import Location
 from app.services.attendance import (
     next_direction, recompute_day, record_punch,
 )
+from app.services import devices
 from app.services.enrolment import reference_bytes
 from app.services.face import NOT_ENROLLED, get_face_service
 from app.services.geofence import check_presence
@@ -64,19 +67,11 @@ class PunchResponse(BaseModel):
     worked_minutes: int | None = None
 
 
-def _employee(db: Session, code: str) -> Employee:
-    # TODO(auth): comes from the bearer token once auth lands. Until then the
-    # app passes its employee code, which is fine for a prototype and must not
-    # survive into the pilot.
-    emp = db.scalar(select(Employee).where(Employee.emp_code == code))
-    if emp is None:
-        raise HTTPException(404, f"No employee with code {code}")
-    return emp
-
-
 @router.get("/me", response_model=TodayResponse)
-def me(employee_code: str, db: Session = Depends(get_db)) -> TodayResponse:
-    emp = _employee(db, employee_code)
+def me(
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+) -> TodayResponse:
     policy, _ = policy_for(db, emp, datetime.now(timezone.utc).date())
     today = shift_date_for(datetime.now(timezone.utc), policy)
     day = recompute_day(db, emp, today)
@@ -97,8 +92,9 @@ def me(employee_code: str, db: Session = Depends(get_db)) -> TodayResponse:
 @router.post("/punch", response_model=PunchResponse)
 async def punch(
     db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+    install_id: str | None = Depends(install_id_header),
     selfie: UploadFile = File(...),
-    employee_code: str = Form(...),
     lat: float | None = Form(default=None),
     lng: float | None = Form(default=None),
     accuracy_m: float | None = Form(default=None),
@@ -108,7 +104,15 @@ async def punch(
     direction: PunchDirection | None = Form(default=None),
 ) -> PunchResponse:
     now = datetime.now(timezone.utc)
-    emp = _employee(db, employee_code)
+
+    # Who is punching comes from the token and nowhere else. There is
+    # deliberately no employee_code parameter on this endpoint: while one
+    # existed, anyone with curl could punch as anyone, and adding auth around
+    # it would have changed nothing except how secure it looked.
+    if settings.require_device_binding:
+        bound = devices.check(db, employee=emp, install_id=install_id)
+        if not bound.ok:
+            raise HTTPException(403, bound.reason or devices.NOT_BOUND)
 
     image = await selfie.read()
     if not image:
@@ -198,3 +202,48 @@ async def punch(
         attendance_status=day.status.value,
         worked_minutes=day.worked_minutes,
     )
+
+
+@router.get("/month")
+def my_month(
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+) -> dict:
+    """Your own attendance for a month.
+
+    Deliberately NOT under /admin. Seeing your own record is not an
+    administrative act, and routing it through the admin surface would mean
+    either opening that surface to everyone or telling five of seven people
+    they may not look at their own hours.
+    """
+    _, last = calendar.monthrange(year, month)
+    days = []
+    totals = {"worked_minutes": 0, "present": 0, "half_day": 0, "absent": 0,
+              "late_minutes": 0, "overtime_minutes": 0}
+
+    for d in range(1, last + 1):
+        on = date(year, month, d)
+        rec = recompute_day(db, emp, on)
+        days.append({
+            "date": on.isoformat(),
+            "weekday": on.strftime("%a"),
+            "status": rec.status.value,
+            "first_in": rec.first_in.isoformat() if rec.first_in else None,
+            "last_out": rec.last_out.isoformat() if rec.last_out else None,
+            "worked_minutes": rec.worked_minutes,
+            "late_minutes": rec.late_minutes,
+            "overtime_minutes": rec.overtime_minutes,
+            "has_exception": rec.has_exception,
+            "exception_note": rec.exception_note,
+        })
+        totals["worked_minutes"] += rec.worked_minutes
+        totals["late_minutes"] += rec.late_minutes
+        totals["overtime_minutes"] += rec.overtime_minutes
+        if rec.status.value in totals:
+            totals[rec.status.value] += 1
+
+    db.commit()
+    return {"employee_code": emp.emp_code, "full_name": emp.full_name,
+            "year": year, "month": month, "days": days, "totals": totals}

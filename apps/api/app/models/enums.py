@@ -39,3 +39,21 @@ class UserRole(str, Enum):
     HR_ADMIN = "hr_admin"
     MANAGER = "manager"
     EMPLOYEE = "employee"
+
+
+class LeaveStatus(str, Enum):
+    """A cancelled request is a STATUS, never a deleted row.
+
+    "Who approved this, and when" has to survive someone changing their mind.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+
+
+class AccrualRule(str, Enum):
+    MONTHLY = "monthly"       # 1/12th of the quota each month
+    ANNUAL = "annual"         # the whole quota on day one of the leave year
+    NONE = "none"             # no balance at all, e.g. Loss of Pay
