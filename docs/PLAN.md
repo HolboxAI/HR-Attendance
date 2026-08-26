@@ -1,7 +1,12 @@
 # Boxcode HRMS — build plan
 
-Full plan (diagrams, schema, module map): see the Claude artifact
-https://claude.ai/code/artifact/8d56dd1b-feb7-418b-89ce-0975288057f1
+Full plan (diagrams, schema, module map):
+- Local copy: `docs/artifacts/build-plan.html` (open in a browser) or
+  `docs/artifacts/build-plan.txt` (plain text, greppable)
+- Live artifact: https://claude.ai/code/artifact/8d56dd1b-feb7-418b-89ce-0975288057f1
+
+The local copies exist because a chat can vanish and take its links out of
+reach. The repo is the durable record.
 
 ## Stack (decided)
 - Web:    Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui

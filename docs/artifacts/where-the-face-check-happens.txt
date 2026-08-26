@@ -1,0 +1,48 @@
+# Where the Face Check Happens
+
+Recovered from a Claude artifact on 2026-08-26.
+Rendered version: docs/artifacts/where-the-face-check-happens.html
+
+---
+
+Where the Face Check Happens
+Boxcode · how it actually works
+Where the face check happens
+
+Short answer: on the phone, not on a website. The dashboard has no camera and never touches a face. Here is the whole thing in one page.
+
+Three pieces, one camera
+
+You keep hearing "app", "dashboard" and "server" used loosely — mostly by me. They are three separate programs with three separate jobs, and only one of them has a camera.
+Phone appemployees punch hereHAS THE CAMERAtakes the selfieServernobody looks at thischecks the punchcompares the facesstores everythingWeb dashboardHR looks hereNO cameraread onlypunchesreads
+Only the phone has a camera. The dashboard is a window onto records that already exist — it can never create a punch.
+
+MyCo works exactly the same way. It isn't one website doing everything either — it's a phone app your staff punch from, and a separate web portal HR logs into. We've built the same two halves.
+
+One punch, in order
+
+Krish taps Check In. The phone takes a selfie and reads its location, and sends both to the server. The server then asks three questions, cheapest first, and stops at the first "no".
+Selfie + locationfrom the phoneTHE SERVER ASKS1Are you really logged in?stops someone punching as a colleague2Are you at the office?GPS, and later the office WiFi3Is this face yours?all yesCounted as presenthours calculated, HR can see itAny “no” → refused, with the reason,and the attempt is still recorded
+Question 3 is the one that needs a reference photo — the single picture of Krish that HR uploaded once.
+
+What's real today
+
+Questions 1 and 2 genuinely work. Question 3 is plumbed but not switched on — and the system says so rather than pretending.
+
+CheckWorking?What happens now
+
+  |  Logged in  |  Yes  |  Everyone has an email and password. No login, no punch.
+
+  |  At the office  |  Yes  |  Punching from home is refused and tells you how far away you are. Faked GPS is caught.
+
+  |  Face matches  |  Not yet  |  The selfie is taken and saved, but nothing compares it. The punch is recorded as face not checked — never as a pass.
+
+That last row is the part worth understanding. Nothing in your database claims a check that didn't happen, so when the comparison is switched on later, none of today's records become lies.
+
+Switching question 3 on
+
+Two things are needed, and neither is code we write ourselves — face recognition is a solved problem, and a hand-rolled one would be worse.
+
+One photo per person. HR opens the enrolment page and uploads a single picture of each of the seven of you. Ten minutes, once. That's the reference every future selfie is compared against.
+
+An engine to do the comparing. Either a model that runs on your own machine — free, offline, photos never leave the building — or AWS Rekognition, which is more accurate and costs a few dollars a month but needs an AWS account. Both plug into the same slot; switching between them is a one-line change.

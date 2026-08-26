@@ -1,0 +1,256 @@
+# Boxcode HRMS Build Plan
+
+Recovered from a Claude artifact on 2026-08-26.
+Rendered version: docs/artifacts/build-plan.html
+
+---
+
+Boxcode HRMS Build Plan
+
+Boxcode · internal platform · v1 scope
+Attendance first, everything else after
+
+A build plan for the Boxcode HR & operations suite — what MyCo does, what we do differently, and the one architectural decision that makes the gate hardware question stop mattering.
+
+Stack · Next.js + FastAPI + PostgresScale · <60 staff · 1 office · IndiaCapture · mobile: geofence + face matchModules · 12 planned, 5 in phase 1
+
+01
+No gate hardware. The phone is the reader.
+
+Decision made: attendance is captured by a small mobile app — GPS geofence plus a face match — exactly the way staff already punch in MyCo today. No biometric reader integration, because that's disproportionate effort for what is fundamentally a check-in.
+
+The ingest layer was built vendor-neutral anyway, so this costs us nothing. The gate adapter still sits in the repo at app/adapters/zkteco_adms.py, unwired. If a reader is ever bought, we import it in one line and everything downstream is untouched.
+
+The core decision that survived the pivot
+Every way a person can mark attendance — phone, kiosk tablet, HR entering it manually, and one day maybe a gate reader — produces the same normalized punch event. Adapters translate; the core never knows the difference. That's why dropping the hardware was a one-line change rather than a rewrite.
+
+How a punch is verified
+
+Three checks, cheapest first, so we never pay for face recognition on a punch that was never going to count. Every attempt is stored including the failures — silently discarding a rejected punch is how an attendance dispute becomes unwinnable three months later.
+
+CheckWhat it catchesWhat it costs
+
+  |  1 · Device binding  |  One phone per employee. A colleague punching from their own handset is refused.  |  Free — a database lookup.
+
+  |  2 · Geofence  |  Punching from home. Also rejects faked GPS, stale fixes, and readings too imprecise to mean anything.  |  Free — haversine, 15 lines.
+
+  |  3 · Face match  |  Confirms the selfie is the person enrolled.  |  AWS Rekognition, about $3/month at your volume.
+
+1:1, not 1:N. Because the employee is already logged in, we only ever ask "is this them?" — never "who is this?". That's more accurate, cheaper, and doesn't get worse as headcount grows. We store an S3 key for the reference photo and nothing else: no embeddings, no image bytes in the database. Biometric data is the last thing you want sitting in a table someone might dump to a laptop.
+
+The pipeline
+
+Capture
+
+adapters · pluggable
+
+Gate device (push)ZKTeco / eSSL speak ADMS — the device POSTs punches to a URL we host. No polling, no SDK.
+
+Gate device (pull)Older units: a tiny on-prem agent reads TCP 4370 on a loop and forwards.
+
+Mobile appSelfie + on-device face match + GPS geofence. For field and WFH staff.
+
+Kiosk / QRTablet at reception, rotating QR. Zero hardware cost.
+
+ManualHR regularization, always with actor + reason + audit row.
+
+→
+
+Raw event store
+
+punch_events · append-only
+
+Never edited, never deleted. Corrections are new rows, not overwrites.
+
+Idempotent. Dedupe hash on device_sn + device_user_id + ts — a device replaying its offline buffer can't double-punch anyone.
+
+Two clocks. Store device time and server receive time; readers drift and we need to prove which.
+
+Partitioned monthly. 500 staff × 4 punches × 25 days ≈ 50k rows/month — trivial now, tidy at scale.
+
+→
+
+Resolver
+
+attendance_day · recomputable
+
+Pure function. Raw events + shift policy → one row per employee per shift-date. Re-runnable at any time.
+
+Produces first-in, last-out, worked minutes, break minutes, late-by, early-out, OT, and a status.
+
+Keyed by shift date, not calendar date — night shifts crossing midnight are one day, not two halves.
+
+A late-arriving backdated event just re-triggers the resolver for that date. Nothing manual.
+
+That resolver output is the single source of truth every other module reads: leave balances, payroll, overtime, the manager dashboard, the WhatsApp daily digest. Get it right once.
+
+02
+The traps in attendance that eat three weeks each
+
+These are the reasons attendance modules ship late. Worth deciding now, not in month two.
+
+TrapWhat goes wrongHow we handle it
+
+  |  Phone offline  |  No signal in the basement car park; the punch is lost or arrives an hour later.  |  App queues locally and retries. Ingest accepts backdated punches forever and re-runs the resolver for affected dates.
+
+  |  In/out direction  |  Two taps get read as two entries and the day resolves to nothing.  |  Infer by ordering within the shift window (odd = in, even = out); the app also shows the person which one they're about to do.
+
+  |  Night shifts  |  A 22:00–06:00 shift lands as two days, each showing half a day worked.  |  Shift-date keying, with a configurable cutover hour per shift template.
+
+  |  Timezones  |  Server in one region, office in another; DST silently shifts everyone's late-marks.  |  Store UTC always, plus tenant timezone. Never store naive local time.
+
+  |  Regularization  |  Employee forgot to punch out; HR edits the record; three months later nobody can explain the payroll number.  |  Corrections are approval-workflowed events with actor, reason, timestamp. The raw log stays untouched.
+
+  |  Buddy punching  |  Someone holds up a photo of a colleague, or punches from a friend's phone.  |  Face match + camera-only capture (no gallery picks) + one-phone-per-employee binding. No liveness detection in v1 — that's a known gap, and Rekognition Face Liveness is the upgrade if it ever becomes real.
+
+  |  Fake GPS apps  |  Free Android apps spoof location trivially. Your geofence becomes decoration.  |  Android reports when a fix was mocked — we ask, and reject. Also reject fixes older than two minutes or accurate to worse than 100m.
+
+  |  Payroll coupling  |  Attendance edits after payroll runs, and the payslip no longer matches the data.  |  Payroll runs snapshot attendance and lock the period. Later edits go to the next cycle as an adjustment line.
+
+03
+Data model — the tables that matter
+
+Multi-tenant from row one even if Boxcode is the only tenant today, because retrofitting org_id into forty tables is a week you never get back. Postgres row-level security enforces isolation at the database, not in application code.
+organizations id, name, timezone, country, settings jsonb locations id, org_id, name, geofence (lat/lng/radius), address departments id, org_id, name, parent_id (self-ref → org chart)employees id, org_id, emp_code, name, email, phone, dept_id, location_id, manager_id, designation, date_of_joining, employment_type, status users id, org_id, employee_id, password_hash, role, last_login role: super_admin | hr_admin | manager | employee— attendance —devices id, org_id, location_id, serial_no, vendor, mode (push|pull), api_key, last_seen_at, clock_offset_seconds device_enrollments id, device_id, employee_id, device_user_id ← the mapping everyone forgetspunch_events id, org_id, employee_id, device_id, source, direction, event_ts_utc, received_ts_utc, lat, lng, photo_key, raw_payload jsonb, dedupe_hash UNIQUE[append-only, partitioned]shift_templates id, org_id, name, start_time, end_time, break_minutes, grace_minutes, half_day_threshold, cutover_hour, working_days shift_assignments id, employee_id, shift_template_id, effective_from, effective_to attendance_day id, org_id, employee_id, shift_date, shift_template_id, first_in, last_out, worked_minutes, break_minutes, late_minutes, early_out_minutes, overtime_minutes, status, is_regularized, computed_at UNIQUE (employee_id, shift_date)attendance_corrections id, attendance_day_id, requested_by, approved_by, reason, old_values jsonb, new_values jsonb, status, created_at — leave —leave_types id, org_id, name, accrual_rule jsonb, carry_forward, encashable leave_balances id, employee_id, leave_type_id, period, opening, accrued, used leave_requests id, employee_id, leave_type_id, from_date, to_date, half_day, reason, status, approver_id, decided_at holidays id, org_id, location_id, date, name, is_optional — payroll & expenses —salary_structures id, employee_id, effective_from, ctc, components jsonb payroll_runs id, org_id, period, status, attendance_snapshot jsonb, locked_at payslips id, payroll_run_id, employee_id, earnings jsonb, deductions jsonb, net_pay, pdf_key expense_claims id, employee_id, category, amount, currency, receipt_key, status, approver_id — everything else —tasks · projects · documents · announcements · visitorsleads · deals · client_visits · location_pingsaudit_log id, org_id, actor_id, entity, entity_id, action, diff jsonb, ts notifications id, org_id, user_id, channel, template, payload, sent_at, read_at
+Two habits worth enforcing from the first commit: every mutation writes an audit_log row, and nothing is hard-deleted — deleted_at everywhere. HR software gets audited; that's the whole job.
+
+04
+Modules — twelve planned, sequenced by what unblocks what
+
+You picked all four groups. That's fine as a destination, but the order is not arbitrary: attendance is upstream of payroll, and the employee record is upstream of everything.
+
+Phase 1 — the spine weeks 1–5
+
+Auth & org setup
+core
+
+Org, locations, departments, roles, invite flow. Boring, blocking, do it first.
+
+Employee directory
+core
+
+Profiles, org chart, documents, joining/exit. Every other module foreign-keys here.
+
+Attendance
+core
+
+Ingest → raw events → resolver → daily records. Live gate feed, regularization, exception queue.
+
+Shifts & rosters
+core
+
+Templates, assignments, week-offs, holiday calendar. Attendance is meaningless without it.
+
+Leave management
+near
+
+Types, accrual, balances, approval chains. Consumes attendance, feeds payroll.
+
+Phase 2 — money and paperwork weeks 6–10
+
+Payroll
+high effort
+
+Salary structures, attendance-driven runs, payslip PDFs, period locking. The compliance rules depend on which country — see open questions.
+
+Expenses & reimbursements
+low effort
+
+Claims, receipt upload, multi-level approval, payout batching.
+
+Documents
+low effort
+
+Offer letters, ID proofs, policy acknowledgements, expiry reminders.
+
+Phase 3 — work & sales weeks 11–16
+
+Tasks & projects
+medium
+
+Assignments, daily activity reports, time-against-task.
+
+CRM — leads & pipeline
+medium
+
+Lead capture, stages, activity log, quotations. Effectively a second product; scope it tightly.
+
+Field tracking
+medium
+
+Background GPS pings, route playback, client visit check-in with geo-stamp, distance for travel claims.
+
+Engagement & comms
+light
+
+Announcements, timeline, birthdays, visitor log, WhatsApp/email daily digest.
+
+05
+Stack & infrastructure
+
+LayerChoiceWhy this one
+
+  |  Web app  |  Next.js 15 App Router, TypeScript, Tailwind, shadcn/ui  |  Server components for the heavy tables; you already build this way.
+
+  |  Data grid & charts  |  TanStack Table + Recharts  |  Attendance is fundamentally a big filterable grid. Don't hand-roll it.
+
+  |  API  |  FastAPI, Pydantic v2, SQLAlchemy 2.0, Alembic  |  Typed contracts, auto OpenAPI → generate the TS client, no drift.
+
+  |  Background jobs  |  Celery or ARQ + Redis  |  Resolver runs, payroll runs, digests, device health checks.
+
+  |  Database  |  Postgres 16, RLS per org, monthly partitions on punch_events  |  One engine for relational, JSONB, and time-series-ish punch data.
+
+  |  Files  |  S3 + presigned URLs  |  Punch selfies, receipts, payslips, ID documents.
+
+  |  Realtime  |  SSE for the live gate feed  |  Simpler than WebSockets and enough for a one-way stream.
+
+  |  Mobile  |  React Native (Expo)  |  The only way anyone punches. Also leave, expenses, payslips.
+
+  |  Face verification  |  AWS Rekognition CompareFaces  |  1:1 against one enrolled photo. ~$3/month. No model to train, no GPU to run.
+
+  |  Hosting  |  One small EC2 — Postgres + API + nginx  |  60 people generate ~2,600 punches a month. Splitting tiers would be operational work for no benefit.
+
+Two things the server must get right
+Postgres stays bound to localhost. A database listening on a public IP is how small companies get ransomed; the security group should allow 22 and 443 only. And the mobile app needs real TLS — iOS refuses plain HTTP outright, so a domain and a certbot certificate are prerequisites, not polish. The provisioning script in infra/ec2-setup.sh does both.
+
+06
+Reference products — what to steal from where
+
+You want a better UI than MyCo. The two open-source ones matter most: you can read their actual schema and workflow logic instead of guessing from marketing pages.
+
+ProductLook at it forAccess
+
+  |  Frappe HR  |  The most complete open-source HR data model in existence — attendance, shift types, leave accrual rules, payroll salary structures. Read the doctypes before designing yours.  |  open source
+
+  |  Horilla  |  Django-based, modern, has biometric device integration docs specifically for ZKTeco-class hardware.  |  open source
+
+  |  Keka  |  The UI benchmark for Indian HRMS. Their attendance dashboard and payroll run flow are the ones to beat.  |  demo
+
+  |  Darwinbox  |  Enterprise depth — approval chains, org hierarchy handling, mobile-first employee experience.  |  demo
+
+  |  Rippling  |  Best-in-class product design generally. Study how they make a dense admin app feel calm.  |  demo
+
+  |  Deel / Gusto  |  Payroll run UX. Gusto in particular made a genuinely scary workflow feel safe.  |  demo
+
+  |  Zoho People / greytHR  |  Feature checklists for the Indian market — statutory reports, PF/ESI handling, what buyers expect to exist.  |  demo
+
+  |  Linear / Height  |  Not HR at all — but the interaction model (keyboard-first, instant filters, no page reloads) is what makes MyCo feel dated by comparison.  |  demo
+
+07
+Open questions before I scaffold
+
+Settled so far: mobile capture, Rekognition, one EC2, India, under 60 staff, Postgres. What's left:
+
+The office coordinates and radius. Exact lat/lng of the building and how far out a punch may be. 150m is the placeholder; a large campus or a multi-floor building with poor GPS may need more.
+
+Server details. Host, SSH user, key, and whether there's a domain pointing at it. iOS won't talk to a plain-HTTP API, so the domain isn't optional.
+
+Who enrolls the face photos? Someone has to take 60 reference photos. Cleanest is HR uploading them from the admin panel; self-enrolment on first login is easier but means nobody verified the photo is really that person.
+
+Internal tool or product? If Boxcode might sell this later, the multi-tenancy and white-labelling decisions get made now rather than retrofitted.
+
+Payroll specifics. India means PF, ESI, professional tax, TDS and Form 16. That's phase 2, but the salary structure model should be built knowing it.
+
+Built so far, in Documents/boxcode-hrms: the attendance schema, the shift resolver (pure function, 22 passing assertions covering night shifts, grace periods, missing punch-outs and weekly offs), the geofence checks (9 passing assertions covering spoofed GPS, stale fixes and useless accuracy), the Rekognition wrapper with a stub mode for offline development, the mobile punch endpoint, and the EC2 provisioning script.
+
+Next: database migrations against the EC2 Postgres, auth, the Expo app's punch screen, and the admin attendance dashboard.

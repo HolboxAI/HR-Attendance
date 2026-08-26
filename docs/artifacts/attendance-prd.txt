@@ -1,0 +1,303 @@
+# Boxcode Attendance PRD
+
+Recovered from a Claude artifact on 2026-08-26.
+Rendered version: docs/artifacts/attendance-prd.html
+
+---
+
+Boxcode Attendance PRD
+
+Product requirements · v1 · attendance
+Everyone checks in from inside the building
+
+What we are building, in what order, and how we will know it works. Scope is deliberately one module — attendance — because a half-finished payroll helps nobody.
+
+Owner · KrishUsers · ~60 · one office · IndiaBuilt · punch → verify → resolve → dashboardNext · use it, then pilot
+
+01
+The problem, in one paragraph
+
+Boxcode's ~60 staff currently mark attendance in MyCo. It works, but the interface is poor, the data lives in someone else's system, and nothing downstream — payroll, leave, reporting — can be built on top of it. We are replacing it with our own, starting with the one module everybody touches every single day.
+
+What success looks like
+
+MeasureTargetWhy this number
+
+  |  Staff punching through our app  |  100% by week 8  |  Partial adoption means running two systems and reconciling them by hand. Worse than not starting.
+
+  |  Punches needing HR correction  |  < 5% of days  |  Above this, people stop trusting it and start keeping their own records.
+
+  |  Time to punch, app open to confirmed  |  < 8 seconds  |  Sixty people arriving at 9:30. Anything slower produces a queue at the door.
+
+  |  False rejections at the desk  |  ≈ 0  |  Being marked absent for a day you worked is the failure that loses the room. Worth accepting some false accepts to avoid.
+
+  |  Month-end attendance report  |  one click  |  The entire reason for owning the data.
+
+02
+"Office only" — what that actually costs
+
+You want punching to work inside the office and nowhere else. That's the right requirement, but GPS alone cannot deliver it, and it's worth being precise about why before we pick a setting.
+
+A phone knows where it is to within roughly 10–30m outdoors, and considerably worse indoors where the signal bounces off the building. So a radius tight enough to exclude the car park will also start rejecting people sitting at their desks. Every metre you tighten trades a false accept for a false reject — and a false reject means someone is marked absent for a day they actually worked.
+
+The answer: office WiFi
+To see your access point's BSSID — the router's MAC address — a phone has to be associated to that access point, which in practice means it's in the building. It can't be faked from home without physically cloning your router. It's a far stronger signal than GPS and it costs nothing.
+
+The code supports three policies, per location, so we can start lenient and tighten once we see real data from the pilot:
+
+PolicyBehaviourUse when
+
+  |  gps_only  |  Radius check alone.  |  No usable office WiFi. Weakest option.
+
+  |  wifi_or_gps  |  Either signal passes. On office WiFi, GPS is skipped entirely.  |  Recommended start. Nobody is falsely rejected while we learn the building.
+
+  |  wifi_required  |  Must be on the office network. Correct coordinates alone are refused.  |  What you asked for. Switch to it after the pilot — one config change, no deploy.
+
+One caveat worth knowing now: Android hands over the BSSID readily. iOS restricts it — reading it needs a special Apple entitlement, and the network name alone isn't good enough because anyone can name a phone hotspot "Boxcode-Office". If most staff are on iPhone, tell me and we'll request the entitlement early, since Apple review takes time.
+
+03
+Who uses it
+
+RoleCountWhat they do
+
+  |  Employee  |  ~60  |  Punch in and out. See their own history. Apply for leave. Ask for a correction when they forget to punch out.
+
+  |  Manager  |  ~6  |  Everything an employee does, plus see their team's attendance and approve their leave and corrections.
+
+  |  HR admin  |  1–2  |  Add and remove staff, enrol face photos, set shifts and holidays, clear the exception queue, export month-end reports.
+
+  |  Super admin  |  1  |  Office location and geofence policy, roles, audit log. You.
+
+04
+The flow, end to end
+
+This is the part that's been missing. Two flows: what a new joiner goes through once, and what everybody does every morning.
+
+Onboarding — happens once per person
+
+01
+
+HR adds the employee
+
+Name, employee code, phone, department, shift, joining date.
+admin web · creates employee row, sends an invite SMS
+
+02
+
+Employee installs the app and sets a password
+
+Invite link opens the app, they set a password.
+mobile · issues a token, binds this phone to this employee
+
+03
+
+HR takes the reference photo
+
+Deliberately HR and not self-service — somebody has to vouch that the face on file is really that person, or the whole face check is theatre.
+admin web · uploads to S3, writes a face_enrollments row
+
+04
+
+App asks for camera and location permission
+
+With a plain explanation of why. If either is refused, punching cannot work — the app says so rather than failing mysteriously later.
+mobile · one-time OS prompts
+
+Daily — what actually happens at 9:30am
+
+01
+
+Open the app
+
+One screen, one big button: Check In. Below it, today's status and yesterday's hours. Nothing else competes for attention.
+
+02
+
+Tap it — the camera opens immediately
+
+Front camera only, no gallery option. Location is captured silently in the same moment, so we never compare a selfie taken here with a position recorded somewhere else.
+
+03
+
+Three checks run, cheapest first
+
+Is this the phone bound to this employee → are they in the office → is this their face. We stop at the first failure, so we never pay Rekognition for a punch that was never going to count.
+api · ~2s on 4G
+
+04
+
+Confirmation, or a reason they can act on
+
+"Checked in at 9:34am" — or "You're about 400m from the office". Never a bare "failed". Either way the attempt is recorded, including the rejection.
+api · writes punch_events, queues the resolver
+
+05
+
+The resolver turns punches into a day
+
+First in, last out, hours worked, late by, overtime, status. Runs on every punch and again overnight for anything that arrived late.
+worker · writes attendance_day
+
+06
+
+HR sees it immediately
+
+Live board of who's in, who's late, who hasn't shown. Exceptions — missing punch-outs, rejected attempts — collect in a queue rather than being silently swallowed.
+admin web
+
+When something goes wrong
+
+01
+
+Employee forgot to punch out
+
+The day is flagged, not marked absent. They request a correction from the app with a reason.
+
+02
+
+Manager approves or rejects it
+
+The original punches are never edited. The correction is a separate record with who asked, who approved, and why.
+
+03
+
+The day is recomputed
+
+Not hand-edited. The same resolver runs again with the corrected input, so the number always matches the data behind it.
+
+05
+Acceptance criteria
+
+A milestone is done when these pass, not when the code compiles. Written now so we can't move the goalposts later.
+
+Punching
+
+A punch from inside the office succeeds in under 8 seconds on office WiFi and on 4G.
+
+A punch from home is rejected, and the employee is told the distance — not just "failed".
+
+A rejected punch still appears in HR's view. Nothing is silently discarded.
+
+Under wifi_required, correct coordinates on the wrong network are refused.
+
+A faked GPS location is refused.
+
+Someone else's phone cannot punch for an employee — the binding refuses it.
+
+A photo of a colleague held up to the camera is refused by the face check.
+
+A punch by someone with no enrolled photo is either refused or recorded as not checked — never as a passing check. fixed
+
+Tapping check-in twice by accident does not create two records.
+
+A punch made with no signal is queued on the phone and lands when signal returns.
+
+The attendance record
+
+A 22:00–06:00 shift resolves to one day, not two halves. passing
+
+Arriving inside the grace period is not marked late. passing
+
+A missing punch-out is flagged for correction, never silently marked absent. passing
+
+A Sunday with no punches reads as weekly off, not absent. passing
+
+Nobody is marked absent before their shift has ended.
+
+Deleting every attendance_day row and recomputing produces identical results.
+
+An HR correction leaves the original punches visible and attributed.
+
+Admin
+
+HR can see, on one screen, who is in, who is late and who is absent right now.
+
+Every exception for the month can be cleared without touching the database.
+
+Month-end attendance exports to Excel in one click.
+
+Every change to an attendance record is attributable to a person and a time.
+
+06
+Milestones
+
+M0 · Foundations
+done
+
+Schema, shift resolver, presence checks, storage and face interfaces. Every layer that would have to change for production sits behind a seam, so none of the prototype shortcuts are one-way doors.
+
+M1 · It runs
+done
+
+SQLite at data/boxcode.db, the team seeded, ./run.sh bringing up API and dashboard together. No server, no AWS account, no Postgres install. Postgres remains one connection string away.
+
+M2 · Punching works
+done
+
+Expo app with the check-in screen, camera and location captured in the same moment, three-stage verification, punches persisted and resolved into days. Rejected attempts stored with their reason rather than discarded.
+
+M3 · HR can see it
+done
+
+Live board, stat tiles, exception queue, refused-punch log, per-employee month view, and a correction endpoint that adds a punch rather than editing one.
+
+M4 · Face enrolment
+done
+
+Append-only enrolment records — re-enrolling supersedes, withdrawing deactivates — with quality checks at upload, because a bad reference photo silently poisons every comparison made against it afterwards.
+
+M5 · Auth
+done
+
+Login, sessions, roles, and the phone bound to one employee. This now gates everything: until it exists, anyone can edit one line and punch as somebody else, and self-service enrolment cannot safely be offered at all.
+
+M6 · Leave
+done
+
+Types, balances, accrual, approvals, holiday calendar — and, the point of the milestone, wired into attendance so an approved leave day stops reading as absent. HR edits every policy from the dashboard; a change never silently rewrites balances already earned.
+
+M7 · Pilot with 5 people
+next
+
+Dual-run against MyCo for a week and explain every mismatch before anyone else moves across. Tighten to wifi_required based on what the building actually does. Only then does deployment become a question worth asking.
+
+Not in v1, deliberately
+Payroll, expenses, CRM, field tracking, tasks, liveness detection, gate hardware, a second office, and a web punch page. Every one of these is a real thing we want — and every one of them is a reason attendance ships late. They start after M6.
+
+07
+Non-negotiables
+
+AreaRequirement
+
+  |  Biometric data  |  No face embeddings and no image bytes in the database. Only an S3 key for the reference photo. Punch selfies are deleted after 90 days; the reference photo goes when the employee leaves.
+
+  |  Database exposure  |  Postgres bound to localhost. Security group opens 22 and 443 only.
+
+  |  Transport  |  Real TLS on a real domain. iOS refuses plain HTTP outright, so this is a prerequisite, not polish.
+
+  |  Audit  |  Every mutation writes an audit row. Nothing is hard-deleted, ever.
+
+  |  Backups  |  Nightly pg_dump to S3, 30-day retention, and a restore actually tested once before M6.
+
+  |  Availability  |  If the API is down, the app queues punches locally and syncs later. Nobody loses a day's attendance to a deploy.
+
+08
+What I need from you to start M1
+
+ItemWhy it blocksStatus
+
+  |  EC2 host, SSH user and key  |  Nothing in M1 happens without it.  |  blocking
+
+  |  Office latitude and longitude  |  Google Maps, right-click the building, copy the two numbers.  |  blocking
+
+  |  Office WiFi BSSID  |  The router's MAC. Your network admin has it, or I can give you a one-line command.  |  needed by M2
+
+  |  A domain pointing at the EC2  |  iOS will not talk to the API without TLS.  |  needed by M2
+
+  |  Employee list  |  Name, code, phone, department, shift, joining date. A CSV export from MyCo is ideal.  |  needed by M1
+
+  |  Shift timings and week-offs  |  Start, end, break, grace period. Every attendance number depends on these.  |  needed by M1
+
+  |  iPhone or Android majority?  |  Decides whether we chase the Apple WiFi entitlement early.  |  needed by M2
+
+Companion document: the architecture plan covers the data model, the full twelve-module map and the reference products. This document is scope and sequence; that one is how it's built.

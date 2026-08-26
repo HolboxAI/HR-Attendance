@@ -1,0 +1,207 @@
+<!doctype html><html><head><!-- frame-runtime --><base href="/_f/1787764348-44ba/"><script>window.__FRAME_PREAMBLE={"v":1,"capabilities":{"artifact":"artifact.oqIe8shs.js","assets":"assets.DBUJcvq_.js","comments":"comments.GLuHR3zP.js","db":"db.CRhVHzSt.js","downloads":"downloads.C3GSvEDP.js","embed":"embed.CxGAyc-v.js","mcp":"mcp.Bvma3qD7.js","network":"network.B5UA9Su4.js","permissions":"permissions.BNySkLV5.js","room":"room.DE7EMui-.js","sample":"sample.BW2Uysoh.js","self":"artifact.oqIe8shs.js","user":"user.BpKav-Rf.js"},"transforms":"_transforms.CQm3TZ9K.js","comments":"_comments.PBVy184F.js","translate":"_translate.5HCW4BJh.js"}</script><script>(function(){"use strict";var Z=["light","dark","system"],J=/^[A-Za-z0-9_-]{1,64}$/,z=/^[a-zA-Z_:][a-zA-Z0-9_:.-]{0,127}$/,Q=new Set(["class","hidden","value","checked"]);function ee(e){const t=e.toLowerCase();return t.startsWith("data-")||t.startsWith("aria-")||Q.has(t)}var Me="http://www.w3.org/1999/xhtml",te="http://www.w3.org/2000/svg",re=new Set(["script","style","iframe","noscript","noframes","noembed","xmp","plaintext","template","title","textarea","object","embed"]),ne=new Set(["script","style"]);function oe(e){const t=e.localName.toLowerCase();return e.namespaceURI==="http://www.w3.org/1999/xhtml"?!re.has(t):e.namespaceURI===te?!ne.has(t):!1}var se=new Set(["html","head","body","frameset"]);function ae(e){return e.namespaceURI==="http://www.w3.org/1999/xhtml"&&se.has(e.localName)}function ie(e){if(e===null||typeof e!="object")return!1;const t=e;if(typeof t.target!="string"||!J.test(t.target)||t.text!==void 0&&typeof t.text!="string")return!1;if(t.attrsSet!==void 0){if(t.attrsSet===null||typeof t.attrsSet!="object")return!1;for(const[r,n]of Object.entries(t.attrsSet))if(!z.test(r)||typeof n!="string")return!1}if(t.attrsRemoved!==void 0){if(!Array.isArray(t.attrsRemoved))return!1;for(const r of t.attrsRemoved)if(typeof r!="string"||!z.test(r))return!1}return!0}function ce(e,t){if(e===null||typeof e!="object")return!1;const{seq:r,elements:n}=e;if(typeof r!="number"||!Number.isSafeInteger(r)||!Array.isArray(n)||n.length===0||n.length>64)return!1;for(let s=0;s<n.length;s++)if(!t(n[s]))return!1;return!0}function le(e){return e===null||typeof e!="object"?!1:ce(e.__frame_patch,ie)}function ue(e){if(e===null||typeof e!="object")return!1;const t=e.__frame_init;return t!==null&&typeof t=="object"}function fe(e){return e!==null&&typeof e=="object"&&e.__frame_size_poke===!0}function pe(e){if(e===null||typeof e!="object")return!1;const t=e.__frame_theme;if(t===null||typeof t!="object")return!1;const r=t.theme;return typeof r=="string"&&Z.includes(r)}var g=/^[\w.-]+\.js$/;function de(e,t,r){return r?"inert":typeof t=="string"&&g.test(t)?e?[t]:"inert":e?"inert":"framed"}function me(){return{post(e,t){parent.postMessage(e,t)},on(e){const t=r=>{r.source===parent&&e(r.data,r.origin)};return addEventListener("message",t),()=>removeEventListener("message",t)}}}function he(){return{post:()=>{},on:()=>()=>{}}}var O="__frame_scroll",_e=150,ve=310,ye=160,we=3e4;function be(){let e=0,t=!1,r=!1,n=!1,s=0,a=null;const u=i=>{try{sessionStorage.setItem(O,JSON.stringify({y:i}))}catch{}},f=()=>{if(clearTimeout(e),a===null)return;const i=a;a=null,u(i)},R=()=>{if(t){t=!1;return}r=!0,a=scrollY,clearTimeout(e),e=setTimeout(f,_e)};try{addEventListener("scroll",R,{passive:!0}),addEventListener("pagehide",f)}catch{}const v=()=>{let i;try{i=sessionStorage.getItem(O)}catch{return null}if(i===null)return null;let m;try{m=JSON.parse(i)}catch{m=null}const l=m?.y;if(!(typeof l=="number"&&Number.isFinite(l)&&l>=0)){try{sessionStorage.removeItem(O)}catch{}return null}return l};let S=!1;const h=i=>{try{const m=scrollY;scrollTo({top:i,left:0,behavior:"instant"}),s=i,n=!0,clearTimeout(e),a=null,u(i);const l=scrollY;l!==m&&(t=!0),l!==i&&!S&&(S=!0,addEventListener("load",()=>{try{if(scrollY===l){const k=v();h(k!==null?k:s)}}catch{}},{once:!0}))}catch{}},y=()=>{try{return!!location.hash}catch{return!0}};let o=!1;const p=()=>{try{if(o||innerWidth>ve||innerHeight>ye)return;o=!0;const i=Date.now(),m=()=>{try{removeEventListener("resize",m)}catch{}if(Date.now()-i>we||r||y())return;const l=v();h(l!==null?l:s)};addEventListener("resize",m)}catch{}};let _=!1,w=!1;return{restore(){if(_||(_=!0,y()))return;const i=v();i!==null&&(h(i),p())},promoted(){if(w||(w=!0,y()))return;const i=v();i!==null?(h(i),p()):n&&h(s)}}}function Ee(e,t,r){let n=null;try{n=window.trustedTypes?.createPolicy("frame-runtime",{createScriptURL:f=>f})??null}catch{}const s=window.Worker,a=s?.prototype,u=Object.freeze({Worker:s,workerOn:a?.addEventListener,workerPost:a?.postMessage,workerTerminate:a?.terminate,fetch:window.fetch.bind(window),preventDefault:Event.prototype.preventDefault,policy:n});t(e).then(f=>f?.bootTopLevel?f.bootTopLevel(u,{settle:r}):r()).catch(r)}var Oe="modulepreload",Ce=function(e){return"/"+e},je={},ge=function(t,r,n){let s=Promise.resolve();function a(u){const f=new Event("vite:preloadError",{cancelable:!0});if(f.payload=u,window.dispatchEvent(f),!f.defaultPrevented)throw u}return s.then(u=>{for(const f of u||[])f.status==="rejected"&&a(f.reason);return t().catch(a)})},Ae=window===top,H=Object.getOwnPropertyDescriptor(window,"claude"),T=de(Ae,window.__FRAME_PREAMBLE?.topLevel,H?.writable===!1),C=typeof T=="object"&&T[0],d=C?he():me();(function(){const e=Object.defineProperty,t=globalThis,r=["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCIceCandidate","RTCSessionDescription","RTCRtpSender","RTCRtpReceiver"];let n=0;for(let s=0;s<r.length;s++){const a=r[s];try{e(t,a,{value:void 0,writable:!1,configurable:!1})}catch{try{delete t[a]}catch{}try{e(t,a,{value:void 0,writable:!1,configurable:!0})}catch{}}typeof t[a]=="function"&&n++}if(n&&T==="framed")try{d.post({__frame_rtc_lockdown_failed:n},"*")}catch{}})();var Re=1e4,Se=Object.freeze([...window.__FRAME_PREAMBLE?.origins??["https://claude.ai","https://preview.claude.ai"]]);function q(e){for(const t of Se)if(t.endsWith(":*"))try{const r=new URL(e);if(`${r.protocol}//${r.hostname}:*`===t)return!0}catch{}else if(e===t)return!0;return!1}var L=Object.freeze({...window.__FRAME_PREAMBLE?.capabilities}),j=window.__FRAME_PREAMBLE?.transforms,N=window.__FRAME_PREAMBLE?.comments,I=window.__FRAME_PREAMBLE?.translate;function A(e){return ge(()=>import("/_runtime/"+e),void 0)}function W(e,t){return{contract:e.contract,changes:new Set(e.changes??[]),flags:new Set(e.flags??[]),capabilities:e.capabilities??{},capBudgets:e.capBudgets??{},transforms:new Map,shellOrigin:t,mount:G,pipe:()=>({wrap:(r,n)=>(...s)=>{try{return n(...s)}catch(a){return Promise.reject(a)}}})}}var P=null,b=null;function $(e,t,r){try{Object.defineProperty(e,t,{value:r,writable:!1,configurable:!1,enumerable:!0})}catch{try{Object.defineProperty(e,t,{value:r,writable:!1,configurable:!0,enumerable:!0})}catch{}}}var B=!1;function ke(e,t){const r=[];for(const n of e.elements){const s=document.querySelector(`[data-id="${n.target}"]`);if(!s){d.post({__frame_patch_miss:{seq:e.seq}},t);return}if([...Object.keys(n.attrsSet??{}),...n.attrsRemoved??[]].some(a=>!ee(a))){d.post({__frame_patch_miss:{seq:e.seq}},t);return}if(n.text!==void 0&&(!oe(s)||ae(s))){d.post({__frame_patch_miss:{seq:e.seq}},t);return}for(const[a,u]of Object.entries(n.attrsSet??{}))if(!Y(s,a)){try{s.setAttribute(a,u)}catch{}K(s,a,u)}for(const a of n.attrsRemoved??[])Y(s,a)||(s.removeAttribute(a),K(s,a,null));typeof n.text=="string"&&(s.textContent=n.text),r.push(n.target)}try{document.dispatchEvent(new CustomEvent("claude:edit",{detail:{seq:e.seq,targets:r}}))}catch{}}function K(e,t,r){if(!(e instanceof HTMLInputElement))return;const n=t.toLowerCase();n==="checked"?e.checked=r!==null:n==="value"&&e.type!=="file"&&(e.value=r??"")}function Y(e,t){const r=t.toLowerCase(),n=e;return r==="data-id"||(r==="value"||r==="checked")&&(n.__artifactSecret===!0||/^(password|hidden|file)$/.test(n.type??"")||/(^|\s)(cc-|one-time-code|current-password|new-password)/i.test(`${e.getAttribute("autocomplete")??""} ${n.autocomplete??""}`))}function X(e){const t=document.documentElement;e==="light"||e==="dark"?(t.dataset.theme=e,t.style.colorScheme=e,B=!0):B&&(delete t.dataset.theme,t.style.colorScheme="",B=!1)}var M=new Map;function Te(){let e;const t={u:new Promise(r=>{e=r}),r:r=>{t.done=!0,e(r)},done:!1,nulled:!1};return t}function U(){for(const e of M.values())e.done||(e.nulled=!0,e.r(null))}var Le=Object.freeze(Object.assign(Object.create(null),{call:Function.prototype.call,apply:Function.prototype.apply,bind:Function.prototype.bind})),G=(e,t)=>{const r=M.get(e);if(!r||r.done){r?.nulled&&b&&d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:e}},b);return}const n=typeof t=="function"?Object.setPrototypeOf(t,Le):Object.assign(Object.create(null),t);typeof n.then=="function"&&delete n.then,r.r(Object.freeze(n))};function V(){const e=H?.value??{};$(window,"claude",e);for(const t of Object.keys(L)){if(e[t]!==void 0){$(e,t,e[t]);continue}M.set(t,Te())}if(e.use===void 0){const t=r=>{if(typeof r!="string"||!Object.hasOwn(L,r))return Promise.resolve(null);const n=M.get(r);return n?n.u:Promise.resolve(e[r]??null)};try{Object.defineProperty(e,"use",{value:t,writable:!0,configurable:!0,enumerable:!1})}catch{}}}if(T==="framed"){const e=j&&g.test(j)?A(j).catch(()=>{}):Promise.resolve(void 0),t=o=>{if(o.type==="auxclick"&&o.button!==1)return;const p=o.target,_=p&&p.closest?p.closest("a[href],area[href]"):null;if(!_)return;const w=_.getAttribute("href");if(!w)return;let i;try{i=new URL(w,document.baseURI)}catch{return}if((i.protocol==="http:"||i.protocol==="https:")&&i.origin!==location.origin){o.preventDefault();const m=(_.getAttribute("target")??"").toLowerCase(),l=o.type==="auxclick"||o.metaKey||o.ctrlKey||o.shiftKey||o.altKey||!["","_self","_top","_parent"].includes(m);d.post({__frame_nav:!0,url:i.href,newTab:l},"*")}};addEventListener("click",t,!0),addEventListener("auxclick",t,!0);const r={},n=o=>{o.isTrusted&&(r.pointer=!0)},s=o=>{o.isTrusted&&(r.click=!0)};addEventListener("pointermove",n,{capture:!0,passive:!0}),addEventListener("click",s,{capture:!0,passive:!0}),e.then(o=>{o?.wireNav&&(o.wireNav(),removeEventListener("click",t,!0),removeEventListener("auxclick",t,!0),removeEventListener("pointermove",n,!0),removeEventListener("click",s,!0),o.wireEngagement?.(r))});let a=null;try{a=be()}catch{}V();let u=null,f=null,R=0;const v=d.on((o,p)=>{q(p)&&ue(o)&&(u=o.__frame_init,b=p,v(),clearTimeout(R),f?.())});d.post({__frame_connect:!0},"*");const S=new Promise(o=>{f=o,R=setTimeout(()=>{v(),o()},Re)}),h=document.readyState==="loading"?new Promise(o=>document.addEventListener("DOMContentLoaded",()=>o(),{once:!0})):Promise.resolve();h.then(()=>{try{a?.restore()}catch{}});const y={cb:null};d.on((o,p)=>{if(q(p)&&fe(o)){try{a?.promoted()}catch{}y.cb?.()}}),S.then(async()=>{if(!u||!b){U();return}X(u.theme);const o=b;let p=!1,_=!1;d.on((c,D)=>{if(D!==o)return;pe(c)&&X(c.__frame_theme.theme),le(c)&&ke(c.__frame_patch,o);const E=c?.__fc_mode;E&&typeof E=="object"&&!p&&N&&g.test(N)&&(p=!0,A(N).then(F=>F.install?.(o,E.on===!0)).catch(()=>{}));const x=c?.__ft_cmd;x&&typeof x=="object"&&!_&&I&&g.test(I)&&(_=!0,A(I).then(F=>F.install?.(o,x)).catch(()=>{}))});const w=Object.keys(u.capabilities??{}).filter(c=>Object.hasOwn(L,c)).map(c=>[c,L[c]]).filter(c=>typeof c[1]=="string"&&g.test(c[1])),i=await Promise.allSettled(w.map(([,c])=>A(c))),m=await e,l=b;if(m?.buildBoot||d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:"_transforms"}},l),m?.buildBoot)try{P=m.buildBoot(u,m.TRANSFORMS??{},{shellOrigin:l,mount:G},c=>d.post({__frame_cap_telemetry:c},l))}catch{d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:"_transforms"}},l),P=W(u,l)}else P=W(u,l);const k=c=>d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:c}},l),Pe=P;i.forEach((c,D)=>{const E=w[D][0];if(c.status!=="fulfilled"){k(E);return}try{c.value?.install?.(Pe)}catch{k(E)}}),U(),await h,d.post({__frame_ready:!0},b),e.then(c=>c?.installSizeReporter?.(l,y))})}else C&&(V(),Ee(C,A,U))})();</script><!-- /frame-runtime --><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>Where the Face Check Happens</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+  :root{
+    --ground:#F4F6F7; --surface:#FFFFFF; --surface-2:#EAEEF0;
+    --line:#D6DDE1; --line-soft:#E4EAED;
+    --ink:#12181C; --ink-2:#3D4A52; --ink-3:#6B7A83;
+    --accent:#C97A16;
+    --ok:#2E7357; --warn:#B4741C;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E1316; --surface:#151C20; --surface-2:#1C252A;
+      --line:#2A353B; --line-soft:#222C31;
+      --ink:#E8EEF1; --ink-2:#AFBEC6; --ink-3:#7E8F98;
+      --accent:#E8A344;
+      --ok:#5FBF93; --warn:#E0A94E;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E1316; --surface:#151C20; --surface-2:#1C252A;
+    --line:#2A353B; --line-soft:#222C31;
+    --ink:#E8EEF1; --ink-2:#AFBEC6; --ink-3:#7E8F98;
+    --accent:#E8A344;
+    --ok:#5FBF93; --warn:#E0A94E;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);margin:0;
+    font-family:"Source Sans 3",ui-sans-serif,system-ui,sans-serif;
+    font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:760px;margin:0 auto;padding:44px 24px 72px}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);display:block;margin-bottom:10px}
+  h1{font-family:"Archivo",sans-serif;font-weight:800;font-size:clamp(30px,5vw,44px);
+    line-height:1.06;letter-spacing:-.02em;margin:0 0 14px;text-wrap:balance}
+  h2{font-family:"Archivo",sans-serif;font-weight:700;font-size:23px;
+    letter-spacing:-.01em;margin:44px 0 8px;text-wrap:balance}
+  p{max-width:65ch;margin:0 0 14px}
+  .lead{font-size:19px;color:var(--ink-2)}
+  strong{font-weight:600}
+  code{font-family:"IBM Plex Mono",monospace;font-size:.87em;background:var(--surface-2);
+    border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px}
+
+  figure{margin:26px 0;background:var(--surface);border:1px solid var(--line);
+    border-radius:4px;padding:20px 18px 14px;overflow-x:auto}
+  figure svg{display:block;max-width:100%;height:auto;margin:0 auto;color:var(--ink)}
+  figcaption{font-size:14px;color:var(--ink-3);margin-top:14px;text-align:center;
+    max-width:60ch;margin-left:auto;margin-right:auto}
+
+  .box-fill{fill:var(--surface-2)}
+  .box-line{stroke:var(--line);fill:none}
+  .accent-line{stroke:var(--accent);fill:none}
+  .t{font-family:"Source Sans 3",sans-serif;fill:var(--ink)}
+  .t-sm{font-family:"IBM Plex Mono",monospace;fill:var(--ink-3)}
+  .t-accent{font-family:"IBM Plex Mono",monospace;fill:var(--accent)}
+
+  .tw{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;min-width:520px;font-size:15px}
+  th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  thead th{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-3);background:var(--surface-2);
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  .yes{color:var(--ok);font-weight:600}
+  .no{color:var(--warn);font-weight:600}
+
+  .callout{background:var(--surface);border:1px solid var(--line);
+    border-left:3px solid var(--accent);border-radius:3px;padding:18px 20px;margin:26px 0}
+  .callout p{margin:0}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="wrap">
+  <span class="eyebrow">Boxcode · how it actually works</span>
+  <h1>Where the face check happens</h1>
+  <p class="lead">Short answer: on the phone, not on a website. The dashboard has no camera and never touches a face. Here is the whole thing in one page.</p>
+
+  <h2>Three pieces, one camera</h2>
+  <p>You keep hearing "app", "dashboard" and "server" used loosely — mostly by me. They are three separate programs with three separate jobs, and only one of them has a camera.</p>
+
+  <figure>
+    <svg viewBox="0 0 720 250" role="img" aria-label="The phone app captures punches and sends them to the server; the server stores them and does the comparing; the web dashboard only reads records back out. Only the phone has a camera.">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect x="10" y="60" width="180" height="120" rx="4" class="box-fill"/>
+      <rect x="10" y="60" width="180" height="120" rx="4" class="accent-line" stroke-width="1.5"/>
+      <text class="t" x="100" y="94" text-anchor="middle" font-size="15" font-weight="600">Phone app</text>
+      <text class="t-sm" x="100" y="114" text-anchor="middle" font-size="11">employees punch here</text>
+      <line x1="40" y1="128" x2="160" y2="128" class="box-line" stroke-dasharray="3 3"/>
+      <text class="t-accent" x="100" y="150" text-anchor="middle" font-size="11">HAS THE CAMERA</text>
+      <text class="t-sm" x="100" y="166" text-anchor="middle" font-size="11">takes the selfie</text>
+
+      <rect x="270" y="40" width="180" height="160" rx="4" class="box-fill"/>
+      <rect x="270" y="40" width="180" height="160" rx="4" class="box-line" stroke-width="1.5"/>
+      <text class="t" x="360" y="80" text-anchor="middle" font-size="15" font-weight="600">Server</text>
+      <text class="t-sm" x="360" y="100" text-anchor="middle" font-size="11">nobody looks at this</text>
+      <line x1="300" y1="114" x2="420" y2="114" class="box-line" stroke-dasharray="3 3"/>
+      <text class="t-sm" x="360" y="136" text-anchor="middle" font-size="11">checks the punch</text>
+      <text class="t-sm" x="360" y="154" text-anchor="middle" font-size="11">compares the faces</text>
+      <text class="t-sm" x="360" y="172" text-anchor="middle" font-size="11">stores everything</text>
+
+      <rect x="530" y="60" width="180" height="120" rx="4" class="box-fill"/>
+      <rect x="530" y="60" width="180" height="120" rx="4" class="box-line" stroke-width="1.5"/>
+      <text class="t" x="620" y="94" text-anchor="middle" font-size="15" font-weight="600">Web dashboard</text>
+      <text class="t-sm" x="620" y="114" text-anchor="middle" font-size="11">HR looks here</text>
+      <line x1="560" y1="128" x2="680" y2="128" class="box-line" stroke-dasharray="3 3"/>
+      <text class="t-sm" x="620" y="150" text-anchor="middle" font-size="11">NO camera</text>
+      <text class="t-sm" x="620" y="166" text-anchor="middle" font-size="11">read only</text>
+
+      <line x1="192" y1="120" x2="264" y2="120" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text class="t-sm" x="228" y="110" text-anchor="middle" font-size="11">punches</text>
+
+      <line x1="528" y1="120" x2="456" y2="120" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar)"/>
+      <text class="t-sm" x="492" y="110" text-anchor="middle" font-size="11">reads</text>
+    </svg>
+    <figcaption>Only the phone has a camera. The dashboard is a window onto records that already exist — it can never create a punch.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <p><strong>MyCo works exactly the same way.</strong> It isn't one website doing everything either — it's a phone app your staff punch from, and a separate web portal HR logs into. We've built the same two halves.</p>
+  </div>
+
+  <h2>One punch, in order</h2>
+  <p>Krish taps <strong>Check In</strong>. The phone takes a selfie and reads its location, and sends both to the server. The server then asks three questions, cheapest first, and stops at the first "no".</p>
+
+  <figure>
+    <svg viewBox="0 0 700 300" role="img" aria-label="A punch passes three checks in order: is this a real login, is the phone at the office, and does the selfie match the enrolled photo. Only if all three pass is the punch counted as present.">
+      <rect x="10" y="20" width="150" height="70" rx="4" class="box-fill"/>
+      <rect x="10" y="20" width="150" height="70" rx="4" class="accent-line" stroke-width="1.5"/>
+      <text class="t" x="85" y="48" text-anchor="middle" font-size="14" font-weight="600">Selfie + location</text>
+      <text class="t-sm" x="85" y="68" text-anchor="middle" font-size="11">from the phone</text>
+
+      <line x1="85" y1="92" x2="85" y2="118" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <defs>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect x="10" y="120" width="410" height="160" rx="4" class="box-line" stroke-width="1.5"/>
+      <text class="t-sm" x="26" y="142" font-size="11">THE SERVER ASKS</text>
+
+      <text class="t-accent" x="26" y="174" font-size="12">1</text>
+      <text class="t" x="48" y="174" font-size="14">Are you really logged in?</text>
+      <text class="t-sm" x="48" y="192" font-size="11">stops someone punching as a colleague</text>
+
+      <text class="t-accent" x="26" y="220" font-size="12">2</text>
+      <text class="t" x="48" y="220" font-size="14">Are you at the office?</text>
+      <text class="t-sm" x="48" y="238" font-size="11">GPS, and later the office WiFi</text>
+
+      <text class="t-accent" x="26" y="266" font-size="12">3</text>
+      <text class="t" x="48" y="266" font-size="14">Is this face yours?</text>
+
+      <line x1="424" y1="200" x2="470" y2="200" stroke="currentColor" stroke-width="1.5" marker-end="url(#ar2)"/>
+      <text class="t-sm" x="447" y="190" text-anchor="middle" font-size="11">all yes</text>
+
+      <rect x="478" y="160" width="210" height="80" rx="4" class="box-fill"/>
+      <rect x="478" y="160" width="210" height="80" rx="4" class="box-line" stroke-width="1.5"/>
+      <text class="t" x="583" y="192" text-anchor="middle" font-size="14" font-weight="600">Counted as present</text>
+      <text class="t-sm" x="583" y="212" text-anchor="middle" font-size="11">hours calculated, HR can see it</text>
+
+      <text class="t-sm" x="583" y="266" text-anchor="middle" font-size="11">Any &ldquo;no&rdquo; &rarr; refused, with the reason,</text>
+      <text class="t-sm" x="583" y="282" text-anchor="middle" font-size="11">and the attempt is still recorded</text>
+    </svg>
+    <figcaption>Question 3 is the one that needs a reference photo — the single picture of Krish that HR uploaded once.</figcaption>
+  </figure>
+
+  <h2>What's real today</h2>
+  <p>Questions 1 and 2 genuinely work. Question 3 is plumbed but not switched on — and the system says so rather than pretending.</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>Check</th><th>Working?</th><th>What happens now</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Logged in</strong></td>
+          <td class="yes">Yes</td>
+          <td>Everyone has an email and password. No login, no punch.</td>
+        </tr>
+        <tr>
+          <td><strong>At the office</strong></td>
+          <td class="yes">Yes</td>
+          <td>Punching from home is refused and tells you how far away you are. Faked GPS is caught.</td>
+        </tr>
+        <tr>
+          <td><strong>Face matches</strong></td>
+          <td class="no">Not yet</td>
+          <td>The selfie is taken and saved, but nothing compares it. The punch is recorded as <em>face not checked</em> — never as a pass.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>That last row is the part worth understanding. Nothing in your database claims a check that didn't happen, so when the comparison is switched on later, none of today's records become lies.</p>
+
+  <h2>Switching question 3 on</h2>
+  <p>Two things are needed, and neither is code we write ourselves — face recognition is a solved problem, and a hand-rolled one would be worse.</p>
+  <p><strong>One photo per person.</strong> HR opens the enrolment page and uploads a single picture of each of the seven of you. Ten minutes, once. That's the reference every future selfie is compared against.</p>
+  <p><strong>An engine to do the comparing.</strong> Either a model that runs on your own machine — free, offline, photos never leave the building — or AWS Rekognition, which is more accurate and costs a few dollars a month but needs an AWS account. Both plug into the same slot; switching between them is a one-line change.</p>
+</div>
+
+</body></html>

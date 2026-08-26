@@ -1,0 +1,338 @@
+<!doctype html><html><head><!-- frame-runtime --><base href="/_f/1787764945-f8bd/"><script>window.__FRAME_PREAMBLE={"v":1,"capabilities":{"artifact":"artifact.oqIe8shs.js","assets":"assets.DBUJcvq_.js","comments":"comments.GLuHR3zP.js","db":"db.CRhVHzSt.js","downloads":"downloads.C3GSvEDP.js","embed":"embed.CxGAyc-v.js","mcp":"mcp.Bvma3qD7.js","network":"network.B5UA9Su4.js","permissions":"permissions.BNySkLV5.js","room":"room.DE7EMui-.js","sample":"sample.BW2Uysoh.js","self":"artifact.oqIe8shs.js","user":"user.BpKav-Rf.js"},"transforms":"_transforms.CQm3TZ9K.js","comments":"_comments.PBVy184F.js","translate":"_translate.5HCW4BJh.js"}</script><script>(function(){"use strict";var Z=["light","dark","system"],J=/^[A-Za-z0-9_-]{1,64}$/,z=/^[a-zA-Z_:][a-zA-Z0-9_:.-]{0,127}$/,Q=new Set(["class","hidden","value","checked"]);function ee(e){const t=e.toLowerCase();return t.startsWith("data-")||t.startsWith("aria-")||Q.has(t)}var Me="http://www.w3.org/1999/xhtml",te="http://www.w3.org/2000/svg",re=new Set(["script","style","iframe","noscript","noframes","noembed","xmp","plaintext","template","title","textarea","object","embed"]),ne=new Set(["script","style"]);function oe(e){const t=e.localName.toLowerCase();return e.namespaceURI==="http://www.w3.org/1999/xhtml"?!re.has(t):e.namespaceURI===te?!ne.has(t):!1}var se=new Set(["html","head","body","frameset"]);function ae(e){return e.namespaceURI==="http://www.w3.org/1999/xhtml"&&se.has(e.localName)}function ie(e){if(e===null||typeof e!="object")return!1;const t=e;if(typeof t.target!="string"||!J.test(t.target)||t.text!==void 0&&typeof t.text!="string")return!1;if(t.attrsSet!==void 0){if(t.attrsSet===null||typeof t.attrsSet!="object")return!1;for(const[r,n]of Object.entries(t.attrsSet))if(!z.test(r)||typeof n!="string")return!1}if(t.attrsRemoved!==void 0){if(!Array.isArray(t.attrsRemoved))return!1;for(const r of t.attrsRemoved)if(typeof r!="string"||!z.test(r))return!1}return!0}function ce(e,t){if(e===null||typeof e!="object")return!1;const{seq:r,elements:n}=e;if(typeof r!="number"||!Number.isSafeInteger(r)||!Array.isArray(n)||n.length===0||n.length>64)return!1;for(let s=0;s<n.length;s++)if(!t(n[s]))return!1;return!0}function le(e){return e===null||typeof e!="object"?!1:ce(e.__frame_patch,ie)}function ue(e){if(e===null||typeof e!="object")return!1;const t=e.__frame_init;return t!==null&&typeof t=="object"}function fe(e){return e!==null&&typeof e=="object"&&e.__frame_size_poke===!0}function pe(e){if(e===null||typeof e!="object")return!1;const t=e.__frame_theme;if(t===null||typeof t!="object")return!1;const r=t.theme;return typeof r=="string"&&Z.includes(r)}var g=/^[\w.-]+\.js$/;function de(e,t,r){return r?"inert":typeof t=="string"&&g.test(t)?e?[t]:"inert":e?"inert":"framed"}function me(){return{post(e,t){parent.postMessage(e,t)},on(e){const t=r=>{r.source===parent&&e(r.data,r.origin)};return addEventListener("message",t),()=>removeEventListener("message",t)}}}function he(){return{post:()=>{},on:()=>()=>{}}}var O="__frame_scroll",_e=150,ve=310,ye=160,we=3e4;function be(){let e=0,t=!1,r=!1,n=!1,s=0,a=null;const u=i=>{try{sessionStorage.setItem(O,JSON.stringify({y:i}))}catch{}},f=()=>{if(clearTimeout(e),a===null)return;const i=a;a=null,u(i)},R=()=>{if(t){t=!1;return}r=!0,a=scrollY,clearTimeout(e),e=setTimeout(f,_e)};try{addEventListener("scroll",R,{passive:!0}),addEventListener("pagehide",f)}catch{}const v=()=>{let i;try{i=sessionStorage.getItem(O)}catch{return null}if(i===null)return null;let m;try{m=JSON.parse(i)}catch{m=null}const l=m?.y;if(!(typeof l=="number"&&Number.isFinite(l)&&l>=0)){try{sessionStorage.removeItem(O)}catch{}return null}return l};let S=!1;const h=i=>{try{const m=scrollY;scrollTo({top:i,left:0,behavior:"instant"}),s=i,n=!0,clearTimeout(e),a=null,u(i);const l=scrollY;l!==m&&(t=!0),l!==i&&!S&&(S=!0,addEventListener("load",()=>{try{if(scrollY===l){const k=v();h(k!==null?k:s)}}catch{}},{once:!0}))}catch{}},y=()=>{try{return!!location.hash}catch{return!0}};let o=!1;const p=()=>{try{if(o||innerWidth>ve||innerHeight>ye)return;o=!0;const i=Date.now(),m=()=>{try{removeEventListener("resize",m)}catch{}if(Date.now()-i>we||r||y())return;const l=v();h(l!==null?l:s)};addEventListener("resize",m)}catch{}};let _=!1,w=!1;return{restore(){if(_||(_=!0,y()))return;const i=v();i!==null&&(h(i),p())},promoted(){if(w||(w=!0,y()))return;const i=v();i!==null?(h(i),p()):n&&h(s)}}}function Ee(e,t,r){let n=null;try{n=window.trustedTypes?.createPolicy("frame-runtime",{createScriptURL:f=>f})??null}catch{}const s=window.Worker,a=s?.prototype,u=Object.freeze({Worker:s,workerOn:a?.addEventListener,workerPost:a?.postMessage,workerTerminate:a?.terminate,fetch:window.fetch.bind(window),preventDefault:Event.prototype.preventDefault,policy:n});t(e).then(f=>f?.bootTopLevel?f.bootTopLevel(u,{settle:r}):r()).catch(r)}var Oe="modulepreload",Ce=function(e){return"/"+e},je={},ge=function(t,r,n){let s=Promise.resolve();function a(u){const f=new Event("vite:preloadError",{cancelable:!0});if(f.payload=u,window.dispatchEvent(f),!f.defaultPrevented)throw u}return s.then(u=>{for(const f of u||[])f.status==="rejected"&&a(f.reason);return t().catch(a)})},Ae=window===top,H=Object.getOwnPropertyDescriptor(window,"claude"),T=de(Ae,window.__FRAME_PREAMBLE?.topLevel,H?.writable===!1),C=typeof T=="object"&&T[0],d=C?he():me();(function(){const e=Object.defineProperty,t=globalThis,r=["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCIceCandidate","RTCSessionDescription","RTCRtpSender","RTCRtpReceiver"];let n=0;for(let s=0;s<r.length;s++){const a=r[s];try{e(t,a,{value:void 0,writable:!1,configurable:!1})}catch{try{delete t[a]}catch{}try{e(t,a,{value:void 0,writable:!1,configurable:!0})}catch{}}typeof t[a]=="function"&&n++}if(n&&T==="framed")try{d.post({__frame_rtc_lockdown_failed:n},"*")}catch{}})();var Re=1e4,Se=Object.freeze([...window.__FRAME_PREAMBLE?.origins??["https://claude.ai","https://preview.claude.ai"]]);function q(e){for(const t of Se)if(t.endsWith(":*"))try{const r=new URL(e);if(`${r.protocol}//${r.hostname}:*`===t)return!0}catch{}else if(e===t)return!0;return!1}var L=Object.freeze({...window.__FRAME_PREAMBLE?.capabilities}),j=window.__FRAME_PREAMBLE?.transforms,N=window.__FRAME_PREAMBLE?.comments,I=window.__FRAME_PREAMBLE?.translate;function A(e){return ge(()=>import("/_runtime/"+e),void 0)}function W(e,t){return{contract:e.contract,changes:new Set(e.changes??[]),flags:new Set(e.flags??[]),capabilities:e.capabilities??{},capBudgets:e.capBudgets??{},transforms:new Map,shellOrigin:t,mount:G,pipe:()=>({wrap:(r,n)=>(...s)=>{try{return n(...s)}catch(a){return Promise.reject(a)}}})}}var P=null,b=null;function $(e,t,r){try{Object.defineProperty(e,t,{value:r,writable:!1,configurable:!1,enumerable:!0})}catch{try{Object.defineProperty(e,t,{value:r,writable:!1,configurable:!0,enumerable:!0})}catch{}}}var B=!1;function ke(e,t){const r=[];for(const n of e.elements){const s=document.querySelector(`[data-id="${n.target}"]`);if(!s){d.post({__frame_patch_miss:{seq:e.seq}},t);return}if([...Object.keys(n.attrsSet??{}),...n.attrsRemoved??[]].some(a=>!ee(a))){d.post({__frame_patch_miss:{seq:e.seq}},t);return}if(n.text!==void 0&&(!oe(s)||ae(s))){d.post({__frame_patch_miss:{seq:e.seq}},t);return}for(const[a,u]of Object.entries(n.attrsSet??{}))if(!Y(s,a)){try{s.setAttribute(a,u)}catch{}K(s,a,u)}for(const a of n.attrsRemoved??[])Y(s,a)||(s.removeAttribute(a),K(s,a,null));typeof n.text=="string"&&(s.textContent=n.text),r.push(n.target)}try{document.dispatchEvent(new CustomEvent("claude:edit",{detail:{seq:e.seq,targets:r}}))}catch{}}function K(e,t,r){if(!(e instanceof HTMLInputElement))return;const n=t.toLowerCase();n==="checked"?e.checked=r!==null:n==="value"&&e.type!=="file"&&(e.value=r??"")}function Y(e,t){const r=t.toLowerCase(),n=e;return r==="data-id"||(r==="value"||r==="checked")&&(n.__artifactSecret===!0||/^(password|hidden|file)$/.test(n.type??"")||/(^|\s)(cc-|one-time-code|current-password|new-password)/i.test(`${e.getAttribute("autocomplete")??""} ${n.autocomplete??""}`))}function X(e){const t=document.documentElement;e==="light"||e==="dark"?(t.dataset.theme=e,t.style.colorScheme=e,B=!0):B&&(delete t.dataset.theme,t.style.colorScheme="",B=!1)}var M=new Map;function Te(){let e;const t={u:new Promise(r=>{e=r}),r:r=>{t.done=!0,e(r)},done:!1,nulled:!1};return t}function U(){for(const e of M.values())e.done||(e.nulled=!0,e.r(null))}var Le=Object.freeze(Object.assign(Object.create(null),{call:Function.prototype.call,apply:Function.prototype.apply,bind:Function.prototype.bind})),G=(e,t)=>{const r=M.get(e);if(!r||r.done){r?.nulled&&b&&d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:e}},b);return}const n=typeof t=="function"?Object.setPrototypeOf(t,Le):Object.assign(Object.create(null),t);typeof n.then=="function"&&delete n.then,r.r(Object.freeze(n))};function V(){const e=H?.value??{};$(window,"claude",e);for(const t of Object.keys(L)){if(e[t]!==void 0){$(e,t,e[t]);continue}M.set(t,Te())}if(e.use===void 0){const t=r=>{if(typeof r!="string"||!Object.hasOwn(L,r))return Promise.resolve(null);const n=M.get(r);return n?n.u:Promise.resolve(e[r]??null)};try{Object.defineProperty(e,"use",{value:t,writable:!0,configurable:!0,enumerable:!1})}catch{}}}if(T==="framed"){const e=j&&g.test(j)?A(j).catch(()=>{}):Promise.resolve(void 0),t=o=>{if(o.type==="auxclick"&&o.button!==1)return;const p=o.target,_=p&&p.closest?p.closest("a[href],area[href]"):null;if(!_)return;const w=_.getAttribute("href");if(!w)return;let i;try{i=new URL(w,document.baseURI)}catch{return}if((i.protocol==="http:"||i.protocol==="https:")&&i.origin!==location.origin){o.preventDefault();const m=(_.getAttribute("target")??"").toLowerCase(),l=o.type==="auxclick"||o.metaKey||o.ctrlKey||o.shiftKey||o.altKey||!["","_self","_top","_parent"].includes(m);d.post({__frame_nav:!0,url:i.href,newTab:l},"*")}};addEventListener("click",t,!0),addEventListener("auxclick",t,!0);const r={},n=o=>{o.isTrusted&&(r.pointer=!0)},s=o=>{o.isTrusted&&(r.click=!0)};addEventListener("pointermove",n,{capture:!0,passive:!0}),addEventListener("click",s,{capture:!0,passive:!0}),e.then(o=>{o?.wireNav&&(o.wireNav(),removeEventListener("click",t,!0),removeEventListener("auxclick",t,!0),removeEventListener("pointermove",n,!0),removeEventListener("click",s,!0),o.wireEngagement?.(r))});let a=null;try{a=be()}catch{}V();let u=null,f=null,R=0;const v=d.on((o,p)=>{q(p)&&ue(o)&&(u=o.__frame_init,b=p,v(),clearTimeout(R),f?.())});d.post({__frame_connect:!0},"*");const S=new Promise(o=>{f=o,R=setTimeout(()=>{v(),o()},Re)}),h=document.readyState==="loading"?new Promise(o=>document.addEventListener("DOMContentLoaded",()=>o(),{once:!0})):Promise.resolve();h.then(()=>{try{a?.restore()}catch{}});const y={cb:null};d.on((o,p)=>{if(q(p)&&fe(o)){try{a?.promoted()}catch{}y.cb?.()}}),S.then(async()=>{if(!u||!b){U();return}X(u.theme);const o=b;let p=!1,_=!1;d.on((c,D)=>{if(D!==o)return;pe(c)&&X(c.__frame_theme.theme),le(c)&&ke(c.__frame_patch,o);const E=c?.__fc_mode;E&&typeof E=="object"&&!p&&N&&g.test(N)&&(p=!0,A(N).then(F=>F.install?.(o,E.on===!0)).catch(()=>{}));const x=c?.__ft_cmd;x&&typeof x=="object"&&!_&&I&&g.test(I)&&(_=!0,A(I).then(F=>F.install?.(o,x)).catch(()=>{}))});const w=Object.keys(u.capabilities??{}).filter(c=>Object.hasOwn(L,c)).map(c=>[c,L[c]]).filter(c=>typeof c[1]=="string"&&g.test(c[1])),i=await Promise.allSettled(w.map(([,c])=>A(c))),m=await e,l=b;if(m?.buildBoot||d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:"_transforms"}},l),m?.buildBoot)try{P=m.buildBoot(u,m.TRANSFORMS??{},{shellOrigin:l,mount:G},c=>d.post({__frame_cap_telemetry:c},l))}catch{d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:"_transforms"}},l),P=W(u,l)}else P=W(u,l);const k=c=>d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:c}},l),Pe=P;i.forEach((c,D)=>{const E=w[D][0];if(c.status!=="fulfilled"){k(E);return}try{c.value?.install?.(Pe)}catch{k(E)}}),U(),await h,d.post({__frame_ready:!0},b),e.then(c=>c?.installSizeReporter?.(l,y))})}else C&&(V(),Ee(C,A,U))})();</script><!-- /frame-runtime --><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>Boxcode Attendance PRD</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#F4F6F7; --surface:#FFFFFF; --surface-2:#EAEEF0;
+    --line:#D6DDE1; --line-soft:#E4EAED;
+    --ink:#12181C; --ink-2:#3D4A52; --ink-3:#6B7A83;
+    --accent:#C97A16; --accent-soft:#F6E7CE;
+    --ok:#2E7357; --warn:#B4741C; --crit:#B0402F;
+    --shadow:0 1px 2px rgba(18,24,28,.06), 0 8px 24px rgba(18,24,28,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E1316; --surface:#151C20; --surface-2:#1C252A;
+      --line:#2A353B; --line-soft:#222C31;
+      --ink:#E8EEF1; --ink-2:#AFBEC6; --ink-3:#7E8F98;
+      --accent:#E8A344; --accent-soft:#33270F;
+      --ok:#5FBF93; --warn:#E0A94E; --crit:#E07A63;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E1316; --surface:#151C20; --surface-2:#1C252A;
+    --line:#2A353B; --line-soft:#222C31;
+    --ink:#E8EEF1; --ink-2:#AFBEC6; --ink-3:#7E8F98;
+    --accent:#E8A344; --accent-soft:#33270F;
+    --ok:#5FBF93; --warn:#E0A94E; --crit:#E07A63;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+  *{box-sizing:border-box}
+  body{background:var(--ground);color:var(--ink);
+    font-family:"Source Sans 3",ui-sans-serif,system-ui,sans-serif;
+    font-size:17px;line-height:1.62;margin:0;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+
+  header.mast{border-bottom:1px solid var(--line);background:var(--surface)}
+  .mast-inner{display:flex;flex-direction:column;gap:16px;padding:44px 24px 34px;max-width:1040px;margin:0 auto}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent)}
+  h1{font-family:"Archivo",sans-serif;font-weight:800;font-size:clamp(32px,5vw,50px);
+    line-height:1.05;letter-spacing:-.02em;margin:0;text-wrap:balance}
+  .standfirst{max-width:66ch;color:var(--ink-2);font-size:19px;margin:0}
+  .mast-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+  .chip{font-family:"IBM Plex Mono",monospace;font-size:12px;border:1px solid var(--line);
+    border-radius:2px;padding:5px 9px;color:var(--ink-2);background:var(--surface-2)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  section{padding:50px 0;border-bottom:1px solid var(--line-soft)}
+  section:last-of-type{border-bottom:0}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+  .sec-num{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);
+    letter-spacing:.1em;padding-top:6px}
+  h2{font-family:"Archivo",sans-serif;font-weight:700;font-size:clamp(23px,3vw,30px);
+    letter-spacing:-.015em;margin:0;text-wrap:balance}
+  h3{font-family:"Archivo",sans-serif;font-weight:600;font-size:18.5px;margin:30px 0 8px}
+  p{max-width:68ch} p.lead{color:var(--ink-2);max-width:68ch;margin-top:0}
+  ul{max-width:68ch;padding-left:20px} li{margin:5px 0}
+  code{font-family:"IBM Plex Mono",monospace;font-size:.88em;background:var(--surface-2);
+    border:1px solid var(--line-soft);border-radius:3px;padding:1px 5px}
+  a{color:var(--accent);text-underline-offset:3px}
+  a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  .callout{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:3px;padding:18px 20px;margin:24px 0;box-shadow:var(--shadow)}
+  .callout .k{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--accent);display:block;margin-bottom:7px}
+  .callout p{margin:0}
+
+  .tw{overflow-x:auto;margin:20px 0;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;min-width:620px;font-size:15px}
+  th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  thead th{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-3);background:var(--surface-2);
+    border-bottom:1px solid var(--line);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11px;
+    padding:3px 8px;border-radius:2px;white-space:nowrap;border:1px solid currentColor}
+  .p-done{color:var(--ok)} .p-now{color:var(--crit)} .p-next{color:var(--warn)} .p-later{color:var(--ink-3)}
+
+  /* flow steps - numbered because these genuinely are a sequence */
+  .flow{display:grid;gap:0;margin:22px 0;border:1px solid var(--line);
+    border-radius:4px;overflow:hidden;background:var(--surface)}
+  .step{display:grid;grid-template-columns:44px 1fr;gap:14px;padding:15px 18px;
+    border-top:1px solid var(--line-soft)}
+  .step:first-child{border-top:0}
+  .step .n{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;
+    color:var(--accent);padding-top:2px}
+  .step h4{font-family:"Archivo",sans-serif;font-size:15.5px;font-weight:700;margin:0 0 2px}
+  .step p{margin:0;font-size:15px;color:var(--ink-2);max-width:none}
+  .step .sys{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3);
+    display:block;margin-top:5px}
+
+  .ac{list-style:none;padding:0;max-width:none}
+  .ac li{display:grid;grid-template-columns:22px 1fr;gap:9px;margin:7px 0;
+    font-size:15.5px;color:var(--ink-2)}
+  .ac li::before{content:"☐";color:var(--accent);font-size:15px;line-height:1.5}
+
+  .ms{border:1px solid var(--line);border-radius:4px;background:var(--surface);
+    padding:16px 18px;margin:12px 0}
+  .ms-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+    flex-wrap:wrap;margin-bottom:4px}
+  .ms h4{font-family:"Archivo",sans-serif;font-size:16px;font-weight:700;margin:0}
+  .ms .when{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink-3)}
+  .ms p{margin:0 0 6px;font-size:15px;color:var(--ink-2);max-width:none}
+
+  footer{padding:38px 0 60px;color:var(--ink-3);font-size:14px}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="mast">
+  <div class="mast-inner">
+    <span class="eyebrow">Product requirements · v1 · attendance</span>
+    <h1>Everyone checks in from inside the building</h1>
+    <p class="standfirst">What we are building, in what order, and how we will know it works. Scope is deliberately one module — attendance — because a half-finished payroll helps nobody.</p>
+    <div class="mast-meta">
+      <span class="chip"><b>Owner</b> · Krish</span>
+      <span class="chip"><b>Users</b> · ~60 · one office · India</span>
+      <span class="chip"><b>Built</b> · punch → verify → resolve → dashboard</span>
+      <span class="chip"><b>Next</b> · use it, then pilot</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>The problem, in one paragraph</h2></div>
+  <p class="lead">Boxcode's ~60 staff currently mark attendance in MyCo. It works, but the interface is poor, the data lives in someone else's system, and nothing downstream — payroll, leave, reporting — can be built on top of it. We are replacing it with our own, starting with the one module everybody touches every single day.</p>
+
+  <h3>What success looks like</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Measure</th><th>Target</th><th>Why this number</th></tr></thead>
+      <tbody>
+        <tr><td>Staff punching through our app</td><td class="num">100% by week 8</td><td>Partial adoption means running two systems and reconciling them by hand. Worse than not starting.</td></tr>
+        <tr><td>Punches needing HR correction</td><td class="num">&lt; 5% of days</td><td>Above this, people stop trusting it and start keeping their own records.</td></tr>
+        <tr><td>Time to punch, app open to confirmed</td><td class="num">&lt; 8 seconds</td><td>Sixty people arriving at 9:30. Anything slower produces a queue at the door.</td></tr>
+        <tr><td>False rejections at the desk</td><td class="num">≈ 0</td><td>Being marked absent for a day you worked is the failure that loses the room. Worth accepting some false <em>accepts</em> to avoid.</td></tr>
+        <tr><td>Month-end attendance report</td><td class="num">one click</td><td>The entire reason for owning the data.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>"Office only" — what that actually costs</h2></div>
+  <p class="lead">You want punching to work inside the office and nowhere else. That's the right requirement, but GPS alone cannot deliver it, and it's worth being precise about why before we pick a setting.</p>
+  <p>A phone knows where it is to within roughly 10–30m outdoors, and considerably worse indoors where the signal bounces off the building. So a radius tight enough to exclude the car park will also start rejecting people sitting at their desks. Every metre you tighten trades a false accept for a false reject — and a false reject means someone is marked absent for a day they actually worked.</p>
+
+  <div class="callout">
+    <span class="k">The answer: office WiFi</span>
+    <p>To see your access point's BSSID — the router's MAC address — a phone has to be associated to that access point, which in practice means it's in the building. It can't be faked from home without physically cloning your router. It's a far stronger signal than GPS and it costs nothing.</p>
+  </div>
+
+  <p>The code supports three policies, per location, so we can start lenient and tighten once we see real data from the pilot:</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Policy</th><th>Behaviour</th><th>Use when</th></tr></thead>
+      <tbody>
+        <tr><td><code>gps_only</code></td><td>Radius check alone.</td><td>No usable office WiFi. Weakest option.</td></tr>
+        <tr><td><code>wifi_or_gps</code></td><td>Either signal passes. On office WiFi, GPS is skipped entirely.</td><td><strong>Recommended start.</strong> Nobody is falsely rejected while we learn the building.</td></tr>
+        <tr><td><code>wifi_required</code></td><td>Must be on the office network. Correct coordinates alone are refused.</td><td>What you asked for. Switch to it after the pilot — one config change, no deploy.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>One caveat worth knowing now:</strong> Android hands over the BSSID readily. iOS restricts it — reading it needs a special Apple entitlement, and the network <em>name</em> alone isn't good enough because anyone can name a phone hotspot "Boxcode-Office". If most staff are on iPhone, tell me and we'll request the entitlement early, since Apple review takes time.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>Who uses it</h2></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Role</th><th>Count</th><th>What they do</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Employee</strong></td><td class="num">~60</td><td>Punch in and out. See their own history. Apply for leave. Ask for a correction when they forget to punch out.</td></tr>
+        <tr><td><strong>Manager</strong></td><td class="num">~6</td><td>Everything an employee does, plus see their team's attendance and approve their leave and corrections.</td></tr>
+        <tr><td><strong>HR admin</strong></td><td class="num">1–2</td><td>Add and remove staff, enrol face photos, set shifts and holidays, clear the exception queue, export month-end reports.</td></tr>
+        <tr><td><strong>Super admin</strong></td><td class="num">1</td><td>Office location and geofence policy, roles, audit log. You.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>The flow, end to end</h2></div>
+  <p class="lead">This is the part that's been missing. Two flows: what a new joiner goes through once, and what everybody does every morning.</p>
+
+  <h3>Onboarding — happens once per person</h3>
+  <div class="flow">
+    <div class="step"><span class="n">01</span><div><h4>HR adds the employee</h4><p>Name, employee code, phone, department, shift, joining date.</p><span class="sys">admin web · creates employee row, sends an invite SMS</span></div></div>
+    <div class="step"><span class="n">02</span><div><h4>Employee installs the app and sets a password</h4><p>Invite link opens the app, they set a password.</p><span class="sys">mobile · issues a token, binds this phone to this employee</span></div></div>
+    <div class="step"><span class="n">03</span><div><h4>HR takes the reference photo</h4><p>Deliberately HR and not self-service — somebody has to vouch that the face on file is really that person, or the whole face check is theatre.</p><span class="sys">admin web · uploads to S3, writes a face_enrollments row</span></div></div>
+    <div class="step"><span class="n">04</span><div><h4>App asks for camera and location permission</h4><p>With a plain explanation of why. If either is refused, punching cannot work — the app says so rather than failing mysteriously later.</p><span class="sys">mobile · one-time OS prompts</span></div></div>
+  </div>
+
+  <h3>Daily — what actually happens at 9:30am</h3>
+  <div class="flow">
+    <div class="step"><span class="n">01</span><div><h4>Open the app</h4><p>One screen, one big button: <strong>Check In</strong>. Below it, today's status and yesterday's hours. Nothing else competes for attention.</p></div></div>
+    <div class="step"><span class="n">02</span><div><h4>Tap it — the camera opens immediately</h4><p>Front camera only, no gallery option. Location is captured silently in the same moment, so we never compare a selfie taken here with a position recorded somewhere else.</p></div></div>
+    <div class="step"><span class="n">03</span><div><h4>Three checks run, cheapest first</h4><p>Is this the phone bound to this employee → are they in the office → is this their face. We stop at the first failure, so we never pay Rekognition for a punch that was never going to count.</p><span class="sys">api · ~2s on 4G</span></div></div>
+    <div class="step"><span class="n">04</span><div><h4>Confirmation, or a reason they can act on</h4><p><em>"Checked in at 9:34am"</em> — or <em>"You're about 400m from the office"</em>. Never a bare "failed". Either way the attempt is recorded, including the rejection.</p><span class="sys">api · writes punch_events, queues the resolver</span></div></div>
+    <div class="step"><span class="n">05</span><div><h4>The resolver turns punches into a day</h4><p>First in, last out, hours worked, late by, overtime, status. Runs on every punch and again overnight for anything that arrived late.</p><span class="sys">worker · writes attendance_day</span></div></div>
+    <div class="step"><span class="n">06</span><div><h4>HR sees it immediately</h4><p>Live board of who's in, who's late, who hasn't shown. Exceptions — missing punch-outs, rejected attempts — collect in a queue rather than being silently swallowed.</p><span class="sys">admin web</span></div></div>
+  </div>
+
+  <h3>When something goes wrong</h3>
+  <div class="flow">
+    <div class="step"><span class="n">01</span><div><h4>Employee forgot to punch out</h4><p>The day is flagged, not marked absent. They request a correction from the app with a reason.</p></div></div>
+    <div class="step"><span class="n">02</span><div><h4>Manager approves or rejects it</h4><p>The original punches are never edited. The correction is a separate record with who asked, who approved, and why.</p></div></div>
+    <div class="step"><span class="n">03</span><div><h4>The day is recomputed</h4><p>Not hand-edited. The same resolver runs again with the corrected input, so the number always matches the data behind it.</p></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Acceptance criteria</h2></div>
+  <p class="lead">A milestone is done when these pass, not when the code compiles. Written now so we can't move the goalposts later.</p>
+
+  <h3>Punching</h3>
+  <ul class="ac">
+    <li>A punch from inside the office succeeds in under 8 seconds on office WiFi and on 4G.</li>
+    <li>A punch from home is rejected, and the employee is told the distance — not just "failed".</li>
+    <li>A rejected punch still appears in HR's view. Nothing is silently discarded.</li>
+    <li>Under <code>wifi_required</code>, correct coordinates on the wrong network are refused.</li>
+    <li>A faked GPS location is refused.</li>
+    <li>Someone else's phone cannot punch for an employee — the binding refuses it.</li>
+    <li>A photo of a colleague held up to the camera is refused by the face check.</li>
+    <li>A punch by someone with no enrolled photo is either refused or recorded as <em>not checked</em> — never as a passing check. <span class="pill p-done">fixed</span></li>
+    <li>Tapping check-in twice by accident does not create two records.</li>
+    <li>A punch made with no signal is queued on the phone and lands when signal returns.</li>
+  </ul>
+
+  <h3>The attendance record</h3>
+  <ul class="ac">
+    <li>A 22:00–06:00 shift resolves to one day, not two halves. <span class="pill p-done">passing</span></li>
+    <li>Arriving inside the grace period is not marked late. <span class="pill p-done">passing</span></li>
+    <li>A missing punch-out is flagged for correction, never silently marked absent. <span class="pill p-done">passing</span></li>
+    <li>A Sunday with no punches reads as weekly off, not absent. <span class="pill p-done">passing</span></li>
+    <li>Nobody is marked absent before their shift has ended.</li>
+    <li>Deleting every attendance_day row and recomputing produces identical results.</li>
+    <li>An HR correction leaves the original punches visible and attributed.</li>
+  </ul>
+
+  <h3>Admin</h3>
+  <ul class="ac">
+    <li>HR can see, on one screen, who is in, who is late and who is absent right now.</li>
+    <li>Every exception for the month can be cleared without touching the database.</li>
+    <li>Month-end attendance exports to Excel in one click.</li>
+    <li>Every change to an attendance record is attributable to a person and a time.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Milestones</h2></div>
+
+  <div class="ms">
+    <div class="ms-top"><h4>M0 · Foundations</h4><span class="when"><span class="pill p-done">done</span></span></div>
+    <p>Schema, shift resolver, presence checks, storage and face interfaces. Every layer that would have to change for production sits behind a seam, so none of the prototype shortcuts are one-way doors.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-top"><h4>M1 · It runs</h4><span class="when"><span class="pill p-done">done</span></span></div>
+    <p>SQLite at <code>data/boxcode.db</code>, the team seeded, <code>./run.sh</code> bringing up API and dashboard together. No server, no AWS account, no Postgres install. Postgres remains one connection string away.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-top"><h4>M2 · Punching works</h4><span class="when"><span class="pill p-done">done</span></span></div>
+    <p>Expo app with the check-in screen, camera and location captured in the same moment, three-stage verification, punches persisted and resolved into days. Rejected attempts stored with their reason rather than discarded.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-top"><h4>M3 · HR can see it</h4><span class="when"><span class="pill p-done">done</span></span></div>
+    <p>Live board, stat tiles, exception queue, refused-punch log, per-employee month view, and a correction endpoint that adds a punch rather than editing one.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-top"><h4>M4 · Face enrolment</h4><span class="when"><span class="pill p-done">done</span></span></div>
+    <p>Append-only enrolment records — re-enrolling supersedes, withdrawing deactivates — with quality checks at upload, because a bad reference photo silently poisons every comparison made against it afterwards.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-top"><h4>M5 · Auth</h4><span class="when"><span class="pill p-done">done</span></span></div>
+    <p>Login, sessions, roles, and the phone bound to one employee. This now gates everything: until it exists, anyone can edit one line and punch as somebody else, and self-service enrolment cannot safely be offered at all.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-top"><h4>M6 · Leave</h4><span class="when"><span class="pill p-done">done</span></span></div>
+    <p>Types, balances, accrual, approvals, holiday calendar — and, the point of the milestone, wired into attendance so an approved leave day stops reading as absent. HR edits every policy from the dashboard; a change never silently rewrites balances already earned.</p>
+  </div>
+  <div class="ms">
+    <div class="ms-top"><h4>M7 · Pilot with 5 people</h4><span class="when"><span class="pill p-now">next</span></span></div>
+    <p>Dual-run against MyCo for a week and explain every mismatch before anyone else moves across. Tighten to <code>wifi_required</code> based on what the building actually does. Only then does deployment become a question worth asking.</p>
+  </div>
+
+  <div class="callout">
+    <span class="k">Not in v1, deliberately</span>
+    <p>Payroll, expenses, CRM, field tracking, tasks, liveness detection, gate hardware, a second office, and a web punch page. Every one of these is a real thing we want — and every one of them is a reason attendance ships late. They start after M6.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Non-negotiables</h2></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Area</th><th>Requirement</th></tr></thead>
+      <tbody>
+        <tr><td>Biometric data</td><td>No face embeddings and no image bytes in the database. Only an S3 key for the reference photo. Punch selfies are deleted after 90 days; the reference photo goes when the employee leaves.</td></tr>
+        <tr><td>Database exposure</td><td>Postgres bound to localhost. Security group opens 22 and 443 only.</td></tr>
+        <tr><td>Transport</td><td>Real TLS on a real domain. iOS refuses plain HTTP outright, so this is a prerequisite, not polish.</td></tr>
+        <tr><td>Audit</td><td>Every mutation writes an audit row. Nothing is hard-deleted, ever.</td></tr>
+        <tr><td>Backups</td><td>Nightly <code>pg_dump</code> to S3, 30-day retention, and a restore actually tested once before M6.</td></tr>
+        <tr><td>Availability</td><td>If the API is down, the app queues punches locally and syncs later. Nobody loses a day's attendance to a deploy.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">08</span><h2>What I need from you to start M1</h2></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Item</th><th>Why it blocks</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td><strong>EC2 host, SSH user and key</strong></td><td>Nothing in M1 happens without it.</td><td><span class="pill p-now">blocking</span></td></tr>
+        <tr><td><strong>Office latitude and longitude</strong></td><td>Google Maps, right-click the building, copy the two numbers.</td><td><span class="pill p-now">blocking</span></td></tr>
+        <tr><td><strong>Office WiFi BSSID</strong></td><td>The router's MAC. Your network admin has it, or I can give you a one-line command.</td><td><span class="pill p-next">needed by M2</span></td></tr>
+        <tr><td><strong>A domain pointing at the EC2</strong></td><td>iOS will not talk to the API without TLS.</td><td><span class="pill p-next">needed by M2</span></td></tr>
+        <tr><td><strong>Employee list</strong></td><td>Name, code, phone, department, shift, joining date. A CSV export from MyCo is ideal.</td><td><span class="pill p-next">needed by M1</span></td></tr>
+        <tr><td><strong>Shift timings and week-offs</strong></td><td>Start, end, break, grace period. Every attendance number depends on these.</td><td><span class="pill p-next">needed by M1</span></td></tr>
+        <tr><td><strong>iPhone or Android majority?</strong></td><td>Decides whether we chase the Apple WiFi entitlement early.</td><td><span class="pill p-next">needed by M2</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <p>Companion document: the <a href="https://claude.ai/code/artifact/8d56dd1b-feb7-418b-89ce-0975288057f1">architecture plan</a> covers the data model, the full twelve-module map and the reference products. This document is scope and sequence; that one is how it's built.</p>
+</footer>
+
+</div>
+
+</body></html>

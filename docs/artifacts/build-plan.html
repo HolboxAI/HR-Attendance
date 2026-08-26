@@ -1,0 +1,450 @@
+<!doctype html><html><head><!-- frame-runtime --><base href="/_f/1787745634-5482/"><script>window.__FRAME_PREAMBLE={"v":1,"capabilities":{"artifact":"artifact.oqIe8shs.js","assets":"assets.DBUJcvq_.js","comments":"comments.GLuHR3zP.js","db":"db.CRhVHzSt.js","downloads":"downloads.C3GSvEDP.js","embed":"embed.CxGAyc-v.js","mcp":"mcp.Bvma3qD7.js","network":"network.B5UA9Su4.js","permissions":"permissions.BNySkLV5.js","room":"room.DE7EMui-.js","sample":"sample.BW2Uysoh.js","self":"artifact.oqIe8shs.js","user":"user.BpKav-Rf.js"},"transforms":"_transforms.CQm3TZ9K.js","comments":"_comments.PBVy184F.js","translate":"_translate.5HCW4BJh.js"}</script><script>(function(){"use strict";var Z=["light","dark","system"],J=/^[A-Za-z0-9_-]{1,64}$/,z=/^[a-zA-Z_:][a-zA-Z0-9_:.-]{0,127}$/,Q=new Set(["class","hidden","value","checked"]);function ee(e){const t=e.toLowerCase();return t.startsWith("data-")||t.startsWith("aria-")||Q.has(t)}var Me="http://www.w3.org/1999/xhtml",te="http://www.w3.org/2000/svg",re=new Set(["script","style","iframe","noscript","noframes","noembed","xmp","plaintext","template","title","textarea","object","embed"]),ne=new Set(["script","style"]);function oe(e){const t=e.localName.toLowerCase();return e.namespaceURI==="http://www.w3.org/1999/xhtml"?!re.has(t):e.namespaceURI===te?!ne.has(t):!1}var se=new Set(["html","head","body","frameset"]);function ae(e){return e.namespaceURI==="http://www.w3.org/1999/xhtml"&&se.has(e.localName)}function ie(e){if(e===null||typeof e!="object")return!1;const t=e;if(typeof t.target!="string"||!J.test(t.target)||t.text!==void 0&&typeof t.text!="string")return!1;if(t.attrsSet!==void 0){if(t.attrsSet===null||typeof t.attrsSet!="object")return!1;for(const[r,n]of Object.entries(t.attrsSet))if(!z.test(r)||typeof n!="string")return!1}if(t.attrsRemoved!==void 0){if(!Array.isArray(t.attrsRemoved))return!1;for(const r of t.attrsRemoved)if(typeof r!="string"||!z.test(r))return!1}return!0}function ce(e,t){if(e===null||typeof e!="object")return!1;const{seq:r,elements:n}=e;if(typeof r!="number"||!Number.isSafeInteger(r)||!Array.isArray(n)||n.length===0||n.length>64)return!1;for(let s=0;s<n.length;s++)if(!t(n[s]))return!1;return!0}function le(e){return e===null||typeof e!="object"?!1:ce(e.__frame_patch,ie)}function ue(e){if(e===null||typeof e!="object")return!1;const t=e.__frame_init;return t!==null&&typeof t=="object"}function fe(e){return e!==null&&typeof e=="object"&&e.__frame_size_poke===!0}function pe(e){if(e===null||typeof e!="object")return!1;const t=e.__frame_theme;if(t===null||typeof t!="object")return!1;const r=t.theme;return typeof r=="string"&&Z.includes(r)}var g=/^[\w.-]+\.js$/;function de(e,t,r){return r?"inert":typeof t=="string"&&g.test(t)?e?[t]:"inert":e?"inert":"framed"}function me(){return{post(e,t){parent.postMessage(e,t)},on(e){const t=r=>{r.source===parent&&e(r.data,r.origin)};return addEventListener("message",t),()=>removeEventListener("message",t)}}}function he(){return{post:()=>{},on:()=>()=>{}}}var O="__frame_scroll",_e=150,ve=310,ye=160,we=3e4;function be(){let e=0,t=!1,r=!1,n=!1,s=0,a=null;const u=i=>{try{sessionStorage.setItem(O,JSON.stringify({y:i}))}catch{}},f=()=>{if(clearTimeout(e),a===null)return;const i=a;a=null,u(i)},R=()=>{if(t){t=!1;return}r=!0,a=scrollY,clearTimeout(e),e=setTimeout(f,_e)};try{addEventListener("scroll",R,{passive:!0}),addEventListener("pagehide",f)}catch{}const v=()=>{let i;try{i=sessionStorage.getItem(O)}catch{return null}if(i===null)return null;let m;try{m=JSON.parse(i)}catch{m=null}const l=m?.y;if(!(typeof l=="number"&&Number.isFinite(l)&&l>=0)){try{sessionStorage.removeItem(O)}catch{}return null}return l};let S=!1;const h=i=>{try{const m=scrollY;scrollTo({top:i,left:0,behavior:"instant"}),s=i,n=!0,clearTimeout(e),a=null,u(i);const l=scrollY;l!==m&&(t=!0),l!==i&&!S&&(S=!0,addEventListener("load",()=>{try{if(scrollY===l){const k=v();h(k!==null?k:s)}}catch{}},{once:!0}))}catch{}},y=()=>{try{return!!location.hash}catch{return!0}};let o=!1;const p=()=>{try{if(o||innerWidth>ve||innerHeight>ye)return;o=!0;const i=Date.now(),m=()=>{try{removeEventListener("resize",m)}catch{}if(Date.now()-i>we||r||y())return;const l=v();h(l!==null?l:s)};addEventListener("resize",m)}catch{}};let _=!1,w=!1;return{restore(){if(_||(_=!0,y()))return;const i=v();i!==null&&(h(i),p())},promoted(){if(w||(w=!0,y()))return;const i=v();i!==null?(h(i),p()):n&&h(s)}}}function Ee(e,t,r){let n=null;try{n=window.trustedTypes?.createPolicy("frame-runtime",{createScriptURL:f=>f})??null}catch{}const s=window.Worker,a=s?.prototype,u=Object.freeze({Worker:s,workerOn:a?.addEventListener,workerPost:a?.postMessage,workerTerminate:a?.terminate,fetch:window.fetch.bind(window),preventDefault:Event.prototype.preventDefault,policy:n});t(e).then(f=>f?.bootTopLevel?f.bootTopLevel(u,{settle:r}):r()).catch(r)}var Oe="modulepreload",Ce=function(e){return"/"+e},je={},ge=function(t,r,n){let s=Promise.resolve();function a(u){const f=new Event("vite:preloadError",{cancelable:!0});if(f.payload=u,window.dispatchEvent(f),!f.defaultPrevented)throw u}return s.then(u=>{for(const f of u||[])f.status==="rejected"&&a(f.reason);return t().catch(a)})},Ae=window===top,H=Object.getOwnPropertyDescriptor(window,"claude"),T=de(Ae,window.__FRAME_PREAMBLE?.topLevel,H?.writable===!1),C=typeof T=="object"&&T[0],d=C?he():me();(function(){const e=Object.defineProperty,t=globalThis,r=["RTCPeerConnection","webkitRTCPeerConnection","RTCDataChannel","RTCIceCandidate","RTCSessionDescription","RTCRtpSender","RTCRtpReceiver"];let n=0;for(let s=0;s<r.length;s++){const a=r[s];try{e(t,a,{value:void 0,writable:!1,configurable:!1})}catch{try{delete t[a]}catch{}try{e(t,a,{value:void 0,writable:!1,configurable:!0})}catch{}}typeof t[a]=="function"&&n++}if(n&&T==="framed")try{d.post({__frame_rtc_lockdown_failed:n},"*")}catch{}})();var Re=1e4,Se=Object.freeze([...window.__FRAME_PREAMBLE?.origins??["https://claude.ai","https://preview.claude.ai"]]);function q(e){for(const t of Se)if(t.endsWith(":*"))try{const r=new URL(e);if(`${r.protocol}//${r.hostname}:*`===t)return!0}catch{}else if(e===t)return!0;return!1}var L=Object.freeze({...window.__FRAME_PREAMBLE?.capabilities}),j=window.__FRAME_PREAMBLE?.transforms,N=window.__FRAME_PREAMBLE?.comments,I=window.__FRAME_PREAMBLE?.translate;function A(e){return ge(()=>import("/_runtime/"+e),void 0)}function W(e,t){return{contract:e.contract,changes:new Set(e.changes??[]),flags:new Set(e.flags??[]),capabilities:e.capabilities??{},capBudgets:e.capBudgets??{},transforms:new Map,shellOrigin:t,mount:G,pipe:()=>({wrap:(r,n)=>(...s)=>{try{return n(...s)}catch(a){return Promise.reject(a)}}})}}var P=null,b=null;function $(e,t,r){try{Object.defineProperty(e,t,{value:r,writable:!1,configurable:!1,enumerable:!0})}catch{try{Object.defineProperty(e,t,{value:r,writable:!1,configurable:!0,enumerable:!0})}catch{}}}var B=!1;function ke(e,t){const r=[];for(const n of e.elements){const s=document.querySelector(`[data-id="${n.target}"]`);if(!s){d.post({__frame_patch_miss:{seq:e.seq}},t);return}if([...Object.keys(n.attrsSet??{}),...n.attrsRemoved??[]].some(a=>!ee(a))){d.post({__frame_patch_miss:{seq:e.seq}},t);return}if(n.text!==void 0&&(!oe(s)||ae(s))){d.post({__frame_patch_miss:{seq:e.seq}},t);return}for(const[a,u]of Object.entries(n.attrsSet??{}))if(!Y(s,a)){try{s.setAttribute(a,u)}catch{}K(s,a,u)}for(const a of n.attrsRemoved??[])Y(s,a)||(s.removeAttribute(a),K(s,a,null));typeof n.text=="string"&&(s.textContent=n.text),r.push(n.target)}try{document.dispatchEvent(new CustomEvent("claude:edit",{detail:{seq:e.seq,targets:r}}))}catch{}}function K(e,t,r){if(!(e instanceof HTMLInputElement))return;const n=t.toLowerCase();n==="checked"?e.checked=r!==null:n==="value"&&e.type!=="file"&&(e.value=r??"")}function Y(e,t){const r=t.toLowerCase(),n=e;return r==="data-id"||(r==="value"||r==="checked")&&(n.__artifactSecret===!0||/^(password|hidden|file)$/.test(n.type??"")||/(^|\s)(cc-|one-time-code|current-password|new-password)/i.test(`${e.getAttribute("autocomplete")??""} ${n.autocomplete??""}`))}function X(e){const t=document.documentElement;e==="light"||e==="dark"?(t.dataset.theme=e,t.style.colorScheme=e,B=!0):B&&(delete t.dataset.theme,t.style.colorScheme="",B=!1)}var M=new Map;function Te(){let e;const t={u:new Promise(r=>{e=r}),r:r=>{t.done=!0,e(r)},done:!1,nulled:!1};return t}function U(){for(const e of M.values())e.done||(e.nulled=!0,e.r(null))}var Le=Object.freeze(Object.assign(Object.create(null),{call:Function.prototype.call,apply:Function.prototype.apply,bind:Function.prototype.bind})),G=(e,t)=>{const r=M.get(e);if(!r||r.done){r?.nulled&&b&&d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:e}},b);return}const n=typeof t=="function"?Object.setPrototypeOf(t,Le):Object.assign(Object.create(null),t);typeof n.then=="function"&&delete n.then,r.r(Object.freeze(n))};function V(){const e=H?.value??{};$(window,"claude",e);for(const t of Object.keys(L)){if(e[t]!==void 0){$(e,t,e[t]);continue}M.set(t,Te())}if(e.use===void 0){const t=r=>{if(typeof r!="string"||!Object.hasOwn(L,r))return Promise.resolve(null);const n=M.get(r);return n?n.u:Promise.resolve(e[r]??null)};try{Object.defineProperty(e,"use",{value:t,writable:!0,configurable:!0,enumerable:!1})}catch{}}}if(T==="framed"){const e=j&&g.test(j)?A(j).catch(()=>{}):Promise.resolve(void 0),t=o=>{if(o.type==="auxclick"&&o.button!==1)return;const p=o.target,_=p&&p.closest?p.closest("a[href],area[href]"):null;if(!_)return;const w=_.getAttribute("href");if(!w)return;let i;try{i=new URL(w,document.baseURI)}catch{return}if((i.protocol==="http:"||i.protocol==="https:")&&i.origin!==location.origin){o.preventDefault();const m=(_.getAttribute("target")??"").toLowerCase(),l=o.type==="auxclick"||o.metaKey||o.ctrlKey||o.shiftKey||o.altKey||!["","_self","_top","_parent"].includes(m);d.post({__frame_nav:!0,url:i.href,newTab:l},"*")}};addEventListener("click",t,!0),addEventListener("auxclick",t,!0);const r={},n=o=>{o.isTrusted&&(r.pointer=!0)},s=o=>{o.isTrusted&&(r.click=!0)};addEventListener("pointermove",n,{capture:!0,passive:!0}),addEventListener("click",s,{capture:!0,passive:!0}),e.then(o=>{o?.wireNav&&(o.wireNav(),removeEventListener("click",t,!0),removeEventListener("auxclick",t,!0),removeEventListener("pointermove",n,!0),removeEventListener("click",s,!0),o.wireEngagement?.(r))});let a=null;try{a=be()}catch{}V();let u=null,f=null,R=0;const v=d.on((o,p)=>{q(p)&&ue(o)&&(u=o.__frame_init,b=p,v(),clearTimeout(R),f?.())});d.post({__frame_connect:!0},"*");const S=new Promise(o=>{f=o,R=setTimeout(()=>{v(),o()},Re)}),h=document.readyState==="loading"?new Promise(o=>document.addEventListener("DOMContentLoaded",()=>o(),{once:!0})):Promise.resolve();h.then(()=>{try{a?.restore()}catch{}});const y={cb:null};d.on((o,p)=>{if(q(p)&&fe(o)){try{a?.promoted()}catch{}y.cb?.()}}),S.then(async()=>{if(!u||!b){U();return}X(u.theme);const o=b;let p=!1,_=!1;d.on((c,D)=>{if(D!==o)return;pe(c)&&X(c.__frame_theme.theme),le(c)&&ke(c.__frame_patch,o);const E=c?.__fc_mode;E&&typeof E=="object"&&!p&&N&&g.test(N)&&(p=!0,A(N).then(F=>F.install?.(o,E.on===!0)).catch(()=>{}));const x=c?.__ft_cmd;x&&typeof x=="object"&&!_&&I&&g.test(I)&&(_=!0,A(I).then(F=>F.install?.(o,x)).catch(()=>{}))});const w=Object.keys(u.capabilities??{}).filter(c=>Object.hasOwn(L,c)).map(c=>[c,L[c]]).filter(c=>typeof c[1]=="string"&&g.test(c[1])),i=await Promise.allSettled(w.map(([,c])=>A(c))),m=await e,l=b;if(m?.buildBoot||d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:"_transforms"}},l),m?.buildBoot)try{P=m.buildBoot(u,m.TRANSFORMS??{},{shellOrigin:l,mount:G},c=>d.post({__frame_cap_telemetry:c},l))}catch{d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:"_transforms"}},l),P=W(u,l)}else P=W(u,l);const k=c=>d.post({__frame_cap_telemetry:{kind:"cap-load-error",cap:c}},l),Pe=P;i.forEach((c,D)=>{const E=w[D][0];if(c.status!=="fulfilled"){k(E);return}try{c.value?.install?.(Pe)}catch{k(E)}}),U(),await h,d.post({__frame_ready:!0},b),e.then(c=>c?.installSizeReporter?.(l,y))})}else C&&(V(),Ee(C,A,U))})();</script><!-- /frame-runtime --><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><style>:root{color-scheme:light}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}</style></head><body>
+<title>Boxcode HRMS Build Plan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Sans+3:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#F4F6F7;
+    --surface:#FFFFFF;
+    --surface-2:#EAEEF0;
+    --line:#D6DDE1;
+    --line-soft:#E4EAED;
+    --ink:#12181C;
+    --ink-2:#3D4A52;
+    --ink-3:#6B7A83;
+    --accent:#C97A16;
+    --accent-soft:#F6E7CE;
+    --ok:#2E7357;
+    --warn:#B4741C;
+    --crit:#B0402F;
+    --shadow:0 1px 2px rgba(18,24,28,.06), 0 8px 24px rgba(18,24,28,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0E1316;
+      --surface:#151C20;
+      --surface-2:#1C252A;
+      --line:#2A353B;
+      --line-soft:#222C31;
+      --ink:#E8EEF1;
+      --ink-2:#AFBEC6;
+      --ink-3:#7E8F98;
+      --accent:#E8A344;
+      --accent-soft:#33270F;
+      --ok:#5FBF93;
+      --warn:#E0A94E;
+      --crit:#E07A63;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0E1316;
+    --surface:#151C20;
+    --surface-2:#1C252A;
+    --line:#2A353B;
+    --line-soft:#222C31;
+    --ink:#E8EEF1;
+    --ink-2:#AFBEC6;
+    --ink-3:#7E8F98;
+    --accent:#E8A344;
+    --accent-soft:#33270F;
+    --ok:#5FBF93;
+    --warn:#E0A94E;
+    --crit:#E07A63;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground);
+    color:var(--ink);
+    font-family:"Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+    font-size:17px; line-height:1.62;
+    margin:0;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+
+  /* ---------- masthead ---------- */
+  header.mast{
+    border-bottom:1px solid var(--line);
+    background:var(--surface);
+  }
+  .mast-inner{display:flex;flex-direction:column;gap:18px;padding:44px 24px 36px;max-width:1040px;margin:0 auto}
+  .eyebrow{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--accent);
+  }
+  h1{
+    font-family:"Archivo",ui-sans-serif,system-ui,sans-serif;
+    font-weight:800; font-size:clamp(34px,5.2vw,52px); line-height:1.04;
+    letter-spacing:-.02em; margin:0; text-wrap:balance;
+  }
+  .standfirst{max-width:64ch;color:var(--ink-2);font-size:19px;margin:0}
+  .mast-meta{
+    display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;
+  }
+  .chip{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:12px;letter-spacing:.02em;
+    border:1px solid var(--line);border-radius:2px;
+    padding:5px 9px;color:var(--ink-2);background:var(--surface-2);
+  }
+  .chip b{color:var(--ink);font-weight:600}
+
+  /* ---------- sections ---------- */
+  section{padding:52px 0;border-bottom:1px solid var(--line-soft)}
+  section:last-of-type{border-bottom:0}
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:8px}
+  .sec-num{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;
+    font-size:12px;color:var(--ink-3);letter-spacing:.1em;
+    padding-top:6px;
+  }
+  h2{
+    font-family:"Archivo",ui-sans-serif,system-ui,sans-serif;
+    font-weight:700;font-size:clamp(24px,3vw,31px);letter-spacing:-.015em;
+    margin:0;text-wrap:balance;
+  }
+  h3{
+    font-family:"Archivo",ui-sans-serif,system-ui,sans-serif;
+    font-weight:600;font-size:19px;letter-spacing:-.005em;margin:32px 0 10px;
+  }
+  p{max-width:68ch}
+  p.lead{color:var(--ink-2);max-width:68ch;margin-top:0}
+  ul{max-width:68ch;padding-left:20px}
+  li{margin:6px 0}
+  code{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.88em;
+    background:var(--surface-2);border:1px solid var(--line-soft);
+    border-radius:3px;padding:1px 5px;color:var(--ink);
+  }
+  strong{font-weight:600}
+  a{color:var(--accent);text-underline-offset:3px}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  /* ---------- callout ---------- */
+  .callout{
+    background:var(--surface);border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    border-radius:3px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow);
+  }
+  .callout .k{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:8px;
+  }
+  .callout p{margin:0}
+
+  /* ---------- pipeline ---------- */
+  .pipe{display:grid;gap:14px;margin:30px 0}
+  @media(min-width:820px){ .pipe{grid-template-columns:1.15fr 44px 1fr 44px 1fr} }
+  .stage{
+    background:var(--surface);border:1px solid var(--line);border-radius:4px;
+    padding:16px 18px;box-shadow:var(--shadow);
+  }
+  .stage h4{
+    font-family:"Archivo",sans-serif;font-size:15px;font-weight:700;margin:0 0 3px;
+  }
+  .stage .sub{
+    font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);
+    letter-spacing:.03em;margin:0 0 12px;
+  }
+  .src{
+    display:flex;gap:10px;align-items:flex-start;
+    padding:8px 0;border-top:1px dashed var(--line-soft);font-size:14.5px;color:var(--ink-2);
+  }
+  .src:first-of-type{border-top:0;padding-top:2px}
+  .src .dot{
+    width:7px;height:7px;border-radius:50%;background:var(--accent);
+    flex:none;margin-top:8px;
+  }
+  .src b{color:var(--ink);font-weight:600;display:block;font-size:14.5px}
+  .arrow{
+    display:flex;align-items:center;justify-content:center;
+    font-family:"IBM Plex Mono",monospace;color:var(--ink-3);font-size:20px;
+  }
+  @media(max-width:819px){ .arrow{transform:rotate(90deg);height:20px} }
+
+  /* ---------- tables ---------- */
+  .tw{overflow-x:auto;margin:22px 0;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:15px}
+  th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  thead th{
+    font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--ink-3);background:var(--surface-2);
+    border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  tbody tr:last-child td{border-bottom:0}
+  td code{background:transparent;border:0;padding:0;color:var(--ink-2)}
+  .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  .pill{
+    display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11px;
+    letter-spacing:.04em;padding:3px 8px;border-radius:2px;white-space:nowrap;
+    border:1px solid currentColor;
+  }
+  .p1{color:var(--crit)} .p2{color:var(--warn)} .p3{color:var(--ok)} .p4{color:var(--ink-3)}
+
+  /* ---------- module grid ---------- */
+  .mods{display:grid;gap:12px;margin:24px 0}
+  @media(min-width:700px){ .mods{grid-template-columns:repeat(2,1fr)} }
+  .mod{
+    background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:15px 17px;
+  }
+  .mod-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px}
+  .mod h4{font-family:"Archivo",sans-serif;font-size:15.5px;font-weight:700;margin:0}
+  .mod p{font-size:14.5px;color:var(--ink-2);margin:0;max-width:none}
+
+  /* ---------- schema block ---------- */
+  pre{
+    font-family:"IBM Plex Mono",monospace;font-size:13px;line-height:1.65;
+    background:var(--surface);border:1px solid var(--line);border-radius:4px;
+    padding:18px 20px;overflow-x:auto;margin:20px 0;color:var(--ink-2);
+  }
+  pre b{color:var(--accent);font-weight:600}
+  pre i{color:var(--ink-3);font-style:normal}
+
+  footer{padding:40px 0 64px;color:var(--ink-3);font-size:14px}
+  footer p{max-width:68ch}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="mast">
+  <div class="mast-inner">
+    <span class="eyebrow">Boxcode · internal platform · v1 scope</span>
+    <h1>Attendance first, everything else after</h1>
+    <p class="standfirst">A build plan for the Boxcode HR &amp; operations suite — what MyCo does, what we do differently, and the one architectural decision that makes the gate hardware question stop mattering.</p>
+    <div class="mast-meta">
+      <span class="chip"><b>Stack</b> · Next.js + FastAPI + Postgres</span>
+      <span class="chip"><b>Scale</b> · &lt;60 staff · 1 office · India</span>
+      <span class="chip"><b>Capture</b> · mobile: geofence + face match</span>
+      <span class="chip"><b>Modules</b> · 12 planned, 5 in phase 1</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <div class="sec-head"><span class="sec-num">01</span><h2>No gate hardware. The phone is the reader.</h2></div>
+  <p class="lead">Decision made: attendance is captured by a small mobile app — GPS geofence plus a face match — exactly the way staff already punch in MyCo today. No biometric reader integration, because that's disproportionate effort for what is fundamentally a check-in.</p>
+  <p>The ingest layer was built vendor-neutral anyway, so this costs us nothing. The gate adapter still sits in the repo at <code>app/adapters/zkteco_adms.py</code>, unwired. If a reader is ever bought, we import it in one line and everything downstream is untouched.</p>
+
+  <div class="callout">
+    <span class="k">The core decision that survived the pivot</span>
+    <p>Every way a person can mark attendance — phone, kiosk tablet, HR entering it manually, and one day maybe a gate reader — produces the <strong>same normalized punch event</strong>. Adapters translate; the core never knows the difference. That's why dropping the hardware was a one-line change rather than a rewrite.</p>
+  </div>
+
+  <h3>How a punch is verified</h3>
+  <p>Three checks, cheapest first, so we never pay for face recognition on a punch that was never going to count. Every attempt is stored <em>including the failures</em> — silently discarding a rejected punch is how an attendance dispute becomes unwinnable three months later.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Check</th><th>What it catches</th><th>What it costs</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1 · Device binding</strong></td><td>One phone per employee. A colleague punching from their own handset is refused.</td><td>Free — a database lookup.</td></tr>
+        <tr><td><strong>2 · Geofence</strong></td><td>Punching from home. Also rejects faked GPS, stale fixes, and readings too imprecise to mean anything.</td><td>Free — haversine, 15 lines.</td></tr>
+        <tr><td><strong>3 · Face match</strong></td><td>Confirms the selfie is the person enrolled.</td><td>AWS Rekognition, about <span class="num">$3</span>/month at your volume.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>1:1, not 1:N.</strong> Because the employee is already logged in, we only ever ask "is this them?" — never "who is this?". That's more accurate, cheaper, and doesn't get worse as headcount grows. We store an S3 key for the reference photo and nothing else: no embeddings, no image bytes in the database. Biometric data is the last thing you want sitting in a table someone might dump to a laptop.</p>
+
+  <h3>The pipeline</h3>
+  <div class="pipe">
+    <div class="stage">
+      <h4>Capture</h4>
+      <p class="sub">adapters · pluggable</p>
+      <div class="src"><span class="dot"></span><span><b>Gate device (push)</b>ZKTeco / eSSL speak ADMS — the device POSTs punches to a URL we host. No polling, no SDK.</span></div>
+      <div class="src"><span class="dot"></span><span><b>Gate device (pull)</b>Older units: a tiny on-prem agent reads TCP 4370 on a loop and forwards.</span></div>
+      <div class="src"><span class="dot"></span><span><b>Mobile app</b>Selfie + on-device face match + GPS geofence. For field and WFH staff.</span></div>
+      <div class="src"><span class="dot"></span><span><b>Kiosk / QR</b>Tablet at reception, rotating QR. Zero hardware cost.</span></div>
+      <div class="src"><span class="dot"></span><span><b>Manual</b>HR regularization, always with actor + reason + audit row.</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="stage">
+      <h4>Raw event store</h4>
+      <p class="sub">punch_events · append-only</p>
+      <div class="src"><span class="dot"></span><span><b>Never edited, never deleted.</b> Corrections are new rows, not overwrites.</span></div>
+      <div class="src"><span class="dot"></span><span><b>Idempotent.</b> Dedupe hash on <code>device_sn + device_user_id + ts</code> — a device replaying its offline buffer can't double-punch anyone.</span></div>
+      <div class="src"><span class="dot"></span><span><b>Two clocks.</b> Store device time <em>and</em> server receive time; readers drift and we need to prove which.</span></div>
+      <div class="src"><span class="dot"></span><span>Partitioned monthly. 500 staff × 4 punches × 25 days ≈ 50k rows/month — trivial now, tidy at scale.</span></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="stage">
+      <h4>Resolver</h4>
+      <p class="sub">attendance_day · recomputable</p>
+      <div class="src"><span class="dot"></span><span><b>Pure function.</b> Raw events + shift policy → one row per employee per shift-date. Re-runnable at any time.</span></div>
+      <div class="src"><span class="dot"></span><span>Produces first-in, last-out, worked minutes, break minutes, late-by, early-out, OT, and a status.</span></div>
+      <div class="src"><span class="dot"></span><span><b>Keyed by shift date, not calendar date</b> — night shifts crossing midnight are one day, not two halves.</span></div>
+      <div class="src"><span class="dot"></span><span>A late-arriving backdated event just re-triggers the resolver for that date. Nothing manual.</span></div>
+    </div>
+  </div>
+
+  <p>That resolver output is the single source of truth every other module reads: leave balances, payroll, overtime, the manager dashboard, the WhatsApp daily digest. Get it right once.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">02</span><h2>The traps in attendance that eat three weeks each</h2></div>
+  <p class="lead">These are the reasons attendance modules ship late. Worth deciding now, not in month two.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Trap</th><th>What goes wrong</th><th>How we handle it</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Phone offline</strong></td><td>No signal in the basement car park; the punch is lost or arrives an hour later.</td><td>App queues locally and retries. Ingest accepts backdated punches forever and re-runs the resolver for affected dates.</td></tr>
+        <tr><td><strong>In/out direction</strong></td><td>Two taps get read as two entries and the day resolves to nothing.</td><td>Infer by ordering within the shift window (odd = in, even = out); the app also shows the person which one they're about to do.</td></tr>
+        <tr><td><strong>Night shifts</strong></td><td>A 22:00–06:00 shift lands as two days, each showing half a day worked.</td><td>Shift-date keying, with a configurable cutover hour per shift template.</td></tr>
+        <tr><td><strong>Timezones</strong></td><td>Server in one region, office in another; DST silently shifts everyone's late-marks.</td><td>Store UTC always, plus tenant timezone. Never store naive local time.</td></tr>
+        <tr><td><strong>Regularization</strong></td><td>Employee forgot to punch out; HR edits the record; three months later nobody can explain the payroll number.</td><td>Corrections are approval-workflowed events with actor, reason, timestamp. The raw log stays untouched.</td></tr>
+        <tr><td><strong>Buddy punching</strong></td><td>Someone holds up a photo of a colleague, or punches from a friend's phone.</td><td>Face match + camera-only capture (no gallery picks) + one-phone-per-employee binding. No liveness detection in v1 — that's a known gap, and Rekognition Face Liveness is the upgrade if it ever becomes real.</td></tr>
+        <tr><td><strong>Fake GPS apps</strong></td><td>Free Android apps spoof location trivially. Your geofence becomes decoration.</td><td>Android reports when a fix was mocked — we ask, and reject. Also reject fixes older than two minutes or accurate to worse than 100m.</td></tr>
+        <tr><td><strong>Payroll coupling</strong></td><td>Attendance edits after payroll runs, and the payslip no longer matches the data.</td><td>Payroll runs snapshot attendance and lock the period. Later edits go to the next cycle as an adjustment line.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">03</span><h2>Data model — the tables that matter</h2></div>
+  <p class="lead">Multi-tenant from row one even if Boxcode is the only tenant today, because retrofitting <code>org_id</code> into forty tables is a week you never get back. Postgres row-level security enforces isolation at the database, not in application code.</p>
+  <pre><b>organizations</b>        id, name, timezone, country, settings jsonb
+<b>locations</b>            id, org_id, name, geofence <i>(lat/lng/radius)</i>, address
+<b>departments</b>          id, org_id, name, parent_id <i>(self-ref → org chart)</i>
+<b>employees</b>            id, org_id, emp_code, name, email, phone, dept_id, location_id,
+                     manager_id, designation, date_of_joining, employment_type, status
+<b>users</b>                id, org_id, employee_id, password_hash, role, last_login
+                     <i>role: super_admin | hr_admin | manager | employee</i>
+
+<i>— attendance —</i>
+<b>devices</b>              id, org_id, location_id, serial_no, vendor, mode <i>(push|pull)</i>,
+                     api_key, last_seen_at, clock_offset_seconds
+<b>device_enrollments</b>   id, device_id, employee_id, device_user_id  <i>← the mapping everyone forgets</i>
+<b>punch_events</b>         id, org_id, employee_id, device_id, source, direction,
+                     event_ts_utc, received_ts_utc, lat, lng, photo_key,
+                     raw_payload jsonb, dedupe_hash <i>UNIQUE</i>   <i>[append-only, partitioned]</i>
+<b>shift_templates</b>      id, org_id, name, start_time, end_time, break_minutes,
+                     grace_minutes, half_day_threshold, cutover_hour, working_days
+<b>shift_assignments</b>    id, employee_id, shift_template_id, effective_from, effective_to
+<b>attendance_day</b>       id, org_id, employee_id, shift_date, shift_template_id,
+                     first_in, last_out, worked_minutes, break_minutes, late_minutes,
+                     early_out_minutes, overtime_minutes, status, is_regularized,
+                     computed_at   <i>UNIQUE (employee_id, shift_date)</i>
+<b>attendance_corrections</b> id, attendance_day_id, requested_by, approved_by, reason,
+                     old_values jsonb, new_values jsonb, status, created_at
+
+<i>— leave —</i>
+<b>leave_types</b>          id, org_id, name, accrual_rule jsonb, carry_forward, encashable
+<b>leave_balances</b>       id, employee_id, leave_type_id, period, opening, accrued, used
+<b>leave_requests</b>       id, employee_id, leave_type_id, from_date, to_date, half_day,
+                     reason, status, approver_id, decided_at
+<b>holidays</b>             id, org_id, location_id, date, name, is_optional
+
+<i>— payroll & expenses —</i>
+<b>salary_structures</b>    id, employee_id, effective_from, ctc, components jsonb
+<b>payroll_runs</b>         id, org_id, period, status, attendance_snapshot jsonb, locked_at
+<b>payslips</b>             id, payroll_run_id, employee_id, earnings jsonb,
+                     deductions jsonb, net_pay, pdf_key
+<b>expense_claims</b>       id, employee_id, category, amount, currency, receipt_key,
+                     status, approver_id
+
+<i>— everything else —</i>
+<b>tasks</b> · <b>projects</b> · <b>documents</b> · <b>announcements</b> · <b>visitors</b>
+<b>leads</b> · <b>deals</b> · <b>client_visits</b> · <b>location_pings</b>
+<b>audit_log</b>            id, org_id, actor_id, entity, entity_id, action, diff jsonb, ts
+<b>notifications</b>        id, org_id, user_id, channel, template, payload, sent_at, read_at</pre>
+  <p>Two habits worth enforcing from the first commit: <strong>every mutation writes an <code>audit_log</code> row</strong>, and <strong>nothing is hard-deleted</strong> — <code>deleted_at</code> everywhere. HR software gets audited; that's the whole job.</p>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">04</span><h2>Modules — twelve planned, sequenced by what unblocks what</h2></div>
+  <p class="lead">You picked all four groups. That's fine as a destination, but the order is not arbitrary: attendance is upstream of payroll, and the employee record is upstream of everything.</p>
+
+  <h3>Phase 1 — the spine <span class="pill p1">weeks 1–5</span></h3>
+  <div class="mods">
+    <div class="mod"><div class="mod-top"><h4>Auth &amp; org setup</h4><span class="pill p1">core</span></div><p>Org, locations, departments, roles, invite flow. Boring, blocking, do it first.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Employee directory</h4><span class="pill p1">core</span></div><p>Profiles, org chart, documents, joining/exit. Every other module foreign-keys here.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Attendance</h4><span class="pill p1">core</span></div><p>Ingest → raw events → resolver → daily records. Live gate feed, regularization, exception queue.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Shifts &amp; rosters</h4><span class="pill p1">core</span></div><p>Templates, assignments, week-offs, holiday calendar. Attendance is meaningless without it.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Leave management</h4><span class="pill p2">near</span></div><p>Types, accrual, balances, approval chains. Consumes attendance, feeds payroll.</p></div>
+  </div>
+
+  <h3>Phase 2 — money and paperwork <span class="pill p2">weeks 6–10</span></h3>
+  <div class="mods">
+    <div class="mod"><div class="mod-top"><h4>Payroll</h4><span class="pill p2">high effort</span></div><p>Salary structures, attendance-driven runs, payslip PDFs, period locking. The compliance rules depend on which country — see open questions.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Expenses &amp; reimbursements</h4><span class="pill p3">low effort</span></div><p>Claims, receipt upload, multi-level approval, payout batching.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Documents</h4><span class="pill p3">low effort</span></div><p>Offer letters, ID proofs, policy acknowledgements, expiry reminders.</p></div>
+  </div>
+
+  <h3>Phase 3 — work &amp; sales <span class="pill p3">weeks 11–16</span></h3>
+  <div class="mods">
+    <div class="mod"><div class="mod-top"><h4>Tasks &amp; projects</h4><span class="pill p3">medium</span></div><p>Assignments, daily activity reports, time-against-task.</p></div>
+    <div class="mod"><div class="mod-top"><h4>CRM — leads &amp; pipeline</h4><span class="pill p2">medium</span></div><p>Lead capture, stages, activity log, quotations. Effectively a second product; scope it tightly.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Field tracking</h4><span class="pill p2">medium</span></div><p>Background GPS pings, route playback, client visit check-in with geo-stamp, distance for travel claims.</p></div>
+    <div class="mod"><div class="mod-top"><h4>Engagement &amp; comms</h4><span class="pill p4">light</span></div><p>Announcements, timeline, birthdays, visitor log, WhatsApp/email daily digest.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">05</span><h2>Stack &amp; infrastructure</h2></div>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Layer</th><th>Choice</th><th>Why this one</th></tr></thead>
+      <tbody>
+        <tr><td>Web app</td><td><code>Next.js 15</code> App Router, TypeScript, Tailwind, shadcn/ui</td><td>Server components for the heavy tables; you already build this way.</td></tr>
+        <tr><td>Data grid &amp; charts</td><td><code>TanStack Table</code> + <code>Recharts</code></td><td>Attendance is fundamentally a big filterable grid. Don't hand-roll it.</td></tr>
+        <tr><td>API</td><td><code>FastAPI</code>, Pydantic v2, SQLAlchemy 2.0, Alembic</td><td>Typed contracts, auto OpenAPI → generate the TS client, no drift.</td></tr>
+        <tr><td>Background jobs</td><td><code>Celery</code> or <code>ARQ</code> + Redis</td><td>Resolver runs, payroll runs, digests, device health checks.</td></tr>
+        <tr><td>Database</td><td><code>Postgres 16</code>, RLS per org, monthly partitions on punch_events</td><td>One engine for relational, JSONB, and time-series-ish punch data.</td></tr>
+        <tr><td>Files</td><td><code>S3</code> + presigned URLs</td><td>Punch selfies, receipts, payslips, ID documents.</td></tr>
+        <tr><td>Realtime</td><td>SSE for the live gate feed</td><td>Simpler than WebSockets and enough for a one-way stream.</td></tr>
+        <tr><td>Mobile</td><td><code>React Native</code> (Expo)</td><td>The only way anyone punches. Also leave, expenses, payslips.</td></tr>
+        <tr><td>Face verification</td><td>AWS <code>Rekognition CompareFaces</code></td><td>1:1 against one enrolled photo. ~$3/month. No model to train, no GPU to run.</td></tr>
+        <tr><td>Hosting</td><td>One small EC2 — Postgres + API + nginx</td><td>60 people generate ~2,600 punches a month. Splitting tiers would be operational work for no benefit.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout">
+    <span class="k">Two things the server must get right</span>
+    <p><strong>Postgres stays bound to localhost.</strong> A database listening on a public IP is how small companies get ransomed; the security group should allow 22 and 443 only. <strong>And the mobile app needs real TLS</strong> — iOS refuses plain HTTP outright, so a domain and a certbot certificate are prerequisites, not polish. The provisioning script in <code>infra/ec2-setup.sh</code> does both.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">06</span><h2>Reference products — what to steal from where</h2></div>
+  <p class="lead">You want a better UI than MyCo. The two open-source ones matter most: you can read their actual schema and workflow logic instead of guessing from marketing pages.</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>Product</th><th>Look at it for</th><th>Access</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Frappe HR</strong></td><td>The most complete open-source HR data model in existence — attendance, shift types, leave accrual rules, payroll salary structures. Read the doctypes before designing yours.</td><td><span class="pill p3">open source</span></td></tr>
+        <tr><td><strong>Horilla</strong></td><td>Django-based, modern, has biometric device integration docs specifically for ZKTeco-class hardware.</td><td><span class="pill p3">open source</span></td></tr>
+        <tr><td><strong>Keka</strong></td><td>The UI benchmark for Indian HRMS. Their attendance dashboard and payroll run flow are the ones to beat.</td><td><span class="pill p4">demo</span></td></tr>
+        <tr><td><strong>Darwinbox</strong></td><td>Enterprise depth — approval chains, org hierarchy handling, mobile-first employee experience.</td><td><span class="pill p4">demo</span></td></tr>
+        <tr><td><strong>Rippling</strong></td><td>Best-in-class product design generally. Study how they make a dense admin app feel calm.</td><td><span class="pill p4">demo</span></td></tr>
+        <tr><td><strong>Deel / Gusto</strong></td><td>Payroll run UX. Gusto in particular made a genuinely scary workflow feel safe.</td><td><span class="pill p4">demo</span></td></tr>
+        <tr><td><strong>Zoho People / greytHR</strong></td><td>Feature checklists for the Indian market — statutory reports, PF/ESI handling, what buyers expect to exist.</td><td><span class="pill p4">demo</span></td></tr>
+        <tr><td><strong>Linear / Height</strong></td><td>Not HR at all — but the interaction model (keyboard-first, instant filters, no page reloads) is what makes MyCo feel dated by comparison.</td><td><span class="pill p4">demo</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-num">07</span><h2>Open questions before I scaffold</h2></div>
+  <p class="lead">Settled so far: mobile capture, Rekognition, one EC2, India, under 60 staff, Postgres. What's left:</p>
+  <ul>
+    <li><strong>The office coordinates and radius.</strong> Exact lat/lng of the building and how far out a punch may be. 150m is the placeholder; a large campus or a multi-floor building with poor GPS may need more.</li>
+    <li><strong>Server details.</strong> Host, SSH user, key, and whether there's a domain pointing at it. iOS won't talk to a plain-HTTP API, so the domain isn't optional.</li>
+    <li><strong>Who enrolls the face photos?</strong> Someone has to take 60 reference photos. Cleanest is HR uploading them from the admin panel; self-enrolment on first login is easier but means nobody verified the photo is really that person.</li>
+    <li><strong>Internal tool or product?</strong> If Boxcode might sell this later, the multi-tenancy and white-labelling decisions get made now rather than retrofitted.</li>
+    <li><strong>Payroll specifics.</strong> India means PF, ESI, professional tax, TDS and Form 16. That's phase 2, but the salary structure model should be built knowing it.</li>
+  </ul>
+</section>
+
+<footer>
+  <p><strong>Built so far</strong>, in <code>Documents/boxcode-hrms</code>: the attendance schema, the shift resolver (pure function, 22 passing assertions covering night shifts, grace periods, missing punch-outs and weekly offs), the geofence checks (9 passing assertions covering spoofed GPS, stale fixes and useless accuracy), the Rekognition wrapper with a stub mode for offline development, the mobile punch endpoint, and the EC2 provisioning script.</p>
+  <p><strong>Next</strong>: database migrations against the EC2 Postgres, auth, the Expo app's punch screen, and the admin attendance dashboard.</p>
+</footer>
+
+</div>
+
+</body></html>

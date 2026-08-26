@@ -1,7 +1,11 @@
 # PRD - Boxcode Attendance v1
 
-Full version: https://claude.ai/code/artifact/1a1a4060-e3d2-44b7-b641-3c2aeac33ce1
+Full version:
+- Local copy: `docs/artifacts/attendance-prd.html` / `.txt`
+- Live artifact: https://claude.ai/code/artifact/1a1a4060-e3d2-44b7-b641-3c2aeac33ce1
+
 Architecture: docs/PLAN.md
+Face check explained: `docs/artifacts/where-the-face-check-happens.html`
 
 ## Goal
 Replace MyCo attendance for ~60 staff, one office, India. Attendance ONLY in v1.
