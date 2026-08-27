@@ -1,14 +1,19 @@
-import Link from 'next/link';
-
+import { NotificationBell } from '@/components/NotificationBell';
+import { Sidebar } from '@/components/Sidebar';
 import { SignOut } from '@/components/SignOut';
 import { currentIdentity } from '@/lib/session';
 
 /**
- * The signed-in shell: header, role-aware nav, centred column.
+ * The signed-in shell: sidebar nav plus a topbar.
  *
- * This used to live in the root layout, which meant every route got it -
- * including the login screen, which needs the full viewport. It moved here so
- * the chrome follows the session rather than the app.
+ * `bx-light` scopes the light theme to this subtree only - see the comment in
+ * globals.css. The sign-in page stays the dark design already shipped; only
+ * what's behind a session goes light-with-shadows.
+ *
+ * `me` can only be null here in the gap between the proxy's auth check and a
+ * revoked session - proxy.ts already redirects anyone without one before a
+ * (dashboard) page is reached, so this renders the full chrome unconditionally
+ * rather than branching on a case that shouldn't reach render.
  */
 export default async function DashboardLayout({
   children,
@@ -18,35 +23,22 @@ export default async function DashboardLayout({
   const me = await currentIdentity();
 
   return (
-    <>
-      <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex max-w-[1180px] items-center justify-between px-6 py-4">
-          <div className="flex items-baseline gap-6">
-            <Link href="/" className="flex items-baseline gap-3">
-              <span className="font-display text-lg font-extrabold tracking-tight">Boxcode</span>
-              <span className="text-xs uppercase tracking-[0.16em] text-accent">Attendance</span>
-            </Link>
-            {/*
-              Nav follows the role. Enrolment is HR and above, so a manager
-              is not shown a link that would only 403 - but note the link is
-              the courtesy, not the control: the API refuses regardless.
-            */}
-            {me && (
-              <nav className="flex items-baseline gap-4 text-sm">
-                <Link href="/" className="text-ink-2 hover:text-ink">Board</Link>
-                <Link href="/leave" className="text-ink-2 hover:text-ink">Leave</Link>
-                {me.is_admin && (
-                  <Link href="/enrolment" className="text-ink-2 hover:text-ink">Enrolment</Link>
-                )}
-              </nav>
-            )}
+    <div className="bx-light flex min-h-screen">
+      <Sidebar isAdmin={me?.is_admin ?? false} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between border-b border-line bg-surface px-6 py-3">
+          <div>
+            <span className="font-display text-sm font-semibold tracking-tight">Attendance</span>
           </div>
-          {me
-            ? <SignOut email={me.email} role={me.role} />
-            : <span className="text-xs text-ink-3">IIMA Ventures, Ahmedabad</span>}
-        </div>
-      </header>
-      <main className="mx-auto max-w-[1180px] px-6 py-8">{children}</main>
-    </>
+          <div className="flex items-center gap-4">
+            <NotificationBell />
+            {me && <SignOut email={me.email} role={me.role} />}
+          </div>
+        </header>
+        <main className="flex-1 px-6 py-8">
+          <div className="mx-auto max-w-[1180px]">{children}</div>
+        </main>
+      </div>
+    </div>
   );
 }

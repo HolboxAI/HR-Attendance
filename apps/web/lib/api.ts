@@ -18,7 +18,11 @@ export const getMonth = (code: string, year: number, month: number) =>
     `/api/v1/admin/month?employee_code=${code}&year=${year}&month=${month}`,
   );
 
-export const getEnrolments = () => apiGet<Enrolments>('/api/v1/admin/enrolments');
+// apiFetch, not apiGet: this page must be able to tell "you are signed out"
+// and "this page is not yours" apart from "the server is down". Collapsing
+// them into null is how someone gets told the API is broken when they simply
+// need to sign in again.
+export const getEnrolments = () => apiFetch<Enrolments>('/api/v1/admin/enrolments');
 
 /** Your own month - not an admin route, so every employee can reach it. */
 export const getMyMonth = (year: number, month: number) =>
@@ -42,3 +46,8 @@ export const getHolidays = (year: number) =>
 export const getMyBalance = () => apiGet<BalanceRow[]>('/api/v1/leave/balance');
 export const getMyRequests = () => apiGet<LeaveRequestRow[]>('/api/v1/leave/my-requests');
 export const getMyLeaveTypes = () => apiGet<LeaveTypeRow[]>('/api/v1/leave/types');
+
+import type { CorrectionRow } from '@/lib/format';
+
+export const getCorrectionsPending = () =>
+  apiFetch<CorrectionRow[]>('/api/v1/admin/corrections/pending');

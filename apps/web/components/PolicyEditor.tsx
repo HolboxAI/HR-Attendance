@@ -91,7 +91,7 @@ export function PolicyEditor({
           </p>
         </div>
 
-        <div className="grid gap-4 rounded border border-line bg-surface p-5 sm:grid-cols-3">
+        <div className="grid gap-4 bx-card p-5 sm:grid-cols-3">
           <label className="space-y-1">
             <span className="block text-[11px] uppercase tracking-widest text-ink-3">
               Leave year
@@ -143,7 +143,7 @@ export function PolicyEditor({
         <div className="flex items-center gap-3">
           <button
             type="button" onClick={savePolicy} disabled={busy === 'policy'}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-[#1A1206] disabled:opacity-50"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {busy === 'policy' ? 'Saving…' : 'Save company rules'}
           </button>
@@ -166,7 +166,7 @@ export function PolicyEditor({
 
         <div className="space-y-4">
           {rows.map((t) => (
-            <div key={t.id} className="rounded border border-line bg-surface p-5">
+            <div key={t.id} className="bx-card p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h3 className="font-display text-lg font-bold">
                   {t.name} <span className="text-sm text-ink-3">{t.code}</span>
@@ -266,7 +266,7 @@ export function PolicyEditor({
                   )}
                   <button
                     type="button" onClick={() => saveType(t)} disabled={busy === t.id}
-                    className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-[#1A1206] disabled:opacity-50"
+                    className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
                   >
                     {busy === t.id ? 'Saving…' : `Save ${t.code}`}
                   </button>

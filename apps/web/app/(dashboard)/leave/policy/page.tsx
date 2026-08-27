@@ -74,7 +74,7 @@ export default async function LeavePolicyPage() {
         {!audit || audit.length === 0 ? (
           <p className="text-sm text-ink-3">Nothing changed yet.</p>
         ) : (
-          <div className="overflow-x-auto rounded border border-line bg-surface">
+          <div className="overflow-x-auto bx-card">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-widest text-ink-3">

@@ -3,15 +3,18 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { dateRange, proxy, type LeaveRequestRow } from '@/lib/format';
+import { proxy, type CorrectionRow } from '@/lib/format';
+
+const DIRECTION_LABEL: Record<string, string> = { in: 'Check-in', out: 'Check-out' };
 
 /**
- * The approver's queue.
+ * HR's queue for correction requests.
  *
- * Your own request never appears here — the API refuses to let anyone decide
- * their own leave, admin included, so listing it would only invite the attempt.
+ * Approving here creates the punch and recomputes the day inside the service
+ * call - not in this component and not in the route - so there is no path
+ * where a correction is approved and the board still disagrees with it.
  */
-export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
+export function PendingCorrections({ rows }: { rows: CorrectionRow[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
@@ -21,7 +24,7 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
   async function decide(id: string, approve: boolean) {
     setBusy(id);
     setError(null);
-    const res = await fetch(proxy(`/api/v1/admin/leave/${id}/decide`), {
+    const res = await fetch(proxy(`/api/v1/admin/corrections/${id}/decide`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approve, note: approve ? null : note || null }),
@@ -54,13 +57,18 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
             <span className="font-medium">{r.employee_name}</span>
             <span className="text-xs text-ink-3">{r.employee_code}</span>
             <span className="text-ink-2">
-              {r.leave_type_code} · {dateRange(r.from_date, r.to_date)}
+              {DIRECTION_LABEL[r.direction] ?? r.direction} ·{' '}
+              {new Date(`${r.shift_date}T00:00:00Z`).toLocaleDateString('en-IN', {
+                weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+              })}
             </span>
             <span className="tnum text-ink-3">
-              {r.days} day{r.days === 1 ? '' : 's'}
+              claiming {new Date(r.claimed_at).toLocaleTimeString('en-IN', {
+                hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
+              })}
             </span>
           </div>
-          {r.reason && <p className="mt-1 text-sm text-ink-2">{r.reason}</p>}
+          <p className="mt-1 text-sm text-ink-2">{r.reason}</p>
 
           {rejecting === r.id && (
             <div className="mt-3">

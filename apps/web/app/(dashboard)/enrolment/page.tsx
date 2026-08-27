@@ -4,19 +4,39 @@ import { getEnrolments } from '@/lib/api';
 export const dynamic = 'force-dynamic';
 
 export default async function EnrolmentPage() {
-  const data = await getEnrolments();
+  const result = await getEnrolments();
 
-  if (!data) {
+  if (!result.ok) {
+    // Three different problems that used to render as one wrong sentence.
     return (
-      <div className="rounded border border-st-absent/50 bg-surface p-6">
-        <h2 className="text-lg font-semibold">The API isn&apos;t running</h2>
-        <pre className="mt-3 overflow-x-auto rounded bg-surface-2 p-3 text-xs text-ink-2">
+      <div className="bx-card border-st-absent/50 p-6">
+        <h2 className="text-lg font-semibold">
+          {result.reason === 'unreachable' && "The API isn't running"}
+          {result.reason === 'unauthorised' && 'Your session has expired'}
+          {result.reason === 'forbidden' && 'Face enrolment is for HR'}
+          {!['unreachable', 'unauthorised', 'forbidden'].includes(result.reason) &&
+            'Could not load enrolment'}
+        </h2>
+        {result.reason === 'unreachable' && (
+          <pre className="mt-3 overflow-x-auto rounded bg-surface-2 p-3 text-xs text-ink-2">
 cd apps/api &amp;&amp; .venv/bin/uvicorn app.main:app --reload</pre>
+        )}
+        {result.reason === 'unauthorised' && (
+          <p className="mt-2 text-sm text-ink-2">
+            <a href="/login" className="text-accent underline">Sign in again</a> to continue.
+          </p>
+        )}
+        {result.reason === 'forbidden' && (
+          <p className="mt-2 max-w-prose text-sm text-ink-2">
+            Reference photos are taken by HR, not by the employee — someone
+            authorised has to vouch that the face belongs to the person.
+          </p>
+        )}
       </div>
     );
   }
 
-  const { summary, rows } = data;
+  const { summary, rows } = result.data;
   const complete = summary.missing === 0;
 
   return (
@@ -31,13 +51,13 @@ cd apps/api &amp;&amp; .venv/bin/uvicorn app.main:app --reload</pre>
       </div>
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded border border-line bg-surface p-4">
+        <div className="bx-card p-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-3">Enrolled</div>
           <div className="tnum mt-1 font-display text-2xl font-bold">
             {summary.enrolled}<span className="text-ink-3">/{summary.headcount}</span>
           </div>
         </div>
-        <div className="rounded border border-line bg-surface p-4">
+        <div className="bx-card p-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-3">Still missing</div>
           <div className={`tnum mt-1 font-display text-2xl font-bold ${
             complete ? 'text-st-present' : 'text-st-late'}`}
@@ -45,7 +65,7 @@ cd apps/api &amp;&amp; .venv/bin/uvicorn app.main:app --reload</pre>
             {summary.missing}
           </div>
         </div>
-        <div className="rounded border border-line bg-surface p-4">
+        <div className="bx-card p-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-3">Matching by</div>
           <div className="mt-1 font-display text-2xl font-bold">
             {summary.face_provider === 'rekognition' ? 'Rekognition' : 'Stub'}

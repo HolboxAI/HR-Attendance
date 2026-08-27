@@ -62,7 +62,7 @@ export function EnrolmentTable({ rows }: { rows: EnrolmentRow[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded border border-line bg-surface">
+    <div className="overflow-x-auto bx-card">
       <table className="w-full min-w-[720px] text-left text-sm">
         <thead>
           <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-widest text-ink-3">
@@ -139,7 +139,7 @@ export function EnrolmentTable({ rows }: { rows: EnrolmentRow[] }) {
                       type="button"
                       disabled={working}
                       onClick={() => inputs.current[r.employee_code]?.click()}
-                      className="rounded bg-accent px-3 py-1.5 text-xs font-semibold text-[#1A1206] disabled:opacity-50"
+                      className="rounded bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
                     >
                       {working && busy?.what === 'upload'
                         ? 'Uploading…'

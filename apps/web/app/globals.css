@@ -88,6 +88,52 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Dashboard light theme.
+
+   Scoped to a class rather than redefined on :root, because :root is shared
+   with the sign-in page, which stays the dark animated design already shipped
+   and approved. Every dashboard component already reads colour through these
+   custom properties (bg-surface, text-ink, border-line...), so overriding the
+   properties on one wrapping element re-skins everything under it without
+   touching a single component file.
+
+   Status and accent colours are deepened from the dark-theme values, not
+   reused as-is: a hue tuned to sit on near-black graphite is usually too pale
+   for 4.5:1 text contrast on white. These are chosen to hold that contrast
+   AND to read as one deliberate family rather than five different app's
+   colours - which is the actual complaint about copying a reference
+   dashboard's palette wholesale rather than reusing its layout.
+--------------------------------------------------------------------------- */
+.bx-light {
+  --ground: #EEF0F3;
+  --surface: #FFFFFF;
+  --surface-2: #F7F8FA;
+  --line: #E4E7EC;
+  --ink: #101828;
+  --ink-2: #475467;
+  --ink-3: #98A2B3;
+  --accent: #B45309;
+  --st-present: #15803D;
+  --st-late: #C2410C;
+  --st-half: #1D4ED8;
+  --st-absent: #B91C1C;
+  --st-pending: #6B7280;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+/* One card shape, used everywhere a dashboard panel needs to read as a
+   raised surface rather than a flat outlined box - the thing a plain border
+   cannot do on a light background the way it could on dark graphite. */
+.bx-card {
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 1px 3px 0 rgba(16, 24, 40, 0.06);
+}
+
+
+/* ---------------------------------------------------------------------------
    Auth page animation.
 
    These are CSS keyframes rather than JavaScript-driven ones on purpose, and

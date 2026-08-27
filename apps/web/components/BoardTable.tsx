@@ -1,11 +1,12 @@
 import Link from 'next/link';
 
 import { hhmm, hours, type BoardRow } from '@/lib/format';
+import { Avatar } from './Avatar';
 import { Status } from './Status';
 
 export function BoardTable({ rows }: { rows: BoardRow[] }) {
   return (
-    <div className="overflow-x-auto rounded border border-line bg-surface">
+    <div className="overflow-x-auto bx-card">
       <table className="w-full min-w-[860px] text-left text-sm">
         <thead>
           <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-widest text-ink-3">
@@ -24,13 +25,18 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
           {rows.map((r) => (
             <tr key={r.employee_code} className="border-b border-line/60 last:border-0 hover:bg-surface-2/60">
               <td className="px-4 py-3">
-                <Link href={`/month/${r.employee_code}`} className="group flex items-center gap-2">
-                  {/* Presence is a live fact and deserves its own mark, separate
-                      from the day's computed status. */}
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${r.currently_in ? 'bg-accent' : 'bg-line'}`}
-                    aria-hidden
-                  />
+                <Link href={`/month/${r.employee_code}`} className="group flex items-center gap-3">
+                  <span className="relative shrink-0">
+                    <Avatar name={r.full_name} />
+                    {/* Presence is a live fact and deserves its own mark,
+                        separate from the day's computed status. */}
+                    <span
+                      className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
+                        r.currently_in ? 'bg-accent' : 'bg-line'
+                      }`}
+                      aria-hidden
+                    />
+                  </span>
                   <span>
                     <span className="block font-medium text-ink group-hover:text-accent">
                       {r.full_name}

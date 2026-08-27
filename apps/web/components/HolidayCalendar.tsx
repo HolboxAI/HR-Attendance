@@ -68,7 +68,7 @@ export function HolidayCalendar({
       )}
 
       {canEdit && (
-        <form onSubmit={add} className="flex flex-wrap items-end gap-3 rounded border border-line bg-surface p-4">
+        <form onSubmit={add} className="flex flex-wrap items-end gap-3 bx-card p-4">
           <label className="space-y-1">
             <span className="block text-[11px] uppercase tracking-widest text-ink-3">Date</span>
             <input
@@ -93,7 +93,7 @@ export function HolidayCalendar({
           </label>
           <button
             type="submit" disabled={busy}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-[#1A1206] disabled:opacity-50"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {busy ? 'Saving…' : 'Add holiday'}
           </button>
@@ -105,7 +105,7 @@ export function HolidayCalendar({
         </form>
       )}
 
-      <div className="overflow-x-auto rounded border border-line bg-surface">
+      <div className="overflow-x-auto bx-card">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead>
             <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-widest text-ink-3">

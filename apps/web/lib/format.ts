@@ -186,3 +186,16 @@ export function plainDate(iso: string): string {
     weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
   });
 }
+
+export type CorrectionRow = {
+  id: string;
+  shift_date: string;
+  direction: string;
+  claimed_at: string;
+  reason: string;
+  status: string;
+  decided_note: string | null;
+  decided_at: string | null;
+  employee_code: string | null;
+  employee_name: string | null;
+};

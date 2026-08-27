@@ -68,7 +68,7 @@ export function MyLeave({
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {balances.filter((b) => b.is_paid).map((b) => (
-            <div key={b.leave_type_id} className="rounded border border-line bg-surface p-4">
+            <div key={b.leave_type_id} className="bx-card p-4">
               <div className="text-[11px] uppercase tracking-widest text-ink-3">
                 {b.name}
               </div>
@@ -89,7 +89,7 @@ export function MyLeave({
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink-3">
           Apply for leave
         </h2>
-        <form onSubmit={apply} className="flex flex-wrap items-end gap-3 rounded border border-line bg-surface p-4">
+        <form onSubmit={apply} className="flex flex-wrap items-end gap-3 bx-card p-4">
           <label className="space-y-1">
             <span className="block text-[11px] uppercase tracking-widest text-ink-3">Type</span>
             <select value={code} onChange={(e) => setCode(e.target.value)} className={field}>
@@ -121,7 +121,7 @@ export function MyLeave({
                    className={`${field} w-full`} />
           </label>
           <button type="submit" disabled={busy}
-                  className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-[#1A1206] disabled:opacity-50">
+                  className="rounded bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
             {busy ? 'Sending…' : 'Apply'}
           </button>
 
@@ -143,11 +143,11 @@ export function MyLeave({
           Your requests
         </h2>
         {requests.length === 0 ? (
-          <p className="rounded border border-line bg-surface p-5 text-sm text-ink-2">
+          <p className="bx-card p-5 text-sm text-ink-2">
             You haven&apos;t applied for anything yet.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded border border-line bg-surface">
+          <div className="overflow-x-auto bx-card">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead>
                 <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-widest text-ink-3">

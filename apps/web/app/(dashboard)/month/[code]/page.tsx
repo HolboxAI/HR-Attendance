@@ -28,7 +28,7 @@ export default async function MonthPage({
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/" className="text-sm text-accent">← Back to today</Link>
+        <Link href="/board" className="text-sm text-accent">← Back to today</Link>
         <h1
           className="mt-2 font-display text-3xl font-bold tracking-tight"
         >
@@ -44,14 +44,14 @@ export default async function MonthPage({
           { label: 'Absent', value: String(data.totals.absent ?? 0), tone: 'text-st-absent' },
           { label: 'Hours worked', value: hours(data.totals.worked_minutes ?? 0), tone: 'text-accent' },
         ].map((t) => (
-          <div key={t.label} className="rounded border border-line bg-surface px-4 py-3">
+          <div key={t.label} className="bx-card px-4 py-3">
             <div className="text-[11px] uppercase tracking-widest text-ink-3">{t.label}</div>
             <div className={`tnum mt-1 text-2xl font-bold ${t.tone}`}>{t.value}</div>
           </div>
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded border border-line bg-surface">
+      <div className="overflow-x-auto bx-card">
         <table className="w-full min-w-[680px] text-left text-sm">
           <thead>
             <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-widest text-ink-3">

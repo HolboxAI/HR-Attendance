@@ -41,19 +41,19 @@ export function MyMonth({ data, name }: { data: Data; name: string | null }) {
       </div>
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded border border-line bg-surface p-4">
+        <div className="bx-card p-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-3">Hours worked</div>
           <div className="tnum mt-1 font-display text-2xl font-bold">
             {hours(data.totals.worked_minutes)}
           </div>
         </div>
-        <div className="rounded border border-line bg-surface p-4">
+        <div className="bx-card p-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-3">Days present</div>
           <div className="tnum mt-1 font-display text-2xl font-bold">
             {data.totals.present ?? 0}
           </div>
         </div>
-        <div className="rounded border border-line bg-surface p-4">
+        <div className="bx-card p-4">
           <div className="text-[11px] uppercase tracking-widest text-ink-3">Late by</div>
           <div className="tnum mt-1 font-display text-2xl font-bold">
             {hours(data.totals.late_minutes)}
@@ -65,7 +65,7 @@ export function MyMonth({ data, name }: { data: Data; name: string | null }) {
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink-3">
           Day by day
         </h2>
-        <div className="overflow-x-auto rounded border border-line bg-surface">
+        <div className="overflow-x-auto bx-card">
           <table className="w-full min-w-[520px] text-left text-sm">
             <thead>
               <tr className="border-b border-line bg-surface-2 text-[11px] uppercase tracking-widest text-ink-3">
