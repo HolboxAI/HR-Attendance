@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
-    admin, admin_corrections, admin_leave, auth, corrections, enrolment,
+    admin, admin_corrections,
+    admin_employees, admin_leave, auth, corrections, enrolment,
     health, ingest, leave, mobile, notifications,
 )
 from app.core.config import settings
@@ -31,5 +32,6 @@ app.include_router(leave.router, prefix=settings.api_prefix)
 app.include_router(admin_leave.router, prefix=settings.api_prefix)
 app.include_router(corrections.router, prefix=settings.api_prefix)
 app.include_router(admin_corrections.router, prefix=settings.api_prefix)
+app.include_router(admin_employees.router, prefix=settings.api_prefix)
 app.include_router(notifications.router, prefix=settings.api_prefix)
 
