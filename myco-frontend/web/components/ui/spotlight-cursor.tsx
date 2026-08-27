@@ -64,9 +64,22 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
     };
 
     const draw = () => {
+      const now = performance.now();
+
+      // Idle means IDLE. This loop used to clear and repaint a full-screen
+      // canvas at display refresh even with the pointer motionless - one of
+      // the two always-on loops that made scrolling feel heavy. When the
+      // glow has fully faded and nothing moves, skip the frame entirely.
+      const settled =
+        currentOpacity <= 0.005 &&
+        (now - lastMoveTime >= 450 || targetX === -1000);
+      if (settled) {
+        animationFrameId = requestAnimationFrame(draw);
+        return;
+      }
+
       ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
-      const now = performance.now();
       const isMoving = now - lastMoveTime < 450; // Active only when moving within 450ms
       const targetOpacity = isMoving && targetX !== -1000 ? 1 : 0;
 

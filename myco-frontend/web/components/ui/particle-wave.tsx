@@ -87,7 +87,9 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
       antialias: true,
       alpha: true,
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Ambient decoration does not get retina pixels: at DPR 2 this canvas
+    // pushes 4x the fragments for a blur-softened background nobody reads.
+    renderer.setPixelRatio(1);
     renderer.setSize(winWidth, winHeight);
 
     // Set initial background color based on theme
@@ -145,22 +147,39 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
     };
   };
 
-  const animate = () => {
+  // The wave yields to the product. It renders at half rate, and it PAUSES
+  // outright while the user scrolls and while the tab is hidden - a
+  // full-viewport WebGL loop under blur(…) glass was the single biggest
+  // reason scrolling felt heavy, because every animated frame forced the
+  // glass panels above it to re-composite.
+  const FRAME_MS = 1000 / 30;
+  const lastFrame = { t: 0 };
+  const paused = { scroll: 0, hidden: false };
+
+  const animate = (now?: number) => {
     if (!sceneRef.current) return;
+    sceneRef.current.animationId = requestAnimationFrame(animate);
+
+    const t = now ?? performance.now();
+    if (paused.hidden || t < paused.scroll) return;
+    if (t - lastFrame.t < FRAME_MS) return;
+    lastFrame.t = t;
 
     const { scene, camera, renderer, particleMaterial } = sceneRef.current;
 
-    particleMaterial.uniforms.uTime.value += 0.035;
+    particleMaterial.uniforms.uTime.value += 0.07; // same speed at half rate
 
-    // Update particle color and background based on current theme
     const currentTheme = getCurrentTheme();
     particleMaterial.uniforms.uColor.value = getParticleColor(currentTheme);
 
     camera.lookAt(scene.position);
     renderer.render(scene, camera);
-
-    sceneRef.current.animationId = requestAnimationFrame(animate);
   };
+
+  // Capture-phase, so the inner <main>'s scroll (which does not bubble)
+  // still reaches us. 250ms of quiet after the last scroll event resumes.
+  const onAnyScroll = () => { paused.scroll = performance.now() + 250; };
+  const onVisibility = () => { paused.hidden = document.hidden; };
 
   const handleResize = () => {
     if (!sceneRef.current || typeof window === 'undefined') return;
@@ -189,6 +208,8 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
     const handleMouseMoveEvent = (e: MouseEvent) => handleMouseMove(e);
 
     window.addEventListener('resize', handleResizeEvent);
+    window.addEventListener('scroll', onAnyScroll, { capture: true, passive: true });
+    document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('mousemove', handleMouseMoveEvent);
 
     return () => {
@@ -196,6 +217,8 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
         cancelAnimationFrame(sceneRef.current.animationId);
       }
       window.removeEventListener('resize', handleResizeEvent);
+      window.removeEventListener('scroll', onAnyScroll, { capture: true } as EventListenerOptions);
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('mousemove', handleMouseMoveEvent);
 
       // Cleanup Three.js resources

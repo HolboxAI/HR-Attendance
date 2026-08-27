@@ -65,26 +65,24 @@ export function Shell({
     });
   };
 
+  // One decision per frame, and the header is an OVERLAY (see below), so
+  // hiding it cannot change the scroll container's height. The old version
+  // collapsed the header in-flow: hiding grew <main> by ~90px, short pages
+  // (Corrections, Team balances) suddenly fit, scrollTop snapped back, the
+  // handler read that as "scrolling up", showed the header again - and the
+  // navbar flickered in a loop it was generating itself.
+  const scrollRaf = useRef(0);
   const handleScroll = (e: React.UIEvent<HTMLElement>) => {
-    const currentScrollY = e.currentTarget.scrollTop;
-
-    // At the top: always show navbar
-    if (currentScrollY < 15) {
-      setHeaderVisible(true);
-      lastScrollY.current = currentScrollY;
-      return;
-    }
-
-    // Scrolling down: smoothly hide upper navbar
-    if (currentScrollY > lastScrollY.current + 8 && currentScrollY > 35) {
-      setHeaderVisible(false);
-    }
-    // Scrolling up: smoothly reveal upper navbar
-    else if (currentScrollY < lastScrollY.current - 8) {
-      setHeaderVisible(true);
-    }
-
-    lastScrollY.current = currentScrollY;
+    const el = e.currentTarget;
+    if (scrollRaf.current) return;
+    scrollRaf.current = requestAnimationFrame(() => {
+      scrollRaf.current = 0;
+      const y = el.scrollTop;
+      if (y < 15) setHeaderVisible(true);
+      else if (y > lastScrollY.current + 8 && y > 35) setHeaderVisible(false);
+      else if (y < lastScrollY.current - 8) setHeaderVisible(true);
+      lastScrollY.current = y;
+    });
   };
 
   async function signOut() {
@@ -141,13 +139,13 @@ export function Shell({
       )}
 
       {/* Right side content column: auto-hiding topbar on scroll, independent scrolling main */}
-      <div className="flex h-screen max-h-screen min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="relative flex h-screen max-h-screen min-w-0 flex-1 flex-col overflow-hidden">
         {/* Auto-Hiding Glass Topbar */}
         <header
-          className={`glass-panel shrink-0 mx-3.5 rounded-2xl flex items-center justify-between px-4 py-2.5 sm:px-6 z-20 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          className={`glass-panel absolute left-3.5 right-3.5 top-3.5 rounded-2xl flex items-center justify-between px-4 py-2.5 sm:px-6 z-20 transition-[transform,opacity] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform ${
             headerVisible
-              ? 'translate-y-0 opacity-100 max-h-20 mt-3.5 mb-2'
-              : '-translate-y-16 opacity-0 max-h-0 py-0 my-0 border-transparent overflow-hidden pointer-events-none'
+              ? 'translate-y-0 opacity-100'
+              : '-translate-y-[130%] opacity-0 pointer-events-none'
           }`}
         >
           <div className="flex items-center gap-3">
@@ -237,7 +235,7 @@ export function Shell({
         {/* Scrollable Main Area (Tracks scroll to smoothly hide upper navbar) */}
         <main
           onScroll={handleScroll}
-          className="flex-1 min-h-0 overflow-y-auto bx-scroll px-4 py-4 sm:px-6 sm:py-6 relative z-10 bg-transparent"
+          className="flex-1 min-h-0 overflow-y-auto bx-scroll px-4 pb-4 pt-[84px] sm:px-6 sm:pb-6 sm:pt-[88px] relative z-10 bg-transparent"
         >
           <div className="mx-auto max-w-[1360px] space-y-6 pb-12">{children}</div>
         </main>
