@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  CalendarClock, CalendarRange, ClipboardList, LayoutGrid, ScanFace,
+  CalendarClock, CalendarRange, Camera, ClipboardList, LayoutGrid, ScanFace,
 } from 'lucide-react';
 
 type NavItem = { href: string; label: string; icon: typeof LayoutGrid; adminOnly?: boolean };
@@ -25,6 +25,11 @@ const SECTIONS: Section[] = [
     title: 'Attendance',
     items: [
       { href: '/board', label: 'Board', icon: CalendarRange },
+      // adminOnly matches the roadmap item this implements ("an admin can
+      // mark their own attendance without reaching for their phone") - and
+      // web punching for EMPLOYEES is an explicit PRD non-goal, so they are
+      // not shown a door the API would let them through.
+      { href: '/checkin', label: 'Check in', icon: Camera, adminOnly: true },
       { href: '/corrections', label: 'Corrections', icon: ClipboardList, adminOnly: true },
     ],
   },

@@ -119,6 +119,7 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
               value={enrolments.ok ? enrolments.data.summary.missing : '—'} sub="missing a photo" tone="neutral"
             />
             <DashboardTile label="Leave policy" icon={CalendarDays} href="/leave/policy" sub="quotas, accrual, holidays" tone="neutral" />
+            <DashboardTile label="Check in" icon={UserCheck} href="/checkin" sub="camera + face match, from this browser" tone="accent" />
             <DashboardTile
               label={`Export ${monthLabel}`} icon={Download}
               href={proxy(`/api/v1/admin/export/month.csv?year=${year}&month=${new Date().getUTCMonth() + 1}`)}
@@ -135,7 +136,6 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <DashboardTile label="Missing punch-out nudge" icon={LayoutGrid} soon />
           <DashboardTile label="Push notifications" icon={LayoutGrid} soon />
-          <DashboardTile label="Admin check-in" icon={LayoutGrid} soon />
           <DashboardTile label="Payroll" icon={Wallet} soon />
         </div>
       </section>

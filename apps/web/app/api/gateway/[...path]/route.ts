@@ -31,6 +31,12 @@ async function forward(request: Request, path: string[]) {
   // Multipart bodies carry a generated boundary, so the header has to be
   // passed through verbatim rather than rebuilt.
   if (contentType) headers['Content-Type'] = contentType;
+  // The one non-auth header in the API contract: the handset identity that
+  // /mobile/punch checks on every punch. Forwarded verbatim for the check-in
+  // page; the gateway never invents one, so a browser with no binding is
+  // still refused by the API exactly like an unregistered phone.
+  const installId = request.headers.get('x-install-id');
+  if (installId) headers['X-Install-Id'] = installId;
 
   const init: RequestInit = { method: request.method, headers };
   if (request.method !== 'GET' && request.method !== 'DELETE') {
