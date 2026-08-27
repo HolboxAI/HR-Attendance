@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.core.clock import org_today
 from app.models.employee import Employee, User
 from app.models.enums import AccrualRule, LeaveStatus
 from app.models.leave import (
@@ -415,7 +416,7 @@ def submit(
     enforce_backdate: bool = True, today: date | None = None,
 ) -> LeaveOutcome:
     """Apply for leave. Every refusal explains itself with numbers."""
-    today = today or datetime.now(timezone.utc).date()
+    today = today or org_today()
     pol = policy(db, employee.org_id)
 
     if end < start:

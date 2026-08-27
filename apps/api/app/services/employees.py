@@ -30,6 +30,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.clock import org_today
 from app.core.security import hash_password
 from app.models.attendance import ShiftAssignment, ShiftTemplate
 from app.models.employee import Employee, User
@@ -129,7 +130,7 @@ def create(
             return EmployeeOutcome(False, reason=f"No shift called '{shift}'")
 
     location = db.scalar(select(Location).where(Location.org_id == org_id))
-    joined = date_of_joining or date.today()
+    joined = date_of_joining or org_today()
 
     employee = Employee(
         id=uuid.uuid4(), org_id=org_id, emp_code=emp_code,
@@ -263,7 +264,7 @@ def deactivate(
         return EmployeeOutcome(False, reason=f"{employee.emp_code} is already inactive")
 
     employee.is_active = False
-    employee.date_of_exit = exit_date or date.today()
+    employee.date_of_exit = exit_date or org_today()
 
     user = db.scalar(select(User).where(User.employee_id == employee.id))
     if user is not None:

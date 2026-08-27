@@ -27,6 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.clock import org_today
 from app.core.config import settings
 from app.models.employee import Employee, User
 from app.models.face import FaceEnrollment
@@ -64,7 +65,7 @@ def purge_punch_selfies(
     referenced it.
     """
     days = older_than_days if older_than_days is not None else settings.punch_selfie_retention_days
-    today = today or datetime.now(timezone.utc).date()
+    today = today or org_today()
     cutoff = today - timedelta(days=days)
 
     sweep = Sweep(cutoff=cutoff, dry_run=dry_run)
@@ -98,7 +99,7 @@ def purge_reference_photos(
     one: superseded photos are still their face. The rows stay - who enrolled
     whom and when is exactly the history worth keeping - but the images go.
     """
-    today = today or datetime.now(timezone.utc).date()
+    today = today or org_today()
     grace = timedelta(days=settings.reference_photo_days_after_exit)
     sweep = Sweep(dry_run=dry_run)
 

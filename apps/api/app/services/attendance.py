@@ -39,14 +39,20 @@ def dedupe_hash(
     device_user_id: str | None,
     employee_code: str | None,
     ts: datetime,
+    direction: str = "",
 ) -> str:
-    """Same identity, same second, same row.
+    """Same identity, same second, SAME DIRECTION, same row.
 
     A phone retrying a queued punch, or a reader replaying its buffer, must not
-    create duplicates. The UNIQUE index enforces it; this just produces the key.
+    create duplicates - and a retry always carries the same direction, so
+    including it changes nothing for that case. What it fixes: an IN and an
+    OUT landing in the same second used to collapse into one row, the second
+    punch silently vanishing while the API answered "accepted". The UNIQUE
+    index enforces the rule; this just produces the key.
     """
     stamp = ts.astimezone(timezone.utc).isoformat(timespec="seconds")
-    key = f"{device_serial or ''}|{device_user_id or ''}|{employee_code or ''}|{stamp}"
+    key = (f"{device_serial or ''}|{device_user_id or ''}|"
+           f"{employee_code or ''}|{stamp}|{direction}")
     return hashlib.sha256(key.encode()).hexdigest()
 
 
@@ -133,6 +139,7 @@ def record_punch(
         device_serial, device_user_id,
         employee.emp_code if employee else None,
         event_ts,
+        direction.value if direction else "",
     )
 
     existing = db.scalar(select(PunchEvent).where(PunchEvent.dedupe_hash == digest))
@@ -258,4 +265,17 @@ def next_direction(db: Session, employee: Employee, shift_date: date) -> PunchDi
         .order_by(PunchEvent.event_ts_utc)
     ).all()
     today = [r for r in rows if shift_date_for(_aware(r.event_ts_utc), policy) == shift_date]
+    if not today:
+        return PunchDirection.IN
+    # The docstring's rule, implemented as written. This used to count parity
+    # instead, which agrees with the last punch only while the sequence
+    # alternates perfectly - one explicit double-IN and the board reported
+    # "not in" about someone who had just checked in. The resolver already
+    # trusts an explicit direction over alternation; the live flag must too.
+    last = today[-1]
+    if last.direction == PunchDirection.IN:
+        return PunchDirection.OUT
+    if last.direction == PunchDirection.OUT:
+        return PunchDirection.IN
+    # Direction-less gate punches: alternation is all there is.
     return PunchDirection.OUT if len(today) % 2 == 1 else PunchDirection.IN

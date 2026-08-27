@@ -131,7 +131,11 @@ exists so page JavaScript can never read a token.
   self-corrects. Ritesh (BX007) is on nights specifically to exercise this.
 - **Nobody is absent until their shift has ended.** Otherwise the whole company
   reads absent at 10am and future dates are a wall of red.
-- **Format times in the ORG's timezone**, never the server's.
+- **Format times in the ORG's timezone**, never the server's. And DATES:
+  `datetime.now(timezone.utc).date()` is "today in London", which between
+  00:00 and 05:30 IST is yesterday - the board defaulted to it, so a 02:43
+  punch was accepted into today while the board silently showed yesterday.
+  Use `app/core/clock.py:org_today()`.
 - **SQLite journal mode** is PERSIST with a MEMORY fallback: the default deletes
   a file per commit, which some mounted filesystems refuse, surfacing as an
   unhelpful "disk I/O error".

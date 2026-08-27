@@ -76,14 +76,24 @@ def show_board(client, headers) -> None:
     print(f"  in the office {s['currently_in']}/{s['headcount']}"
           f" · present {s['present']} · late {s['late']}"
           f" · absent {s['absent']} · exceptions {s['exceptions']}")
+    def hhmm(iso: str | None) -> str:
+        # The API returns UTC instants; slicing the string prints London wall
+        # time and quietly disagrees with the dashboard. Same trap as the
+        # board date - render in the org timezone or not at all.
+        if not iso:
+            return "  -  "
+        dt = datetime.fromisoformat(iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+        return dt.astimezone(IST).strftime("%H:%M")
+
     for row in board["rows"]:
         if row["punch_count"] == 0:
             continue
         mark = "IN " if row["currently_in"] else "   "
-        first = (row["first_in"] or "")[11:16] or "  -  "
-        last = (row["last_out"] or "")[11:16] or "  -  "
+        note = f'  {row["exception_note"]}' if row.get("exception_note") else ""
         print(f"  {mark} {row['employee_code']}  {row['full_name']:<16}"
-              f" {row['status']:<11} {first} -> {last}")
+              f" {row['status']:<11} {hhmm(row['first_in'])} -> {hhmm(row['last_out'])}{note}")
 
 
 def main() -> None:
@@ -134,6 +144,11 @@ def main() -> None:
           f"{'OUT' if args.out else 'IN'} {where}")
     print(f"{DIM}  handset {install_id} · {lat}, {lng} "
           f"· {datetime.now(IST):%H:%M:%S}{OFF}")
+    # Without this line, "the terminal passed but the camera page refused me"
+    # is the first question everyone asks. The camera page reads the real GPS;
+    # this script CLAIMS coordinates, which is its job as a demo tool.
+    print(f"{DIM}  location is SIMULATED - this script claims the coordinates "
+          f"above. The check-in page uses your real GPS.{OFF}")
 
     r = client.post(
         "/api/v1/mobile/punch",
@@ -142,7 +157,11 @@ def main() -> None:
         data={
             "lat": str(lat), "lng": str(lng), "accuracy_m": "12",
             "is_mocked": "true" if args.fake_gps else "false",
-            "direction": "out" if args.out else "in",
+            # Only sent when forced. Left to itself the server alternates from
+            # the last accepted punch, exactly like the phone - and forcing
+            # "in" here is how the demo once produced a double-IN whose owner
+            # the board then reported as absent from the building.
+            **({"direction": "out"} if args.out else {}),
         },
     )
 
@@ -165,11 +184,21 @@ def main() -> None:
         print(f"{DIM}            Stored anyway, with the reason. Nothing is "
               f"dropped silently.{OFF}")
 
+    # Which day did that punch belong to? Before 05:30 IST the answer is not
+    # obvious, and "accepted in the terminal, invisible on the board" was a
+    # real afternoon lost to exactly this.
+    from app.services.attendance import policy_for
+    from app.services.resolver import shift_date_for
+    policy, _ = policy_for(db, emp, datetime.now(IST).date())
+    filed = shift_date_for(datetime.now(ZoneInfo("UTC")), policy)
+    print(f"{DIM}            filed to the {filed} attendance day{OFF}")
+
     admin = db.scalar(select(User).where(User.role.in_(("super_admin", "hr_admin"))))
     apair = create_token_pair(user_id=admin.id, role=admin.role.value,
                               employee_id=admin.employee_id)
     show_board(client, {"Authorization": f"Bearer {apair.access_token}"})
-    print(f"\n{DIM}Same rows on the dashboard: http://localhost:3000/board{OFF}\n")
+    print(f"\n{DIM}Same rows on the dashboard: "
+          f"http://localhost:3000/board?on={filed}{OFF}\n")
     db.close()
 
 

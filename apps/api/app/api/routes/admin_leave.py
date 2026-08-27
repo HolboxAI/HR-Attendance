@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_role
 from app.api.routes.admin import visible_employees
 from app.api.routes.leave import RequestOut, to_request_out
+from app.core.clock import org_today
 from app.db.session import get_db
 from app.models.employee import Employee, User
 from app.models.enums import AccrualRule, LeaveStatus, UserRole
@@ -151,7 +152,7 @@ def decide(
 @router.get("/leave/balances", response_model=list[BalanceRow])
 def balances(db: Session = Depends(get_db), user: User = approver):
     pol = leave_service.policy(db, user.org_id)
-    period = leave_service.period_for(pol, datetime.now(timezone.utc).date())
+    period = leave_service.period_for(pol, org_today())
     types = db.scalars(
         select(LeaveType).where(
             LeaveType.org_id == user.org_id, LeaveType.is_active.is_(True),

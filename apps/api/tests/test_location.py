@@ -118,8 +118,24 @@ KARAN = token(karan, "karan-phone")
 KARAN_PUNCH = KARAN | {"X-Install-Id": "karan-phone"}
 
 
+_punch_seq = [0]
+
+
 def punch(lat, lng, bssid=None):
-    data = {"lat": str(lat), "lng": str(lng), "accuracy_m": "12", "direction": "in"}
+    # Each punch gets its own event second via captured_at, the offline-queue
+    # timestamp the server accepts within bounds. Without this the whole
+    # suite runs inside one wall-clock second, and same identity + same
+    # second + same direction is the DEDUPE KEY - so every punch after the
+    # first replays the first's stored verdict, which is correct behaviour
+    # and useless for testing fifteen different geofence inputs. (This suite
+    # used to pass anyway because the replay path rebuilt its answer from the
+    # request instead of the stored row. That bug is fixed; this is the test
+    # catching up.)
+    from datetime import datetime, timedelta, timezone as _tz
+    _punch_seq[0] += 1
+    captured = datetime.now(_tz.utc) - timedelta(seconds=30 * _punch_seq[0])
+    data = {"lat": str(lat), "lng": str(lng), "accuracy_m": "12",
+            "direction": "in", "captured_at": captured.isoformat()}
     if bssid:
         data["wifi_bssid"] = bssid
     r = client.post("/api/v1/mobile/punch", headers=KARAN_PUNCH,

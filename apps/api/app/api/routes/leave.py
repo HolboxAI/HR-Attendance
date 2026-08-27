@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_employee, get_current_user
+from app.core.clock import org_today
 from app.db.session import get_db
 from app.models.employee import Employee, User
 from app.models.enums import LeaveStatus
@@ -114,7 +115,7 @@ def my_balance(
     db: Session = Depends(get_db), emp: Employee = Depends(get_current_employee),
 ):
     pol = leave_service.policy(db, emp.org_id)
-    period = leave_service.period_for(pol, datetime.now(timezone.utc).date())
+    period = leave_service.period_for(pol, org_today())
     out = []
     for t in _types(db, emp.org_id):
         bal = leave_service.balance(db, emp, t, period)

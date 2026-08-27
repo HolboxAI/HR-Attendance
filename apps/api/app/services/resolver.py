@@ -224,6 +224,17 @@ def resolve_day(
         day.status = "not_marked"
     else:
         day.status = "absent"
+        if day.punch_count > 0:
+            # They showed up and it still did not count. That sentence must
+            # finish itself: an unexplained "absent" beside a visible check-in
+            # reads as the system losing a punch, and the first place anyone
+            # looks is the pipeline rather than the threshold.
+            worked_h, worked_m = divmod(day.worked_minutes, 60)
+            need_h, need_m = divmod(policy.half_day_after_minutes, 60)
+            day.exception_note = (
+                f"Punched, but worked {worked_h}h{worked_m:02d} - "
+                f"a half day needs at least {need_h}h{need_m:02d}"
+            )
 
     return day
 

@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_employee, install_id_header
+from app.core.clock import org_today
 from app.core.config import settings
 from app.core.office import OFFICE
 from app.db.session import get_db
@@ -76,7 +77,7 @@ def me(
     db: Session = Depends(get_db),
     emp: Employee = Depends(get_current_employee),
 ) -> TodayResponse:
-    policy, _ = policy_for(db, emp, datetime.now(timezone.utc).date())
+    policy, _ = policy_for(db, emp, org_today())
     today = shift_date_for(datetime.now(timezone.utc), policy)
     day = recompute_day(db, emp, today)
     db.commit()
@@ -227,7 +228,7 @@ async def punch(
                 if not face.matched:
                     reason = face.reason or "Face check failed"
 
-    record_punch(
+    event, created = record_punch(
         db, org_id=emp.org_id, employee=emp, event_ts=event_ts,
         source=PunchSource.MOBILE_APP, direction=direction,
         lat=lat, lng=lng, photo_key=key,
@@ -242,6 +243,29 @@ async def punch(
              "queued_seconds": round(queued_seconds),
              "queue_note": queue_note},
     )
+
+    if not created:
+        # A replay of a punch we already hold. Nothing changed, so nothing is
+        # recomputed - and the answer comes from the STORED event, not from
+        # this request's inputs. The old path rebuilt the message from the
+        # request and once said "Checked out" for a punch it had just thrown
+        # away as a duplicate.
+        db.commit()
+        stored_local = event.event_ts_utc
+        if stored_local.tzinfo is None:
+            stored_local = stored_local.replace(tzinfo=timezone.utc)
+        stored_local = stored_local.astimezone(ZoneInfo(str(OFFICE["timezone"])))
+        return PunchResponse(
+            accepted=event.rejection_reason is None,
+            direction=event.direction,
+            punched_at=event.event_ts_utc,
+            distance_m=float(event.distance_m) if event.distance_m is not None else None,
+            face_similarity=float(event.face_similarity) if event.face_similarity is not None else None,
+            message=(event.rejection_reason
+                     or ("Already recorded - "
+                         + ("checked in" if event.direction == PunchDirection.IN else "checked out")
+                         + f" at {stored_local:%I:%M %p}".replace(" 0", " "))),
+        )
 
     day = recompute_day(db, emp, shift_date)
     db.commit()

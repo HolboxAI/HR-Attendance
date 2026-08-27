@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from app.core.clock import org_today
 from app.api.deps import RANK, require_role
 from app.db.session import get_db
 from app.models.attendance import PunchEvent
@@ -120,7 +121,10 @@ def board(
     db: Session = Depends(get_db),
     user: User = Depends(require_role(UserRole.MANAGER)),
 ) -> BoardResponse:
-    day = on or datetime.now(timezone.utc).date()
+    # Org-timezone today, NOT the UTC date: between 00:00 and 05:30 IST
+    # those differ, and the board was defaulting to yesterday while punches
+    # filed to today. See app/core/clock.py.
+    day = on or org_today()
     rows: list[BoardRow] = []
     counts = {"present": 0, "late": 0, "absent": 0, "on_leave": 0,
               "weekly_off": 0, "exceptions": 0, "currently_in": 0}

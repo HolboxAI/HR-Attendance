@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.correction import CorrectionRequest
+from app.core.clock import org_today
 from app.models.employee import Employee, User
 from app.models.enums import CorrectionStatus, PunchDirection, PunchSource
 from app.services import notifications
@@ -63,7 +64,7 @@ def submit(
     db: Session, *, employee: Employee, shift_date: date, direction: PunchDirection,
     claimed_at: datetime, reason: str, today: date | None = None,
 ) -> CorrectionOutcome:
-    today = today or datetime.now(timezone.utc).date()
+    today = today or org_today()
 
     if not reason.strip():
         return CorrectionOutcome(False, reason="A correction needs a reason")
