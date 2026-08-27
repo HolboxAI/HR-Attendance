@@ -54,6 +54,47 @@ translate; the core is vendor-neutral.
 - Rejected punches are STORED with their reason and excluded from hours. Never
   silently drop one — that is how attendance disputes become unwinnable.
 
+## Where things live
+
+    apps/api/               FastAPI. The product. Everything below is a client.
+      app/api/routes/       HTTP only - parse, authorise, delegate, respond
+      app/services/         the logic worth testing (resolver, leave, export...)
+      app/models/           SQLAlchemy tables
+      app/adapters/         vendor translators (zkteco parked here)
+      scripts/              seed, init_db, seed_users, seed_leave, demo_day
+      tests/                plain python, no pytest - run them directly
+    apps/web/               Next.js dashboard. A CONSUMER of the API.
+    apps/mobile/            Expo app. Also a consumer.
+    docs/                   PLAN, PRD, DECISIONS, briefs, recovered artifacts
+    data/                   SQLite + uploads. Gitignored. Never commit it.
+
+## The API is the product; the UIs are clients
+
+35 endpoints, all under `/api/v1`, all documented at `/docs` and machine-
+readable at `/openapi.json`. Nothing in the API imports anything from
+`apps/web` or `apps/mobile`, and it never will. That is what makes either
+front end replaceable without touching the backend.
+
+    auth        login, refresh, logout, me, set-password
+    mobile      me, month, punch                    (the employee's own data)
+    leave       types, balance, request, my-requests, cancel   (also theirs)
+    admin       board, month, rejected, correct, devices, export/month.csv
+    admin/leave pending, decide, balances, accrue, policy, types, audit
+    admin       holidays, enrolments (+ photo)
+    ingest      the parked gate-reader path, closed unless DEVICE_INGEST_KEY
+
+Two rules a client must follow, and they are the only two:
+
+1. **Send `Authorization: Bearer <access token>`.** Identity comes from the
+   token; no endpoint takes an employee identifier in the body.
+2. **Send `X-Install-Id` on `/mobile/punch`** - the handset binding is checked
+   on every punch.
+
+If you replace `apps/web`, generate a typed client from `/openapi.json` rather
+than hand-writing fetch calls, and read `apps/web/lib/session.ts` first: the
+httpOnly-cookie + gateway pattern there is the only non-obvious part, and it
+exists so page JavaScript can never read a token.
+
 ## Decisions already made (see docs/DECISIONS.md before revisiting)
 
 1. **No gate hardware.** Mobile app only: GPS geofence + face match. The ZKTeco
@@ -230,7 +271,12 @@ Not built yet, in priority order:
 - Office WiFi BSSID, for `WIFI_REQUIRED`.
 - Whether the team is mostly iPhone (reading BSSID on iOS needs an Apple
   entitlement; the network *name* alone is not enough — anyone can name a
-  hotspot "Boxcode-Office").
+  hotspot "Boxcode-Office"). Apple review takes weeks, so this one is on the
+  critical path even though it looks like a detail.
+- **For a real deployment** (the PRD's own blocking list): an EC2 host with SSH
+  user and key, a domain pointing at it (iOS refuses plain HTTP, so TLS is a
+  prerequisite not polish), the employee list as CSV, and the real shift
+  timings and week-offs. None of these block local development.
 
 ## Conventions
 
