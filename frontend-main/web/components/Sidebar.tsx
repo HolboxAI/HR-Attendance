@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Bell, CalendarClock, CalendarRange, Camera, ClipboardList, History,
-  LayoutGrid, ScanFace, Scale, Smartphone, SlidersHorizontal, Users,
+  Bell, CalendarClock, CalendarRange, ClipboardList, History, LayoutGrid,
+  ScanFace, Scale, Smartphone, SlidersHorizontal, Users,
 } from 'lucide-react';
 
 import type { Capabilities } from '@/lib/capabilities';
@@ -39,7 +39,6 @@ const SECTIONS: Section[] = [
     title: 'Attendance',
     items: [
       { href: '/board', label: 'Board', icon: CalendarRange, show: (c) => c.canViewBoard },
-      { href: '/checkin', label: 'Check in', icon: Camera, show: (c) => c.canWebCheckin },
       { href: '/corrections', label: 'Corrections', icon: ClipboardList, show: all },
     ],
   },

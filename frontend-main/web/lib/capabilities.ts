@@ -37,11 +37,6 @@ export type Capabilities = {
   canManageEnrolment: boolean;
   /** hr_admin+ · device bindings, unbind a lost phone */
   canManageDevices: boolean;
-  /** manager+ · check in with the browser camera. Employees punch from the
-   *  phone - web punching for them is an explicit PRD non-goal, so the page
-   *  is not shown a level below the roadmap item that asked for it ("an
-   *  admin can mark their own attendance without reaching for their phone"). */
-  canWebCheckin: boolean;
   /** super_admin · reserved: no endpoint requires this today (PRD §1.2) */
   isSuperAdmin: boolean;
 };
@@ -55,7 +50,6 @@ export function capabilitiesFor(role: string | undefined): Capabilities {
     canManageLeavePolicy: r >= RANK.hr_admin,
     canManageEnrolment: r >= RANK.hr_admin,
     canManageDevices: r >= RANK.hr_admin,
-    canWebCheckin: r >= RANK.manager,
     isSuperAdmin: r >= RANK.super_admin,
   };
 }
