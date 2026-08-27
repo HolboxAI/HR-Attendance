@@ -104,7 +104,11 @@ for t in sorted(set(mig_cols) & set(model_cols)):
     if mig_cols[t] != model_cols[t]:
         print(f"     {t}: migrated-only {sorted(mig_cols[t] - model_cols[t])}, "
               f"models-only {sorted(model_cols[t] - mig_cols[t])}")
-check("all 21 tables present", len(tables(from_models)), 21)
+# Derived from the models, not hardcoded - a count in a test is a thing
+# that goes stale the first time someone adds a table.
+from app.db.base import Base
+import app.models  # noqa: F401
+check("every model table is present", len(tables(from_models)), len(Base.metadata.tables))
 
 
 print("2. Migrations are reversible")

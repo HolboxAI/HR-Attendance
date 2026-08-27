@@ -26,6 +26,7 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_offline_punch.py  # the offline queue
     apps/api/.venv/bin/python apps/api/tests/test_retention.py   # photo deletion
     apps/api/.venv/bin/python apps/api/tests/test_migrations.py  # schema upgrades
+    apps/api/.venv/bin/python apps/api/tests/test_corrections.py # PRD section 11
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd apps/web && npx tsc --noEmit
     cd apps/mobile && npx tsc --noEmit
@@ -181,6 +182,37 @@ exists so page JavaScript can never read a token.
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
 and leave. Mobile app runs in Expo Go. All tests pass.
 
+**Corrections are a request, decided by someone else.** `POST /corrections`
+(employee submits against a flagged day) -> `GET /admin/corrections/pending`
+(hr_admin) -> `POST /admin/corrections/{id}/decide`. Approving creates the
+punch and recomputes the day INSIDE the service call, so a route cannot forget.
+
+- **The claimed time becomes the punch time, but only on approval.** Server
+  time is authoritative for punches nobody vouched for; a correction is
+  precisely a claim a second human has approved, which is the same trade
+  `POST /admin/correct` has always made. Stamping it "now" files the punch
+  against today and leaves the broken day broken - that bug was caught by
+  `test_corrections.py` group 6.
+- **`POST /admin/correct` still exists** for HR acting directly on a phone
+  call or a bulk backfill. What it cannot be is the only path, because there
+  HR is both asker and decider.
+- **hr_admin approves**, not managers - decided because nobody has a
+  `manager_id` set, so a manager tier would mean nobody could approve
+  anything. Swapping the dependency in `admin_corrections.py` adds it back.
+
+**Notifications exist as RECORDS, and do not push.** `notify()` always writes
+a row; `GET /notifications` and `/notifications/unread-count` serve it to any
+signed-in user. Actually ringing a phone is behind `PushSender`, and
+`PUSH_PROVIDER=null` (the default) deliberately does not - there is no device
+population worth the API calls yet.
+
+This is the same split as `FACE_PROVIDER=stub`: the plumbing is real, the
+delivery is not. It matters because the PRD says notifications must never be
+the sole source of truth, so the queryable row is the part that has to exist
+unconditionally. Wire `ExpoPushSender` in when there are real devices; nothing
+else changes. Fired today by correction submitted / approved / rejected, and
+leave approved / rejected.
+
 **Photo retention is enforced, not just promised.** `scripts/purge_photos.py`
 deletes punch selfies past `PUNCH_SELFIE_RETENTION_DAYS` (90) and reference
 photos belonging to people who left more than
@@ -276,13 +308,12 @@ the dashboard. They are fixed by state notification, not arithmetic. A wrong
 holiday marks the whole company off on the wrong day.
 
 Not built yet, in priority order:
-1. **Correction workflow** - the PRD (section 11) wants employee requests ->
-   manager approves -> day recomputes, with a `correction_requests` table and
-   Draft/Pending/Approved/Rejected/Cancelled states. What exists is
-   `POST /admin/correct`: HR-only, direct, no UI.
-2. **Notifications** - the expanded PRD lists six (correction submitted /
-   approved / rejected, missing punch-out, late threshold, invite). None are
-   built; `MobileDevice.push_token` is a column nothing ever writes to.
+1. **The remaining notification triggers.** Correction and leave decisions
+   fire; the missing-punch-out nudge, the late/absent threshold and the
+   employee invite do not. The first needs a scheduled job, which is the
+   piece of infrastructure this project still has none of.
+2. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.
+   Needs an Expo access token and a device population.
 3. **Carry-forward at year end** - the flags and the cap are stored and
    editable, but nothing yet runs the roll-over that moves EL into next year's
    `opening` and lapses CL/SL.

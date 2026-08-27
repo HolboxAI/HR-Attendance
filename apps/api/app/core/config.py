@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     face_provider: str = "stub"
     aws_region: str = "ap-south-1"
 
+    # "null" writes the notification row - queryable, never lost - and does
+    # not ring anyone's phone. There is no real device population to push to
+    # yet; wire "expo" in once there is one worth the API calls.
+    push_provider: str = "null"
+
     # Whether an employee with no reference photo can still punch.
     #
     # False during rollout: HR cannot enrol seven people before the app ships,

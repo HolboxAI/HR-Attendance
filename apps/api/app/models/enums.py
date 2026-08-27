@@ -57,3 +57,15 @@ class AccrualRule(str, Enum):
     MONTHLY = "monthly"       # 1/12th of the quota each month
     ANNUAL = "annual"         # the whole quota on day one of the leave year
     NONE = "none"             # no balance at all, e.g. Loss of Pay
+
+
+class CorrectionStatus(str, Enum):
+    """Same shape as LeaveStatus, and for the same reason: withdrawing a
+    request is a status change, never a delete. Who asked for what, and who
+    decided it, has to survive the asking.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"

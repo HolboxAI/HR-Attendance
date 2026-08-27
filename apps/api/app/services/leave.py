@@ -24,6 +24,7 @@ from app.models.leave import (
     AccrualRun, AuditLog, Holiday, LeaveBalance, LeavePolicy, LeaveRequest, LeaveType,
 )
 from app.models.org import Organization
+from app.services import notifications
 
 HALF = 0.5
 
@@ -459,6 +460,19 @@ def decide(
 
     if approve:
         _recompute_range(db, employee, request.from_date, request.to_date)
+
+    # An employee with no login yet has nowhere to receive this.
+    owner = db.scalar(select(User).where(User.employee_id == employee.id))
+    if owner is not None:
+        leave_type_name = db.get(LeaveType, request.leave_type_id).name
+        notifications.notify(
+            db, org_id=request.org_id, user=owner,
+            category=f"leave.{request.status.value}",
+            title="Leave approved" if approve else "Leave rejected",
+            body=note or (f"{leave_type_name}, {request.from_date} to {request.to_date}"),
+            data={"leave_request_id": str(request.id)},
+        )
+
     return LeaveOutcome(True, request=request)
 
 
