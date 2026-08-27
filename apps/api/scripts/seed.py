@@ -32,8 +32,25 @@ STAFF = [
     ("BX005", "Dhruv",        "Design",      "Product Designer",  "General"),
     ("BX006", "Ashley",       "Operations",  "Operations",        "General"),
     ("BX007", "Ritesh",       "Engineering", "Engineer",          "Night"),
-    ("BX008", "Himesh",       "Operations",  "HR Admin",          "General"),
+    ("BX008", "Himesh",       "Operations",  "HR Manager",        "General"),
+    ("BX009", "Susmit",       "Engineering", "Engineer",          "General"),
+    ("BX010", "Sheel",        "Engineering", "Engineer",          "General"),
+    ("BX011", "Karan",        "Engineering", "Engineer",          "General"),
 ]
+
+# Who reports to whom, as employee codes. Himesh (BX008) is the HR manager and
+# every individual contributor reports to him. The admins - Krish, Dhruv and
+# Ashley - deliberately have no manager: they are super_admin and already see
+# everyone, so a reporting line would add nothing but a row to maintain.
+MANAGERS = {
+    "BX002": "BX008",   # Nikunj -> Himesh
+    "BX003": "BX008",   # Shivam -> Himesh
+    "BX004": "BX008",   # Daksh  -> Himesh
+    "BX007": "BX008",   # Ritesh -> Himesh
+    "BX009": "BX008",   # Susmit -> Himesh
+    "BX010": "BX008",   # Sheel  -> Himesh
+    "BX011": "BX008",   # Karan  -> Himesh
+}
 
 # Real email overrides for people whose address does not follow the
 # firstname@boxcode.ai pattern - Himesh is on the Holbox side, not Boxcode's
@@ -130,12 +147,31 @@ def main() -> None:
                                    effective_from=date(2026, 1, 1)))
             created += 1
 
+        db.flush()
+
+        # Apply reporting lines every run, not only on creation. Most of these
+        # employees already exist, so a create-if-missing loop would never
+        # touch them and the org chart would stay silently empty.
+        by_code = {
+            e.emp_code: e
+            for e in db.scalars(select(Employee).where(Employee.org_id == org.id)).all()
+        }
+        linked = 0
+        for code, manager_code in MANAGERS.items():
+            emp, mgr = by_code.get(code), by_code.get(manager_code)
+            if emp is None or mgr is None:
+                continue
+            if emp.manager_id != mgr.id:
+                emp.manager_id = mgr.id
+                linked += 1
+
         db.commit()
         total = len(db.scalars(select(Employee).where(Employee.org_id == org.id)).all())
         print(f"org       : {org.name} ({org.timezone})")
         print(f"office    : {loc.name}  {loc.lat}, {loc.lng}  r={loc.geofence_radius_m}m")
         print(f"shifts    : General 9:30-18:30, Night 22:00-06:00")
         print(f"employees : {total} total, {created} created this run")
+        print(f"reporting : {len(MANAGERS)} report to Himesh, {linked} updated this run")
     finally:
         db.close()
 

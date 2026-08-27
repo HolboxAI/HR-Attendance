@@ -27,10 +27,16 @@ from app.models.employee import Employee, User       # noqa: E402
 from app.models.enums import UserRole                # noqa: E402
 
 # emp_code -> role. Anyone not listed is a plain employee.
+# Roles STACK - see RANK in app/api/deps.py. super_admin includes everything
+# hr_admin can do, which includes everything a manager can do. So nobody needs
+# two roles, and giving someone `manager` when they are already `hr_admin`
+# would DEMOTE them.
 ROLES = {
     "BX001": UserRole.SUPER_ADMIN,     # Krish
-    "BX006": UserRole.HR_ADMIN,        # Ashley, Operations
-    "BX008": UserRole.HR_ADMIN,        # Himesh, Holbox - same access as Ashley
+    "BX005": UserRole.SUPER_ADMIN,     # Dhruv
+    "BX006": UserRole.SUPER_ADMIN,     # Ashley
+    "BX008": UserRole.HR_ADMIN,        # Himesh, HR manager - approves leave
+                                       # and corrections for everyone below
 }
 
 # Readable rather than maximally random: these get typed once, on a phone,
@@ -66,12 +72,21 @@ def main() -> None:
             sys.exit(1)
 
         created: list[tuple[str, str, str]] = []
+        promoted: list[tuple[str, str, str]] = []
+
         for emp in employees:
             if not emp.email:
                 print(f"skip      : {emp.emp_code} {emp.full_name} has no email address")
                 continue
             existing = db.scalar(select(User).where(User.email == emp.email.lower()))
             if existing is not None:
+                # Role changes have to apply to accounts that already exist,
+                # or a promotion is silently ignored. The password is never
+                # touched here - only what they are allowed to do.
+                wanted = ROLES.get(emp.emp_code, UserRole.EMPLOYEE)
+                if existing.role != wanted:
+                    promoted.append((existing.email, existing.role.value, wanted.value))
+                    existing.role = wanted
                 continue
             pw = new_password()
             db.add(User(
@@ -94,6 +109,13 @@ def main() -> None:
             print()
         else:
             print("accounts  : nothing to create, everyone already has one")
+
+        if promoted:
+            print("\n  ROLE CHANGES applied to existing accounts:\n")
+            width = max(len(e) for e, _, _ in promoted)
+            for email, was, now in promoted:
+                print(f"    {email:<{width}}  {was}  ->  {now}")
+            print()
 
         print(f"users     : {total} total, {len(created)} created this run")
     finally:

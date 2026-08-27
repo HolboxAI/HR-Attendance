@@ -184,6 +184,23 @@ exists so page JavaScript can never read a token.
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
 and leave. Mobile app runs in Expo Go. All tests pass.
 
+**The team, and who approves what.** 11 employees. Krish, Dhruv and Ashley are
+`super_admin`; Himesh is `hr_admin` and the HR manager everyone reports to; the
+rest are `employee`.
+
+- **Roles STACK** (see `RANK` in `app/api/deps.py`), so nobody needs two.
+  `hr_admin` already includes everything `manager` can do - giving Himesh the
+  `manager` role would have DEMOTED him from hr_admin, so he keeps hr_admin
+  and the reporting lines do the rest.
+- **`manager_id` points every IC at Himesh.** The admins have none on purpose:
+  they are super_admin and already see everyone, so a reporting line would be
+  a row to maintain that changes nothing.
+- **`seed.py` and `seed_users.py` SYNC, they do not only create.** Reporting
+  lines and role changes are applied on every run, because most of these
+  people already existed and a create-if-missing loop would silently ignore a
+  promotion. `seed_users.py` never touches an existing password - only what
+  the account is allowed to do.
+
 **Backups verify themselves.** `scripts/backup.py` snapshots the database,
 compresses it, and immediately opens the copy to check integrity and count real
 rows out of it. `--list`, `--verify <file>` and `--restore <file> --to <path>`
@@ -358,10 +375,9 @@ Not built yet, in priority order:
    piece of infrastructure this project still has none of.
 2. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.
    Needs an Expo access token and a device population.
-3. **Manager relationships** - `manager_id` exists and the scoping works
-   (`visible_employees`), but the seed sets nobody's manager, so no one is a
-   manager in practice. Waiting on who reports to whom before assigning it -
-   see "still outstanding" below.
+3. **A real phone test.** Nothing here has run on an actual handset - only
+   against a test client. Deferred until the frontend is done, by Krish's
+   call.
 4. **A "Check in" entry point on the dashboard**, so an admin can mark their own
    attendance without reaching for their phone.
 5. Then payroll (India: PF, ESI, PT, TDS, Form 16).
