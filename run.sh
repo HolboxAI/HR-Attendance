@@ -57,25 +57,25 @@ fi
 # Importing the CSS toolchain is the honest test: it's the native module that
 # actually fails, and it fails at page-render time rather than at install.
 web_ok() {
-  [[ -d apps/web/node_modules ]] \
-    && (cd apps/web && node -e "require('lightningcss')" >/dev/null 2>&1)
+  [[ -d myco-frontend/web/node_modules ]] \
+    && (cd myco-frontend/web && node -e "require('lightningcss')" >/dev/null 2>&1)
 }
 
 if [[ $CLEAN -eq 1 ]] || ! web_ok; then
-  if [[ -d apps/web/node_modules ]]; then
+  if [[ -d myco-frontend/web/node_modules ]]; then
     say "Dashboard dependencies were built for another platform - reinstalling"
-    rm -rf apps/web/node_modules apps/web/.next
+    rm -rf myco-frontend/web/node_modules myco-frontend/web/.next
   else
     say "Installing dashboard dependencies"
   fi
-  (cd apps/web && npm install --no-audit --no-fund)
+  (cd myco-frontend/web && npm install --no-audit --no-fund)
 fi
 
-rm -rf apps/web/sessions 2>/dev/null || true
+rm -rf myco-frontend/web/sessions 2>/dev/null || true
 
 trap 'kill 0' EXIT
 (cd apps/api && .venv/bin/uvicorn app.main:app --host "$HOST" --port 8000 --reload) &
-(cd apps/web && npx next dev --port 3000) &
+(cd myco-frontend/web && npx next dev --port 3000) &
 
 sleep 2
 echo

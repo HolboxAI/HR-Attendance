@@ -1,0 +1,397 @@
+@import "tailwindcss";
+
+/* Same palette as the mobile app - amber on cool graphite - so the two halves
+   read as one product rather than two projects. */
+:root {
+  --ground: #09090b;
+  --surface: rgba(24, 24, 27, 0.45);
+  --surface-2: rgba(39, 39, 42, 0.55);
+  --line: rgba(255, 255, 255, 0.08);
+  --ink: #fafafa;
+  --ink-2: #d4d4d8;
+  --ink-3: #a1a1aa;
+  --accent: #fafafa;
+
+  /* Subtle, professional, desaturated status indicators */
+  --st-present: #e4e4e7;
+  --st-late: #d4d4d8;
+  --st-half: #a1a1aa;
+  --st-absent: #71717a;
+  --st-pending: #71717a;
+
+  /* Monochrome Base Variables */
+  --white: #ffffff;
+  --black: #000000;
+  --transparent: transparent;
+  --blue-500: #71717a;
+  --blue-400: #a1a1aa;
+  --blue-300: #d4d4d8;
+  --indigo-300: #e4e4e7;
+  --violet-200: #f4f4f5;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-st-present: var(--st-present);
+  --color-st-late: var(--st-late);
+  --color-st-half: var(--st-half);
+  --color-st-absent: var(--st-absent);
+  --color-st-pending: var(--st-pending);
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-feature-settings: "tnum";
+}
+.tnum { font-variant-numeric: tabular-nums; }
+
+@theme inline {
+  --font-display: Geist, Archivo, ui-sans-serif, system-ui, sans-serif;
+  --font-body: Inter, "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   shadcn token layer — Professional Minimalist Monochrome
+--------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--ground);
+  --color-foreground: var(--ink);
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--ink-2);
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #09090b;
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--ink);
+  --color-destructive: var(--st-absent);
+  --color-destructive-foreground: #ffffff;
+}
+
+/* ---------------------------------------------------------------------------
+   Dashboard Light Theme — Clean Executive Porcelain & Monochrome Slate
+--------------------------------------------------------------------------- */
+.bx-light,
+#bx-shell.bx-light {
+  --ground: #fafafa;
+  --surface: rgba(255, 255, 255, 0.7);
+  --surface-2: rgba(244, 244, 245, 0.85);
+  --line: rgba(0, 0, 0, 0.08);
+  --ink: #09090b;
+  --ink-2: #3f3f46;
+  --ink-3: #71717a;
+  --accent: #09090b;
+  --st-present: #18181b;
+  --st-late: #52525b;
+  --st-half: #71717a;
+  --st-absent: #a1a1aa;
+  --st-pending: #a1a1aa;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+/* Light Theme Glass Panels & Cards */
+.bx-light .bx-card,
+.bx-light .glass-panel,
+.bx-light aside,
+.bx-light header,
+.bx-light table,
+.bx-light dialog,
+#bx-shell.bx-light .bx-card,
+#bx-shell.bx-light .glass-panel {
+  background: rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 1.25rem;
+  box-shadow: 0 4px 20px 0 rgba(0, 0, 0, 0.03), inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+}
+
+.bx-light .glass-panel-hover:hover,
+.bx-light .bx-card:hover,
+#bx-shell.bx-light .glass-panel-hover:hover {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 25px 0 rgba(0, 0, 0, 0.06);
+}
+
+.bx-light thead tr {
+  background: rgba(244, 244, 245, 0.6) !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.bx-light tbody tr:hover {
+  background: rgba(0, 0, 0, 0.02) !important;
+}
+
+.bx-light input,
+.bx-light select,
+.bx-light textarea {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border-color: rgba(0, 0, 0, 0.1) !important;
+  border-radius: 0.75rem !important;
+  color: #09090b !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Dashboard Dark Theme — Sleek Executive Obsidian & Crisp White
+--------------------------------------------------------------------------- */
+.bx-dark,
+.bx-dark-mode #bx-shell,
+:root {
+  --ground: #09090b;
+  --surface: rgba(20, 20, 24, 0.45);
+  --surface-2: rgba(30, 30, 36, 0.55);
+  --line: rgba(255, 255, 255, 0.08);
+  --ink: #fafafa;
+  --ink-2: #d4d4d8;
+  --ink-3: #a1a1aa;
+  --accent: #fafafa;
+  --st-present: #f4f4f5;
+  --st-late: #d4d4d8;
+  --st-half: #a1a1aa;
+  --st-absent: #71717a;
+  --st-pending: #71717a;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+/* Dark Theme Glass Panels & Cards */
+.bx-dark .bx-card,
+.bx-dark .glass-panel,
+.bx-dark-mode #bx-shell .bx-card,
+.bx-dark-mode #bx-shell .glass-panel,
+.bx-dark-mode #bx-shell aside,
+.bx-dark-mode #bx-shell header,
+.bx-dark-mode #bx-shell table,
+.bx-dark-mode #bx-shell dialog,
+.glass-panel,
+.bx-card {
+  background: rgba(18, 18, 22, 0.45);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.25rem;
+  box-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.bx-dark .glass-panel-hover:hover,
+.bx-dark-mode #bx-shell .glass-panel-hover:hover,
+.glass-panel-hover:hover {
+  background: rgba(24, 24, 30, 0.65);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.6), inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+}
+
+.bx-dark-mode #bx-shell thead tr {
+  background: rgba(0, 0, 0, 0.25) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.bx-dark-mode #bx-shell tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.bx-dark-mode #bx-shell input,
+.bx-dark-mode #bx-shell select,
+.bx-dark-mode #bx-shell textarea {
+  background: rgba(0, 0, 0, 0.3) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 0.75rem !important;
+  color: #fafafa !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Executive Monochromatic Ambient Lighting (Subtle, non-distracting)
+--------------------------------------------------------------------------- */
+.bx-aurora-canvas {
+  background:
+    radial-gradient(900px 500px at 80% -10%, rgba(255, 255, 255, 0.04), transparent 70%),
+    radial-gradient(800px 450px at -10% 30%, rgba(255, 255, 255, 0.03), transparent 60%),
+    radial-gradient(700px 400px at 50% 100%, rgba(255, 255, 255, 0.02), transparent 70%);
+  opacity: 1;
+}
+
+.bx-light .bx-aurora-canvas {
+  background:
+    radial-gradient(900px 500px at 80% -10%, rgba(0, 0, 0, 0.03), transparent 70%),
+    radial-gradient(800px 450px at -10% 30%, rgba(0, 0, 0, 0.02), transparent 60%),
+    radial-gradient(700px 400px at 50% 100%, rgba(0, 0, 0, 0.02), transparent 70%);
+}
+
+@keyframes aurora {
+  from {
+    background-position: 50% 50%, 50% 50%;
+  }
+  to {
+    background-position: 350% 50%, 350% 50%;
+  }
+}
+
+.animate-aurora {
+  animation: aurora 50s linear infinite;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. Compositor-only properties, small distances, fast durations.
+--------------------------------------------------------------------------- */
+@keyframes bx-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.bx-rise { animation: bx-rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.bx-rise-i { animation: bx-rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--bx-i, 0) * 45ms); }
+
+.fade-in-up {
+  animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+  transform: translateY(8px);
+}
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.delay-100 { animation-delay: 80ms; }
+.delay-200 { animation-delay: 160ms; }
+.delay-300 { animation-delay: 240ms; }
+.delay-400 { animation-delay: 320ms; }
+
+@keyframes bx-pop {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bx-pop { animation: bx-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; transform-origin: top right; }
+
+/* Live-presence dot: slow breathing ring */
+@keyframes bx-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-present) 50%, transparent); }
+  60%      { box-shadow: 0 0 0 6px transparent; }
+}
+.bx-pulse { animation: bx-pulse 2.4s ease-out infinite; }
+
+/* Skeletons */
+@keyframes bx-shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.bx-skeleton {
+  animation: bx-shimmer 1.6s ease-in-out infinite;
+  background: var(--surface-2);
+  border-radius: 0.375rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bx-rise, .bx-rise-i, .bx-pop, .fade-in-up { animation-duration: 0.01ms; animation-delay: 0ms; }
+  .bx-pulse, .bx-skeleton { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Focus & Tables
+--------------------------------------------------------------------------- */
+#bx-shell :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.bx-rowlink { transition: background-color 120ms ease; }
+.bx-rowlink:hover { background: color-mix(in srgb, var(--surface-2) 80%, transparent); }
+
+.bx-scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+/* ---------------------------------------------------------------------------
+   Global High-Impact Light Grey / Obsidian Spotlight Glow on Every Box
+--------------------------------------------------------------------------- */
+.glass-panel,
+.bx-card,
+[data-glow],
+aside,
+header,
+.bx-pop {
+  position: relative;
+}
+
+/* Base Pseudo Element on All Cards & Panels */
+.glass-panel::before,
+.bx-card::before,
+[data-glow]::before,
+aside::before,
+header::before,
+.bx-pop::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  padding: 1.5px;
+  background-attachment: fixed;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  opacity: var(--glow-opacity, 1);
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 3;
+}
+
+/* 1. DARK MODE SPOTLIGHT (Bright Light Grey / Silver / White Glow) */
+.glass-panel::before,
+.bx-card::before,
+[data-glow]::before,
+aside::before,
+header::before,
+.bx-pop::before,
+.bx-dark-mode .glass-panel::before,
+.bx-dark-mode .bx-card::before,
+.bx-dark-mode [data-glow]::before,
+.bx-dark-mode aside::before,
+.bx-dark-mode header::before,
+.bx-dark-mode .bx-pop::before,
+.bx-dark-mode #bx-shell .glass-panel::before,
+.bx-dark-mode #bx-shell .bx-card::before,
+.bx-dark-mode #bx-shell aside::before,
+.bx-dark-mode #bx-shell header::before,
+.bx-dark-mode #bx-shell.bx-light .glass-panel::before,
+.bx-dark-mode #bx-shell.bx-light .bx-card::before,
+.bx-dark-mode #bx-shell.bx-light aside::before,
+.bx-dark-mode #bx-shell.bx-light header::before,
+.bx-dark .glass-panel::before,
+.bx-dark .bx-card::before {
+  background-attachment: fixed !important;
+  background-image: radial-gradient(
+    400px 400px at var(--x, -1000px) var(--y, -1000px),
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(228, 228, 231, 0.75) 25%,
+    rgba(161, 161, 170, 0.35) 50%,
+    transparent 100%
+  ) !important;
+}
+
+/* 2. LIGHT MODE SPOTLIGHT (Crisp Dark Grey / Obsidian Glow) */
+html:not(.bx-dark-mode) #bx-shell.bx-light .glass-panel::before,
+html:not(.bx-dark-mode) #bx-shell.bx-light .bx-card::before,
+html:not(.bx-dark-mode) #bx-shell.bx-light aside::before,
+html:not(.bx-dark-mode) #bx-shell.bx-light header::before,
+html:not(.bx-dark-mode) .bx-light .glass-panel::before,
+html:not(.bx-dark-mode) .bx-light .bx-card::before,
+html:not(.bx-dark-mode) .bx-light aside::before,
+html:not(.bx-dark-mode) .bx-light header::before {
+  background-attachment: fixed !important;
+  background-image: radial-gradient(
+    400px 400px at var(--x, -1000px) var(--y, -1000px),
+    rgba(0, 0, 0, 0.8) 0%,
+    rgba(39, 39, 42, 0.45) 25%,
+    rgba(82, 82, 91, 0.15) 50%,
+    transparent 100%
+  ) !important;
+}

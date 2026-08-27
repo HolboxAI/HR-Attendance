@@ -30,8 +30,8 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_carry_forward.py  # year-end rollover
     apps/api/.venv/bin/python apps/api/tests/test_backup.py      # backup + restore
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
-    cd apps/web && npx tsc --noEmit
-    cd apps/mobile && npx tsc --noEmit
+    cd myco-frontend/web && npx tsc --noEmit
+    cd myco-frontend/mobile && npx tsc --noEmit
 
 `test_auth.py` and `test_leave.py` each print the "Definition of done" checklist
 from their brief with every box ticked or not. Read that summary, not the word
@@ -68,8 +68,11 @@ translate; the core is vendor-neutral.
       app/adapters/         vendor translators (zkteco parked here)
       scripts/              seed, init_db, seed_users, seed_leave, demo_day
       tests/                plain python, no pytest - run them directly
-    apps/web/               Next.js dashboard. A CONSUMER of the API.
-    apps/mobile/            Expo app. Also a consumer.
+    myco-frontend/web/      Next.js dashboard. A CONSUMER of the API.
+    myco-frontend/mobile/   Expo app. Also a consumer. API base comes from
+                            EXPO_PUBLIC_API_BASE (see its src/config.ts).
+    (apps/web and apps/mobile were the prototypes these replaced - deleted
+     2026-08-28, history in git if archaeology is ever needed.)
     docs/                   PLAN, PRD, DECISIONS, briefs, recovered artifacts
     data/                   SQLite + uploads. Gitignored. Never commit it.
 
@@ -77,7 +80,7 @@ translate; the core is vendor-neutral.
 
 35 endpoints, all under `/api/v1`, all documented at `/docs` and machine-
 readable at `/openapi.json`. Nothing in the API imports anything from
-`apps/web` or `apps/mobile`, and it never will. That is what makes either
+`myco-frontend/web` or `myco-frontend/mobile`, and it never will. That is what makes either
 front end replaceable without touching the backend.
 
     auth        login, refresh, logout, me, set-password
@@ -95,8 +98,8 @@ Two rules a client must follow, and they are the only two:
 2. **Send `X-Install-Id` on `/mobile/punch`** - the handset binding is checked
    on every punch.
 
-If you replace `apps/web`, generate a typed client from `/openapi.json` rather
-than hand-writing fetch calls, and read `apps/web/lib/session.ts` first: the
+If you replace `myco-frontend/web`, generate a typed client from `/openapi.json` rather
+than hand-writing fetch calls, and read `myco-frontend/web/lib/session.ts` first: the
 httpOnly-cookie + gateway pattern there is the only non-obvious part, and it
 exists so page JavaScript can never read a token.
 
@@ -162,7 +165,7 @@ exists so page JavaScript can never read a token.
 - **Next 16 renamed `middleware.ts` to `proxy.ts`.** Do not confuse the root
   `proxy.ts` (auth redirect + token refresh) with `app/api/gateway`, which is
   the pass-through browser code uses to reach the API.
-- **A 403 is not "the API is down".** `apiFetch` in `apps/web/lib/session.ts`
+- **A 403 is not "the API is down".** `apiFetch` in `myco-frontend/web/lib/session.ts`
   reports WHY a call failed. Collapsing them into `null` is how an employee got
   told the server was broken when the page simply was not theirs.
 - **`lib/format.ts` vs `lib/api.ts`.** Client components may only import the
