@@ -189,7 +189,38 @@ exists so page JavaScript can never read a token.
 ## Status
 
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
-and leave. Mobile app runs in Expo Go. All tests pass.
+leave, corrections, employee admin, and runtime location/presence config. All
+15 test suites pass (~600 assertions). Run them before claiming anything.
+
+**Face matching is LIVE on AWS Rekognition** (2026-08-28). Scoped IAM user
+`boxcode-hrms-api` (CompareFaces + DetectFaces only, keys in `apps/api/.env`,
+never in git). Verified with real photos: same person 100.0 similarity,
+Nikunj's face on Krish's account refused. Preflight:
+`scripts/check_aws.py`; re-check stored photos: `scripts/verify_enrolments.py`.
+Only 2/11 enrolled (Krish, Nikunj) so `REQUIRE_FACE_ENROLMENT` stays false -
+the other 9 punch with the face check recorded as NOT PERFORMED, never as
+passed. Flip it only at 11/11.
+
+**The frontend is `myco-frontend/`** (web + mobile, built by Krish's friend;
+their repo commit 31d9d64). The apps/web and apps/mobile prototypes and the
+frontend-main snapshot are deleted - git history has them. Its web already
+speaks the whole API (gateway forwards X-Install-Id; camera check-in page at
+/checkin, admin-gated). Its mobile is wired for real - API base from
+`EXPO_PUBLIC_API_BASE` in mobile/.env, install_id at login. The "demo
+fallbacks" that fabricated success offline were removed 2026-08-28; do not
+reintroduce them - a punch that fails must THROW, that is what routes it into
+the offline queue.
+
+**Live-verified end to end** (terminal + dashboard, 2026-08-28): punch
+in/out, refusals stored with distance, fake-GPS caught, leave request →
+approve → board flips → cancel → flips back, correction submit → decide →
+punch created at claimed time → day recomputed, night shift 22:04→03:30 as
+ONE day, holiday add/delete recomputing everyone, offline captured_at 2h ok /
+49h refused, hire → temp password once → offboard preserving history.
+
+**"Today" is an org-timezone question** - `app/core/clock.py:org_today()`.
+And the punch dedupe key includes direction; a replayed punch answers from
+the STORED row ("Already recorded"), never from the request.
 
 **The team, and who approves what.** 11 employees. Krish, Dhruv and Ashley are
 `super_admin`; Himesh is `hr_admin` and the HR manager everyone reports to; the
@@ -376,29 +407,35 @@ the dashboard. They are fixed by state notification, not arithmetic. A wrong
 holiday marks the whole company off on the wrong day.
 
 Not built yet, in priority order:
-1. **The remaining notification triggers.** Correction and leave decisions
-   fire; the missing-punch-out nudge, the late/absent threshold and the
-   employee invite do not. The first needs a scheduled job, which is the
-   piece of infrastructure this project still has none of.
-2. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.
-   Needs an Expo access token and a device population.
-3. **A real phone test.** Nothing here has run on an actual handset - only
-   against a test client. Deferred until the frontend is done, by Krish's
-   call.
-4. **A "Check in" entry point on the dashboard**, so an admin can mark their own
-   attendance without reaching for their phone.
-5. Then payroll (India: PF, ESI, PT, TDS, Form 16).
+1. **The first real phone test - IN PROGRESS and blocked on Expo Go.** The
+   project is Expo SDK 57; Krish's phone has Expo Go for SDK 54. Fix is
+   updating Expo Go from the App Store (or run the iOS simulator, where the
+   CLI installs the matching client itself). mobile/.env already carries the
+   laptop's LAN address; start the stack with `./run.sh --lan`.
+2. **JWT_SECRET is still the dev default, in a public repo.** Anyone reading
+   it can forge any employee's token, super_admin included. One line in
+   apps/api/.env (a commented block is waiting there). The single most
+   important undone thing.
+3. **9 remaining face enrolments**, then `REQUIRE_FACE_ENROLMENT=true`.
+4. **Scheduled jobs** (missing-punch-out nudge, late/absent threshold,
+   monthly accrual on a timer - accrual is manual today). Still no scheduler.
+5. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.
+6. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish
 
-- Real office coordinates. The current lat/lng is a map pin, not a measurement.
-  The **Survey** tab in the mobile app records real readings — walk the
-  building, tap Desk / Reception / Gate / Car park, send the numbers.
-- Office WiFi BSSID, for `WIFI_REQUIRED`.
-- Whether the team is mostly iPhone (reading BSSID on iOS needs an Apple
-  entitlement; the network *name* alone is not enough — anyone can name a
-  hotspot "Boxcode-Office"). Apple review takes weeks, so this one is on the
-  critical path even though it looks like a detail.
+- ~~Real office coordinates~~ DONE 2026-08-27: measured on site
+  (23.03479, 72.53238). The old map pin was 451m off - outside its own
+  geofence. One reading from one spot; a proper multi-corner survey is still
+  worth doing before the pilot.
+- Office WiFi BSSID. Krish has emailed the IIMA Ventures network contact -
+  the building runs shared guest WiFi, so the questions are whether a
+  dedicated AP covers the 3rd-floor office (BSSID is the ONLY signal that
+  can tell floors apart; GPS is flat). If not, the plan is a cheap dedicated
+  router. When the MACs arrive: `PUT /admin/location` (super_admin), no
+  deploy needed.
+- The team is MIXED iPhone/Android (confirmed), so the Apple BSSID
+  entitlement gates `wifi_required` for everyone; Dhruv was asked to file it.
 - **For a real deployment** (the PRD's own blocking list): an EC2 host with SSH
   user and key, a domain pointing at it (iOS refuses plain HTTP, so TLS is a
   prerequisite not polish), the employee list as CSV, and the real shift
