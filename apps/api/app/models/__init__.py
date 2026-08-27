@@ -8,7 +8,8 @@ from app.models.correction import CorrectionRequest  # noqa: F401
 from app.models.employee import Employee, User  # noqa: F401
 from app.models.face import FaceEnrollment, MobileDevice  # noqa: F401
 from app.models.leave import (  # noqa: F401
-    AccrualRun, AuditLog, Holiday, LeaveBalance, LeavePolicy, LeaveRequest, LeaveType,
+    AccrualRun, AuditLog, CarryForwardRun, Holiday, LeaveBalance, LeavePolicy,
+    LeaveRequest, LeaveType,
 )
 from app.models.notification import Notification  # noqa: F401
 from app.models.org import Department, Location, Organization  # noqa: F401

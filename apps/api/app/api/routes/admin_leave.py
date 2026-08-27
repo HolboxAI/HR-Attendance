@@ -190,6 +190,28 @@ def accrue(
     return result
 
 
+@router.post("/leave/carry-forward")
+def carry_forward(
+    period: str = Query(..., description="The ENDING period, e.g. '2026'"),
+    db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Move what is left of `period` into the period after it.
+
+    Only types with carries_forward=True move anything, capped at carry_cap -
+    CL and SL lapse because they were never given the flag. Run once a year at
+    the leave-year boundary; running it twice for the same period is a no-op.
+    """
+    result = leave_service.run_carry_forward(db, org_id=user.org_id, period=period)
+    leave_service.audit(
+        db, org_id=user.org_id, actor=user, entity="leave_carry_forward", entity_id=None,
+        action="run",
+        changes={"period": {"old": None, "new": f"{period} -> {result['to_period']}"}},
+        note=f"carried {result['credited']}, already done {result['skipped']}",
+    )
+    db.commit()
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Policy - hr_admin only
 # ---------------------------------------------------------------------------

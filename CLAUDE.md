@@ -27,6 +27,7 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_retention.py   # photo deletion
     apps/api/.venv/bin/python apps/api/tests/test_migrations.py  # schema upgrades
     apps/api/.venv/bin/python apps/api/tests/test_corrections.py # PRD section 11
+    apps/api/.venv/bin/python apps/api/tests/test_carry_forward.py  # year-end rollover
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd apps/web && npx tsc --noEmit
     cd apps/mobile && npx tsc --noEmit
@@ -182,6 +183,24 @@ exists so page JavaScript can never read a token.
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
 and leave. Mobile app runs in Expo Go. All tests pass.
 
+**Leave carry-forward runs at the year boundary.**
+`POST /admin/leave/carry-forward?period=2026` moves what is left of a period
+into the one after it - Earned Leave up to its `carry_cap`, nothing above it.
+CL and SL lapse because they were never given `carries_forward=True`; nothing
+special happens to them, which is the point.
+
+- **The OLD period's balance is never touched.** Only the new period's
+  `opening` is set. History is read, not rewritten - the same rule the leave
+  policy page already states before every save.
+- **Idempotent like accrual**, and for the same reason: `CarryForwardRun` has a
+  unique key per employee/type/target-period, so running it twice at year-end
+  because someone forgot they already had is a no-op, not a double credit.
+- **The cap is recorded, not just applied.** Each run stores both
+  `available_before_cap` and `amount` actually carried, so "why does Nikunj
+  only have 30, not 34" has an answer in the table, not a guess.
+- Run once, by hand, at the leave-year boundary - there is no scheduler yet
+  (see the notification gaps below), so this is not on a timer.
+
 **Corrections are a request, decided by someone else.** `POST /corrections`
 (employee submits against a flagged day) -> `GET /admin/corrections/pending`
 (hr_admin) -> `POST /admin/corrections/{id}/decide`. Approving creates the
@@ -314,15 +333,13 @@ Not built yet, in priority order:
    piece of infrastructure this project still has none of.
 2. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.
    Needs an Expo access token and a device population.
-3. **Carry-forward at year end** - the flags and the cap are stored and
-   editable, but nothing yet runs the roll-over that moves EL into next year's
-   `opening` and lapses CL/SL.
-4. **Manager relationships** - `manager_id` exists and the scoping works
+3. **Manager relationships** - `manager_id` exists and the scoping works
    (`visible_employees`), but the seed sets nobody's manager, so no one is a
-   manager in practice.
-5. **A "Check in" entry point on the dashboard**, so an admin can mark their own
+   manager in practice. Waiting on who reports to whom before assigning it -
+   see "still outstanding" below.
+4. **A "Check in" entry point on the dashboard**, so an admin can mark their own
    attendance without reaching for their phone.
-6. Then payroll (India: PF, ESI, PT, TDS, Form 16).
+5. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish
 

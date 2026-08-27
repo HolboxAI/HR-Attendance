@@ -137,6 +137,36 @@ class AccrualRun(Base, TimestampMixin):
     quota_at_run: Mapped[float] = mapped_column(Numeric(6, 2), default=0, nullable=False)
 
 
+class CarryForwardRun(Base, TimestampMixin):
+    """One row per employee/type/target-period actually carried. Same trick as
+    AccrualRun: the unique constraint IS the idempotency guarantee, so running
+    the year-end rollover twice for the same period is a no-op rather than a
+    second helping of Earned Leave.
+    """
+
+    __tablename__ = "leave_carry_forward_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "employee_id", "leave_type_id", "to_period", name="uq_carry_forward_once",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("employees.id"), index=True, nullable=False
+    )
+    leave_type_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("leave_types.id"), nullable=False
+    )
+    from_period: Mapped[str] = mapped_column(String(16), nullable=False)
+    to_period: Mapped[str] = mapped_column(String(16), nullable=False)
+    # What was actually carried, after the cap. Kept even when it is 0 or when
+    # the cap clipped it, so "why does Nikunj only have 30, not 34" has an
+    # answer that is not "guess".
+    amount: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)
+    available_before_cap: Mapped[float] = mapped_column(Numeric(6, 2), nullable=False)
+
+
 class LeaveRequest(Base, TimestampMixin):
     __tablename__ = "leave_requests"
 

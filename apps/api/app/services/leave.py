@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 from app.models.employee import Employee, User
 from app.models.enums import AccrualRule, LeaveStatus
 from app.models.leave import (
-    AccrualRun, AuditLog, Holiday, LeaveBalance, LeavePolicy, LeaveRequest, LeaveType,
+    AccrualRun, AuditLog, CarryForwardRun, Holiday, LeaveBalance, LeavePolicy,
+    LeaveRequest, LeaveType,
 )
 from app.models.org import Organization
 from app.services import notifications
@@ -201,6 +202,74 @@ def balance(
         db.add(row)
         db.flush()
     return row
+
+
+def next_period(pol: LeavePolicy, period: str) -> str:
+    """The period label that comes immediately after this one."""
+    _, end = period_bounds(pol, period)
+    return period_for(pol, end + timedelta(days=1))
+
+
+def run_carry_forward(db: Session, *, org_id: uuid.UUID, period: str) -> dict:
+    """Move what is left of `period` into the period that follows it.
+
+    Only for leave types with carries_forward=True, and only up to carry_cap -
+    anything above the cap lapses, same as CL and SL lapse entirely, because
+    neither has this flag set. Safe to run twice: CarryForwardRun's unique key
+    is what makes a second run a no-op instead of a second helping of Earned
+    Leave.
+
+    This does not touch the OLD period's balance. Leave already taken stays
+    taken, leave already accrued stays accrued - only the leftover is copied
+    forward as the new period's opening figure. History is never rewritten,
+    only read from.
+    """
+    pol = policy(db, org_id)
+    to_period = next_period(pol, period)
+
+    types = db.scalars(
+        select(LeaveType).where(
+            LeaveType.org_id == org_id, LeaveType.is_active.is_(True),
+            LeaveType.carries_forward.is_(True), LeaveType.deleted_at.is_(None),
+        )
+    ).all()
+    employees = db.scalars(
+        select(Employee).where(Employee.org_id == org_id, Employee.is_active.is_(True))
+    ).all()
+
+    credited = skipped = 0
+    for emp in employees:
+        for lt in types:
+            existing = db.scalar(
+                select(CarryForwardRun).where(
+                    CarryForwardRun.employee_id == emp.id,
+                    CarryForwardRun.leave_type_id == lt.id,
+                    CarryForwardRun.to_period == to_period,
+                )
+            )
+            if existing is not None:
+                skipped += 1
+                continue
+
+            old_balance = balance(db, emp, lt, period)
+            available = max(0.0, old_balance.available)
+            carried = min(available, float(lt.carry_cap))
+
+            new_balance = balance(db, emp, lt, to_period)
+            new_balance.opening = float(new_balance.opening) + carried
+
+            db.add(CarryForwardRun(
+                id=uuid.uuid4(), employee_id=emp.id, leave_type_id=lt.id,
+                from_period=period, to_period=to_period, amount=carried,
+                available_before_cap=available,
+            ))
+            credited += 1
+
+    db.flush()
+    return {
+        "from_period": period, "to_period": to_period,
+        "credited": credited, "skipped": skipped,
+    }
 
 
 def accrue_month(
