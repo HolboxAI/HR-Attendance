@@ -1,0 +1,31 @@
+{
+  "_comment": [
+    "NOT NEEDED YET. Do not request this.",
+    "",
+    "Photo storage is local disk today (app/services/storage.py has only",
+    "LocalStorage). This is the block to ADD to iam-policy.json on the day an",
+    "S3Storage class exists and is actually wired in - not before, because",
+    "asking for permissions the code does not use is how a least-privilege",
+    "request stops being believed.",
+    "",
+    "Replace BUCKET with the real bucket name. Bucket settings that go with it:",
+    "block all public access ON, default encryption SSE-S3, and a lifecycle",
+    "rule deleting punches/ objects after 90 days to match the retention policy",
+    "already enforced by scripts/purge_photos.py."
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SelfiesAndEnrolmentPhotos",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::BUCKET/*"
+    },
+    {
+      "Sid": "ListOwnBucketOnly",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::BUCKET"
+    }
+  ]
+}

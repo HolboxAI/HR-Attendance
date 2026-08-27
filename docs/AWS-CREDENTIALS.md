@@ -25,13 +25,23 @@ human account and typically carries broad permissions. Putting one in an app's
 
 1. IAM -> Users -> Create user, name it `boxcode-hrms-api`
 2. No console access. Programmatic only.
-3. Attach the policy in `infra/iam-policy.json`, with BUCKET replaced
+3. Attach the policy in `infra/iam-policy.json` — as-is, nothing to replace.
+   It is two Rekognition actions and nothing else, which is the whole AWS
+   surface of the app. S3 permissions live in `infra/iam-policy-s3-later.json`
+   and are deliberately NOT requested yet: photo storage is local disk today,
+   and asking for permissions the code does not use is how a least-privilege
+   request stops being believed.
 4. Create an access key for it, choose "Application running on an AWS compute service"
 5. Put it in the server's `.env` - never in git, never in the mobile app
 
-That key can compare two faces and read and write one S3 bucket. Nothing else.
-If it leaks, someone can identify faces and read selfies - bad, but survivable,
-and revoking it breaks nothing except this app.
+That key can compare two faces. Nothing else - it cannot read a bucket, list
+your account, or touch any other service. If it leaks, someone can spend your
+money on face comparisons, and revoking it breaks nothing except this app.
+
+Note on `Resource: "*"`: CompareFaces and DetectFaces do not support
+resource-level permissions, so there is nothing narrower to scope them to.
+That is a limit of the service, and worth saying out loud to whoever grants
+it, because a wildcard resource is exactly what a careful reviewer stops on.
 
 ## Better still, once it works
 

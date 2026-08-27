@@ -1,31 +1,42 @@
 {
-  "Comment": "Least-privilege policy for the Boxcode HRMS API user. Attach to a NEW IAM user created for this app only - never reuse a personal or admin key. Replace BUCKET with the real bucket name.",
+  "_comment": [
+    "WHAT THE APP ACTUALLY NEEDS TODAY. Attach this as-is.",
+    "",
+    "These two actions are the entire AWS surface of the application. Verify",
+    "that claim rather than trusting it: grep the codebase for boto3 clients",
+    "and you will find rekognition and sts, nothing else.",
+    "",
+    "Both actions are required. DetectFaces runs FIRST as a quality gate - one",
+    "face, sharp enough, facing the camera - and CompareFaces only runs if that",
+    "passes. Granting CompareFaces alone fails every punch before it compares.",
+    "",
+    "Resource must be \"*\": Rekognition's CompareFaces and DetectFaces do not",
+    "support resource-level permissions, so there is nothing narrower to scope",
+    "to. This is a limitation of the service, not laziness here.",
+    "",
+    "NOT INCLUDED, ON PURPOSE: S3. This policy used to carry s3:PutObject and",
+    "friends for photo storage, which caused a reasonable 'do you actually need",
+    "all this?' from the person granting it. We do not call S3 at all - photos",
+    "are files on local disk (app/services/storage.py). Add the block at the",
+    "bottom of this file only when S3Storage exists and is wired in.",
+    "",
+    "Attach to a programmatic-only IAM user created for this app (suggested",
+    "name: boxcode-hrms-api), never to a personal account - see",
+    "docs/AWS-CREDENTIALS.md for why. Better still, attach it to an EC2",
+    "instance role once deployed, so there is no long-lived key to leak.",
+    "",
+    "Verify with: apps/api/.venv/bin/python scripts/check_aws.py"
+  ],
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "FaceVerificationOnly",
+      "Sid": "RekognitionFacePunchOnly",
       "Effect": "Allow",
       "Action": [
         "rekognition:CompareFaces",
         "rekognition:DetectFaces"
       ],
       "Resource": "*"
-    },
-    {
-      "Sid": "SelfiesAndEnrolmentPhotos",
-      "Effect": "Allow",
-      "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
-        "s3:DeleteObject"
-      ],
-      "Resource": "arn:aws:s3:::BUCKET/*"
-    },
-    {
-      "Sid": "ListOwnBucketOnly",
-      "Effect": "Allow",
-      "Action": "s3:ListBucket",
-      "Resource": "arn:aws:s3:::BUCKET"
     }
   ]
 }
