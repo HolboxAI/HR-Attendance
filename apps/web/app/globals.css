@@ -50,3 +50,108 @@ body {
   --font-body: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
+
+/* ---------------------------------------------------------------------------
+   shadcn token layer.
+
+   The components under components/ui are written against shadcn's vocabulary
+   (background, muted, border, primary...). Rather than let them ship a second
+   palette that clashes with the one above, every token here is an ALIAS onto
+   the Boxcode colours - so a shadcn Button is amber-on-graphite like the rest
+   of the product, and changing --accent once still changes everything.
+
+   One deliberate omission: shadcn also defines `accent` to mean "subtle hover
+   background". This codebase already uses `bg-accent` to mean the amber brand
+   colour, and re-pointing it would repaint every existing button. The ghost
+   and outline button variants therefore hover on `surface-2` directly instead
+   of on shadcn's `accent`. See components/ui/button.tsx.
+--------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--ground);
+  --color-foreground: var(--ink);
+
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--ink-2);
+
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+
+  --color-primary: var(--accent);
+  --color-primary-foreground: #1A1206;
+
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--ink);
+
+  --color-destructive: var(--st-absent);
+  --color-destructive-foreground: #1A1206;
+}
+
+/* ---------------------------------------------------------------------------
+   Auth page animation.
+
+   These are CSS keyframes rather than JavaScript-driven ones on purpose, and
+   it is worth knowing why before moving them back.
+
+   The first version drove all of this through Framer Motion: 36 background
+   paths animating `pathLength`, plus a `filter: blur()` on every character.
+   Neither of those can be handed to the compositor - a blur and an SVG dash
+   offset both force the element to be re-rasterised on every single frame - so
+   sixty of them ran on the main thread forever. Leaving the page open for ten
+   seconds was enough to start dropping paint tiles: the word disappeared and
+   the panel tore.
+
+   Everything below animates ONLY `transform` and `opacity`, which the
+   compositor handles on its own thread. The stagger comes from
+   `animation-delay`, which offsets an element's whole timeline permanently, so
+   it survives every loop rather than only the first one.
+--------------------------------------------------------------------------- */
+
+/* One slice crossing a character: 0.7s of travel inside a 3s cycle. */
+@keyframes bx-slice-ltr {
+  0%     { transform: translateX(-100%); opacity: 0; }
+  11.6%  { transform: translateX(0%);    opacity: 1; }
+  23.3%  { transform: translateX(100%);  opacity: 0; }
+  100%   { transform: translateX(100%);  opacity: 0; }
+}
+
+@keyframes bx-slice-rtl {
+  0%     { transform: translateX(100%);  opacity: 0; }
+  11.6%  { transform: translateX(0%);    opacity: 1; }
+  23.3%  { transform: translateX(-100%); opacity: 0; }
+  100%   { transform: translateX(-100%); opacity: 0; }
+}
+
+.bx-slice {
+  animation-duration: 3s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+.bx-slice-ltr { animation-name: bx-slice-ltr; }
+.bx-slice-rtl { animation-name: bx-slice-rtl; }
+
+/* The background paths: one slow drift on the whole field, not 36 separate
+   stroke animations. A single transform on a single layer. */
+@keyframes bx-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1.05); }
+  50%  { transform: translate3d(-2.5%, 1.5%, 0) scale(1.08); }
+  100% { transform: translate3d(0, 0, 0) scale(1.05); }
+}
+
+@keyframes bx-breathe {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.65; }
+}
+
+.bx-paths {
+  animation: bx-drift 42s ease-in-out infinite, bx-breathe 15s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Reduced motion means no motion. The word and the paths still render. */
+@media (prefers-reduced-motion: reduce) {
+  .bx-slice, .bx-paths { animation: none; }
+  .bx-slice { opacity: 0; }
+  .bx-paths { opacity: 0.5; }
+}
