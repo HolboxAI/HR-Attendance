@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     # Photos are files on disk for now, S3 later. Same interface either way.
     storage_dir: Path = DATA_DIR / "uploads"
 
+    # Where nightly backups land. Local for now; S3 later, same as photos -
+    # a copy on the same disk as the database survives a bad migration or a
+    # careless DELETE, but not the disk dying. That is a real limitation and
+    # it is why this points at a directory rather than pretending to be
+    # disaster recovery.
+    backup_dir: Path = DATA_DIR / "backups"
+    backup_retention_days: int = 30
+
     # Retention. Biometric data is the one category where keeping it "just in
     # case" is a liability rather than a convenience, so both of these have an
     # expiry and a job that enforces it.

@@ -28,6 +28,7 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_migrations.py  # schema upgrades
     apps/api/.venv/bin/python apps/api/tests/test_corrections.py # PRD section 11
     apps/api/.venv/bin/python apps/api/tests/test_carry_forward.py  # year-end rollover
+    apps/api/.venv/bin/python apps/api/tests/test_backup.py      # backup + restore
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd apps/web && npx tsc --noEmit
     cd apps/mobile && npx tsc --noEmit
@@ -182,6 +183,30 @@ exists so page JavaScript can never read a token.
 
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
 and leave. Mobile app runs in Expo Go. All tests pass.
+
+**Backups verify themselves.** `scripts/backup.py` snapshots the database,
+compresses it, and immediately opens the copy to check integrity and count real
+rows out of it. `--list`, `--verify <file>` and `--restore <file> --to <path>`
+do the rest. Nightly in production:
+
+    0 2 * * *  cd /srv/boxcode/apps/api && .venv/bin/python scripts/backup.py
+
+- **Never `cp` the SQLite file.** SQLite writes through a journal; copying
+  `boxcode.db` mid-transaction can capture a torn database that looks fine
+  until the day you need it. This uses sqlite3's online backup API, which
+  takes a consistent snapshot of a LIVE database - tested with a connection
+  open and writing.
+- **The restore test is not optional.** The PRD requires one before rollout,
+  and the only way that stays true is if it happens on every backup rather
+  than once, months ago, by someone who has left.
+- **Restore refuses to overwrite.** It writes beside the live database and
+  tells you to swap it in yourself. Restoring onto a live database is how a
+  bad afternoon becomes a bad week.
+- **Retention keeps 30 days but never prunes the newest**, so a system left
+  off for a year still has its last backup.
+- **What this is NOT: disaster recovery.** A copy on the same disk survives a
+  bad migration or a careless DELETE, not the disk dying. Ship these to S3
+  before the pilot carries real attendance.
 
 **Leave carry-forward runs at the year boundary.**
 `POST /admin/leave/carry-forward?period=2026` moves what is left of a period
