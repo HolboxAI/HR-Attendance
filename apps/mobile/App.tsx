@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, View,
+  ActivityIndicator, AppState, Pressable, SafeAreaView, StyleSheet, Text, View,
 } from 'react-native';
 
 import LeaveScreen from './src/LeaveScreen';
@@ -10,6 +10,7 @@ import PunchScreen from './src/PunchScreen';
 import SurveyScreen from './src/SurveyScreen';
 import type { Identity } from './src/auth';
 import { restore, signOut } from './src/session';
+import { flush } from './src/sync';
 import { theme } from './src/theme';
 
 const c = theme.color;
@@ -33,6 +34,19 @@ export default function App() {
     await signOut();
     setMe(null);
   }, []);
+
+  // Drain anything stranded whenever the app comes back to the foreground -
+  // walking out of the basement, or opening it the next morning, is exactly
+  // when the connection has returned. Signed in only: a queued punch needs a
+  // token to send, and retrying without one would just burn the queue.
+  useEffect(() => {
+    if (!me) return;
+    void flush();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void flush();
+    });
+    return () => sub.remove();
+  }, [me]);
 
   if (checking) {
     return (

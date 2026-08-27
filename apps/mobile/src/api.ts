@@ -47,6 +47,9 @@ let mockState: TodayStatus = {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The server refused this punch and always will. Stop retrying it. */
+export class PermanentPunchError extends Error {}
+
 function hhmm(d: Date) {
   return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
 }
@@ -82,6 +85,12 @@ export async function submitPunch(args: {
   isMocked: boolean;
   direction: PunchDirection;
   simulate?: SimulateCase;
+  /**
+   * Only set when replaying a punch that was queued offline. Its presence
+   * tells the server "this happened earlier than it arrived"; the server
+   * bounds how far back it will believe.
+   */
+  capturedAt?: Date;
 }): Promise<PunchResult> {
   const now = new Date();
 
@@ -134,6 +143,7 @@ export async function submitPunch(args: {
   form.append('accuracy_m', String(args.accuracyM ?? ''));
   form.append('is_mocked', String(args.isMocked));
   form.append('direction', args.direction);
+  if (args.capturedAt) form.append('captured_at', args.capturedAt.toISOString());
 
   const res = await fetch(`${API_BASE}/api/v1/mobile/punch`, {
     method: 'POST',
@@ -143,6 +153,12 @@ export async function submitPunch(args: {
   if (res.status === 401) {
     await signOut();
     throw new Error('Session expired - sign in again');
+  }
+  if (res.status === 422) {
+    // Too old to sync. The server has refused it for good; surface the reason
+    // rather than retrying this punch until the end of time.
+    const body = await res.json().catch(() => null);
+    throw new PermanentPunchError(body?.detail ?? 'This punch can no longer be synced');
   }
   const j = await res.json();
   return {

@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     access_token_minutes: int = 30
     refresh_token_days: int = 30
 
+    # How far back a phone may claim an offline punch was captured. A queued
+    # punch carries the time it HAPPENED; anything older than this is refused
+    # and stored with that reason, so a phone left in a drawer for a week
+    # cannot backfill a month. Two days covers a weekend outage.
+    max_queued_punch_hours: int = 48
+
     # Reject a punch from a phone that has not been bound to its employee.
     # See app/services/devices.py for what binding means and how HR clears one.
     require_device_binding: bool = True

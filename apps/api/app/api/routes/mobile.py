@@ -44,6 +44,10 @@ router = APIRouter(prefix="/mobile", tags=["mobile"])
 
 MAX_SELFIE_BYTES = 8 * 1024 * 1024
 
+# Phone clocks drift. A couple of minutes either way is not an attack, it is a
+# device that has not synced NTP recently.
+CLOCK_SKEW_SECONDS = 120
+
 
 class TodayResponse(BaseModel):
     employee_code: str
@@ -102,8 +106,37 @@ async def punch(
     is_mocked: bool = Form(default=False),
     wifi_bssid: str | None = Form(default=None),
     direction: PunchDirection | None = Form(default=None),
+    captured_at: datetime | None = Form(default=None),
 ) -> PunchResponse:
     now = datetime.now(timezone.utc)
+
+    # `captured_at` is only sent for a punch that was taken offline and queued
+    # on the phone. This is the one place a client-supplied time is allowed,
+    # and it is bounded rather than trusted:
+    #
+    #   - absent          -> server time, exactly as before
+    #   - in the future   -> the phone's clock is wrong; use server time
+    #   - too far past    -> refused, and stored with that reason
+    #
+    # The punch_events table has always had a dual clock. event_ts_utc is when
+    # it HAPPENED and received_ts_utc is when we got it, so a late sync records
+    # both facts instead of pretending someone arrived two hours late.
+    event_ts, queue_note, queued_seconds = now, None, 0.0
+    if captured_at is not None:
+        claimed = captured_at if captured_at.tzinfo else captured_at.replace(tzinfo=timezone.utc)
+        queued_seconds = (now - claimed).total_seconds()
+        if queued_seconds < -CLOCK_SKEW_SECONDS:
+            queue_note = "Phone clock is ahead - recorded at server time"
+            queued_seconds = 0.0
+        elif queued_seconds > settings.max_queued_punch_hours * 3600:
+            hours = settings.max_queued_punch_hours
+            raise HTTPException(
+                422,
+                f"This punch was taken more than {hours} hours ago and is too "
+                f"old to sync. Ask HR to add it as a correction.",
+            )
+        else:
+            event_ts = claimed
 
     # Who is punching comes from the token and nowhere else. There is
     # deliberately no employee_code parameter on this endpoint: while one
@@ -120,8 +153,8 @@ async def punch(
     if len(image) > MAX_SELFIE_BYTES:
         raise HTTPException(413, "Selfie too large - compress before upload")
 
-    policy, _ = policy_for(db, emp, now.date())
-    shift_date = shift_date_for(now, policy)
+    policy, _ = policy_for(db, emp, event_ts.date())
+    shift_date = shift_date_for(event_ts, policy)
     if direction is None:
         direction = next_direction(db, emp, shift_date)
 
@@ -168,7 +201,7 @@ async def punch(
                 reason = face.reason or "Face check failed"
 
     record_punch(
-        db, org_id=emp.org_id, employee=emp, event_ts=now,
+        db, org_id=emp.org_id, employee=emp, event_ts=event_ts,
         source=PunchSource.MOBILE_APP, direction=direction,
         lat=lat, lng=lng, photo_key=key,
         geofence_ok=geo.ok, distance_m=geo.distance_m,
@@ -176,7 +209,10 @@ async def punch(
         face_similarity=face.similarity if face else None,
         rejection_reason=reason,
         raw={"accuracy_m": accuracy_m, "wifi": bool(geo.matched_wifi),
-             "face_checked": face is not None},
+             "face_checked": face is not None,
+             "queued": captured_at is not None,
+             "queued_seconds": round(queued_seconds),
+             "queue_note": queue_note},
     )
 
     day = recompute_day(db, emp, shift_date)
@@ -184,7 +220,7 @@ async def punch(
 
     if reason:
         return PunchResponse(
-            accepted=False, direction=direction, punched_at=now,
+            accepted=False, direction=direction, punched_at=event_ts,
             distance_m=geo.distance_m,
             face_similarity=face.similarity if face else None,
             message=reason,
@@ -192,9 +228,12 @@ async def punch(
 
     # The ORG's timezone, never the server's. A UTC server would otherwise
     # tell someone in Ahmedabad they checked in five and a half hours ago.
-    local = now.astimezone(ZoneInfo(str(OFFICE["timezone"])))
+    # Report the time it HAPPENED, not the time it synced. A punch taken in
+    # the basement at 9:34 and delivered at 11:00 must say 9:34, or the
+    # confirmation contradicts the record we just wrote.
+    local = event_ts.astimezone(ZoneInfo(str(OFFICE["timezone"])))
     return PunchResponse(
-        accepted=True, direction=direction, punched_at=now,
+        accepted=True, direction=direction, punched_at=event_ts,
         distance_m=geo.distance_m,
         face_similarity=face.similarity if face else None,
         message=("Checked in" if direction == PunchDirection.IN else "Checked out")

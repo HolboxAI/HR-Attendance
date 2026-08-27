@@ -6,10 +6,17 @@ import {
 } from 'react-native';
 
 import { OFFICE_NAME, getToday, submitPunch } from './api';
+import { enqueue } from './queue';
+import { flush, pendingCount } from './sync';
 import { theme } from './theme';
 import type { PunchResult, SimulateCase, TodayStatus } from './types';
 
 const c = theme.color;
+
+/** Local wall-clock time, for telling someone when their punch was saved. */
+function hhmmLocal(d: Date): string {
+  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
 
 type Phase = 'idle' | 'camera' | 'working' | 'result';
 
@@ -18,6 +25,8 @@ export default function PunchScreen() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [result, setResult] = useState<PunchResult | null>(null);
   const [queued, setQueued] = useState(false);
+  const [pending, setPending] = useState(0);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
   const [simulate, setSimulate] = useState<SimulateCase>('success');
 
   const [camPerm, requestCam] = useCameraPermissions();
@@ -25,6 +34,7 @@ export default function PunchScreen() {
   const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
+    setPending(pendingCount());
     getToday().then(setToday);
     Location.getForegroundPermissionsAsync().then((p) => setLocPerm(p.granted));
   }, []);
@@ -48,6 +58,15 @@ export default function PunchScreen() {
   const capture = useCallback(async () => {
     if (!today) return;
     setPhase('working');
+    // The moment the person actually tapped. If this ends up queued, this is
+    // the time that travels with it - not the time it eventually syncs.
+    const capturedAt = new Date();
+    let photoUri = '';
+    let coords: { lat: number | null; lng: number | null;
+                  accuracyM: number | null; mocked: boolean } = {
+      lat: null, lng: null, accuracyM: null, mocked: false,
+    };
+
     try {
       // Photo and position are taken in the same moment on purpose - never
       // compare a selfie taken here against a location recorded elsewhere.
@@ -55,28 +74,59 @@ export default function PunchScreen() {
         cameraRef.current?.takePictureAsync({ quality: 0.6, skipProcessing: true }),
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
       ]);
-
-      const res = await submitPunch({
-        photoUri: photo?.uri ?? '',
+      photoUri = photo?.uri ?? '';
+      coords = {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
         accuracyM: position.coords.accuracy ?? null,
-        isMocked: (position as { mocked?: boolean }).mocked ?? false,
+        mocked: (position as { mocked?: boolean }).mocked ?? false,
+      };
+
+      const res = await submitPunch({
+        photoUri,
+        lat: coords.lat,
+        lng: coords.lng,
+        accuracyM: coords.accuracyM,
+        isMocked: coords.mocked,
         direction: today.direction,
         simulate,
       });
 
       setResult(res);
       setPhase('result');
-      if (res.accepted) setToday(await getToday());
+      if (res.accepted) {
+        setToday(await getToday());
+        // A working connection is the best moment to clear anything stranded.
+        void flush().then((r) => setPending(r.remaining));
+      }
     } catch {
-      // Never lose a punch to a dead connection. It syncs when signal returns.
-      setQueued(true);
+      // The connection died. Save the punch properly - photo, position and the
+      // time it was taken - and only then tell the person it is safe.
+      const saved = photoUri
+        ? await enqueue({
+            photoUri,
+            capturedAt,
+            direction: today.direction,
+            lat: coords.lat,
+            lng: coords.lng,
+            accuracyM: coords.accuracyM,
+            isMocked: coords.mocked,
+          })
+        : null;
+
+      setQueued(saved !== null);
+      setPending(pendingCount());
       setPhase('result');
       setResult({
         accepted: false, direction: today.direction,
-        punchedAt: new Date().toISOString(), distanceM: null, faceSimilarity: null,
-        message: 'No signal - saved on your phone and will sync automatically',
+        punchedAt: capturedAt.toISOString(), distanceM: null, faceSimilarity: null,
+        // Two different messages, because they are two different situations
+        // and the difference matters enormously to the person reading it.
+        message: saved
+          ? `No signal - saved on your phone at ${hhmmLocal(capturedAt)} and will `
+            + 'send itself when you are back online.'
+          : 'Could not check in and could not save it either. Please try again '
+            + 'when you have signal.',
       });
     }
   }, [today, simulate]);
@@ -119,6 +169,33 @@ export default function PunchScreen() {
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
       <Text style={s.eyebrow}>{OFFICE_NAME.toUpperCase()}</Text>
+
+      {/*
+        Anything still waiting is stated plainly and permanently, not as a
+        banner that disappears with the next screen. If a punch has not landed,
+        the person needs to know that every time they open the app - not once.
+      */}
+      {pending > 0 && (
+        <View style={s.pendingRow}>
+          <Text style={s.pendingGlyph}>◌</Text>
+          <Text style={s.pendingText}>
+            {pending === 1 ? '1 punch' : `${pending} punches`} saved on this phone,
+            waiting for signal.{' '}
+            <Text
+              style={s.pendingLink}
+              onPress={async () => {
+                const r = await flush();
+                setPending(r.remaining);
+                if (r.sent > 0) setToday(await getToday());
+                if (r.messages.length) setSyncNote(r.messages[0]);
+              }}
+            >
+              Try now
+            </Text>
+          </Text>
+        </View>
+      )}
+      {syncNote && <Text style={s.syncNote}>{syncNote}</Text>}
       <Text style={s.greeting}>{goingIn ? 'Good morning' : 'Have a good evening'}</Text>
       <Text style={s.shift}>Your shift &middot; {today.shiftLabel}</Text>
 
@@ -202,6 +279,15 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const s = StyleSheet.create({
+  pendingRow: {
+    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
+    backgroundColor: c.surface2, borderColor: c.warn, borderWidth: 1,
+    borderRadius: 8, padding: 12, marginBottom: 16,
+  },
+  pendingGlyph: { color: c.warn, fontSize: 14, lineHeight: 20 },
+  pendingText: { color: c.ink2, fontSize: 14, lineHeight: 20, flex: 1 },
+  pendingLink: { color: c.accent, fontWeight: '600' },
+  syncNote: { color: c.warn, fontSize: 13, lineHeight: 19, marginBottom: 16 },
   screen: { flex: 1, backgroundColor: c.ground },
   center: { alignItems: 'center', justifyContent: 'center' },
   content: { padding: 24, paddingTop: 72, gap: 16 },

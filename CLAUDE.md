@@ -23,6 +23,7 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_auth.py        # the auth checklist
     apps/api/.venv/bin/python apps/api/tests/test_leave.py       # the leave checklist
     apps/api/.venv/bin/python apps/api/tests/test_export.py      # month-end register
+    apps/api/.venv/bin/python apps/api/tests/test_offline_punch.py  # the offline queue
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd apps/web && npx tsc --noEmit
     cd apps/mobile && npx tsc --noEmit
@@ -128,6 +129,27 @@ translate; the core is vendor-neutral.
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
 and leave. Mobile app runs in Expo Go. All tests pass.
 
+**Offline punches are really queued now.** The app used to say "saved on your
+phone and will sync automatically" while persisting nothing - the punch, the
+selfie and the GPS reading were all discarded and the person was marked absent
+for a day they worked. `src/queue.ts` writes the photo and the metadata to the
+document directory (NOT the camera cache, which the OS may empty), and
+`src/sync.ts` drains it on launch, on foreground, and after any successful
+punch.
+
+- **`captured_at` is the one client-supplied time the server accepts**, and it
+  is bounded, not trusted: absent means server time as before, a future time
+  means the phone's clock is wrong so server time is used and noted, and
+  anything older than `MAX_QUEUED_PUNCH_HOURS` (48) is refused with a reason.
+- **`shift_date` follows `event_ts`, not the clock**, or a 23:50 punch that
+  syncs after midnight files against the wrong day.
+- **The dual clock finally does its job.** `event_ts_utc` is when it happened,
+  `received_ts_utc` is when we got it; a late sync records both instead of
+  pretending someone arrived two hours late.
+- **Retrying is idempotent** - dedupe is per identity per second, so the same
+  queued punch sent twice is one row. A punch refused for good (too old) is
+  dropped from the queue WITH its reason shown, never silently.
+
 **Month-end export is built.** `GET /admin/export/month.csv` returns the
 attendance register - one row per employee, one column per day, coded
 P/HD/A/L/WO/PH - plus totals, hours, late and OT. There is a download button on
@@ -185,25 +207,20 @@ Not built yet, in priority order:
 1. **Correction UI** - the API endpoint works; HR should not need curl. The PRD
    flow is employee requests -> manager approves -> day recomputes, which does
    not exist yet: corrections are HR-only and direct.
-2. **The mobile app lies about offline punches.** On a network failure it says
-   "saved on your phone and will sync automatically" and persists NOTHING. The
-   punch is lost. Either build the queue or change the message - telling
-   someone they are recorded when they are not is the failure this project
-   cares most about avoiding.
-3. **Selfie retention.** The PRD requires punch selfies deleted after 90 days.
+2. **Selfie retention.** The PRD requires punch selfies deleted after 90 days.
    No job does this. `storage.punch_key` folders them by date precisely so a
    purge can be a directory delete.
-4. **Alembic migrations.** None exist - the schema is `create_all` only, so
+3. **Alembic migrations.** None exist - the schema is `create_all` only, so
    "Postgres is one connection string away" is not yet true.
-5. **Carry-forward at year end** - the flags and the cap are stored and
+4. **Carry-forward at year end** - the flags and the cap are stored and
    editable, but nothing yet runs the roll-over that moves EL into next year's
    `opening` and lapses CL/SL.
-6. **Manager relationships** - `manager_id` exists and the scoping works
+5. **Manager relationships** - `manager_id` exists and the scoping works
    (`visible_employees`), but the seed sets nobody's manager, so no one is a
    manager in practice.
-7. **A "Check in" entry point on the dashboard**, so an admin can mark their own
+6. **A "Check in" entry point on the dashboard**, so an admin can mark their own
    attendance without reaching for their phone.
-8. Then payroll (India: PF, ESI, PT, TDS, Form 16).
+7. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish
 
