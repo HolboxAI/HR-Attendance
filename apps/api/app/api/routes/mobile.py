@@ -35,7 +35,7 @@ from app.services.attendance import (
 from app.services import devices
 from app.services.enrolment import reference_bytes
 from app.services.face import NOT_ENROLLED, FaceUnavailable, get_face_service
-from app.services.geofence import check_presence
+from app.services.geofence import PresencePolicy, check_presence
 from app.services.resolver import shift_date_for
 from app.services.storage import punch_key, storage
 from app.services.attendance import policy_for
@@ -158,10 +158,17 @@ async def punch(
     if direction is None:
         direction = next_direction(db, emp, shift_date)
 
+    # Every presence input comes from the location row, with app/core/office.py
+    # only as the fallback for a database that predates it. That constant used
+    # to supply the BSSID list and the policy directly, which meant registering
+    # an access point was a code edit and a restart - the exact thing the PRD
+    # rules out ("changeable per location without code deployment").
     loc = db.scalar(select(Location).where(Location.id == emp.location_id))
     office_lat = float(loc.lat) if loc and loc.lat is not None else float(OFFICE["lat"])
     office_lng = float(loc.lng) if loc and loc.lng is not None else float(OFFICE["lng"])
     radius = loc.geofence_radius_m if loc else int(OFFICE["radius_m"])
+    allowed_bssids = tuple(loc.allowed_bssids or ()) if loc else tuple(OFFICE["allowed_bssids"])
+    policy = PresencePolicy(loc.presence_policy) if loc else OFFICE["policy"]
 
     # Store the photo first so that even a rejected attempt has evidence
     # attached to it.
@@ -173,7 +180,7 @@ async def punch(
         lat=lat, lng=lng, office_lat=office_lat, office_lng=office_lng,
         radius_m=radius, accuracy_m=accuracy_m, fix_age_seconds=fix_age_seconds,
         is_mocked=is_mocked, wifi_bssid=wifi_bssid,
-        allowed_bssids=tuple(OFFICE["allowed_bssids"]), policy=OFFICE["policy"],
+        allowed_bssids=allowed_bssids, policy=policy,
     )
 
     face = None
