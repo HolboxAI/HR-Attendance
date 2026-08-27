@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     face_provider: str = "stub"
     aws_region: str = "ap-south-1"
 
+    # Declared, rather than left to boto3's own environment lookup, because
+    # pydantic reads .env into THIS object and not into os.environ - so a key
+    # pasted into apps/api/.env was invisible to boto3, which then silently
+    # fell back to whatever ~/.aws/credentials happened to hold. "It works on
+    # my machine, with the wrong account" is the failure that causes.
+    #
+    # Leave both unset in production and attach an IAM instance role instead:
+    # app/core/aws.py falls through to boto3's default chain when they are
+    # None, which is how the role gets picked up. See docs/AWS-CREDENTIALS.md.
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+
     # "null" writes the notification row - queryable, never lost - and does
     # not ring anyone's phone. There is no real device population to push to
     # yet; wire "expo" in once there is one worth the API calls.

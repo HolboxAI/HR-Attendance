@@ -34,7 +34,7 @@ from app.services.attendance import (
 )
 from app.services import devices
 from app.services.enrolment import reference_bytes
-from app.services.face import NOT_ENROLLED, get_face_service
+from app.services.face import NOT_ENROLLED, FaceUnavailable, get_face_service
 from app.services.geofence import check_presence
 from app.services.resolver import shift_date_for
 from app.services.storage import punch_key, storage
@@ -178,6 +178,7 @@ async def punch(
 
     face = None
     face_ok: bool | None = None
+    face_unavailable: str | None = None
     reason: str | None = None
     if not geo.ok:
         reason = geo.reason
@@ -193,12 +194,31 @@ async def punch(
             if settings.require_face_enrolment:
                 reason = NOT_ENROLLED
         else:
-            face = get_face_service().verify(
-                enrolled_bytes=reference, selfie_bytes=image
-            )
-            face_ok = face.matched
-            if not face.matched:
-                reason = face.reason or "Face check failed"
+            try:
+                face = get_face_service().verify(
+                    enrolled_bytes=reference, selfie_bytes=image
+                )
+            except FaceUnavailable as exc:
+                # Rekognition is down, throttling, or misconfigured. This is
+                # OUR failure, not the employee's, so it must not become a
+                # rejected punch on their record - and it must not 500 either,
+                # because the selfie is already stored and an exception here
+                # would leave a photo on disk with no punch_events row
+                # explaining it. That is the one thing this pipeline is not
+                # allowed to do.
+                #
+                # face_ok stays NULL: the check did not run. Same shape as the
+                # no-reference-photo branch above, and for the same reason -
+                # never record a verdict that was never reached.
+                face_unavailable = str(exc)
+                if settings.require_face_enrolment:
+                    # Strict mode says a punch must be face-verified. If we
+                    # cannot verify, we cannot accept.
+                    reason = "Face check unavailable - try again in a moment"
+            else:
+                face_ok = face.matched
+                if not face.matched:
+                    reason = face.reason or "Face check failed"
 
     record_punch(
         db, org_id=emp.org_id, employee=emp, event_ts=event_ts,
@@ -210,6 +230,7 @@ async def punch(
         rejection_reason=reason,
         raw={"accuracy_m": accuracy_m, "wifi": bool(geo.matched_wifi),
              "face_checked": face is not None,
+             "face_unavailable": face_unavailable,
              "queued": captured_at is not None,
              "queued_seconds": round(queued_seconds),
              "queue_note": queue_note},

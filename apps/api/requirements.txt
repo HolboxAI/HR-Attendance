@@ -19,3 +19,7 @@ python-jose[cryptography]==3.3.0
 # bcrypt 4.1, and it imports the stdlib `crypt` module, removed in Python 3.13.
 # Use bcrypt directly - hashpw/checkpw is the whole API we need.
 bcrypt==5.0.0
+
+# AWS SDK, for Rekognition CompareFaces (FACE_PROVIDER=rekognition).
+# Imported lazily in app/services/face.py so stub-mode dev never needs it.
+boto3==1.43.81
