@@ -30,6 +30,7 @@ from app.models.enums import UserRole                # noqa: E402
 ROLES = {
     "BX001": UserRole.SUPER_ADMIN,     # Krish
     "BX006": UserRole.HR_ADMIN,        # Ashley, Operations
+    "BX008": UserRole.HR_ADMIN,        # Himesh, Holbox - same access as Ashley
 }
 
 # Readable rather than maximally random: these get typed once, on a phone,

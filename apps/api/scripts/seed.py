@@ -32,7 +32,15 @@ STAFF = [
     ("BX005", "Dhruv",        "Design",      "Product Designer",  "General"),
     ("BX006", "Ashley",       "Operations",  "Operations",        "General"),
     ("BX007", "Ritesh",       "Engineering", "Engineer",          "Night"),
+    ("BX008", "Himesh",       "Operations",  "HR Admin",          "General"),
 ]
+
+# Real email overrides for people whose address does not follow the
+# firstname@boxcode.ai pattern - Himesh is on the Holbox side, not Boxcode's
+# own domain, and his login has to match the address he actually reads.
+EMAIL_OVERRIDES = {
+    "BX008": "himesh@holbox.ai",
+}
 
 
 def reset(db) -> None:
@@ -111,7 +119,7 @@ def main() -> None:
                 continue
             emp = Employee(
                 id=uuid.uuid4(), org_id=org.id, emp_code=code, full_name=name,
-                email=f"{name.split()[0].lower()}@boxcode.ai",
+                email=EMAIL_OVERRIDES.get(code, f"{name.split()[0].lower()}@boxcode.ai"),
                 department_id=depts[dept].id, location_id=loc.id, designation=title,
                 employment_type=EmploymentType.FULL_TIME, date_of_joining=date(2026, 1, 5),
             )
