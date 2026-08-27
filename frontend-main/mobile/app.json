@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "Boxcode",
+    "slug": "boxcode-hrms",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.boxcode.hrms",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Boxcode uses the camera to confirm it's you when you check in.",
+        "NSLocationWhenInUseUsageDescription": "Boxcode checks your location to confirm you're at the office when you check in."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "ai.boxcode.hrms",
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "boxcode",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Boxcode uses the camera to confirm it's you when you check in."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Boxcode checks your location to confirm you're at the office when you check in."
+        }
+      ]
+    ]
+  }
+}

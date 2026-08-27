@@ -1,0 +1,323 @@
+@import "tailwindcss";
+
+/* Same palette as the mobile app - amber on cool graphite - so the two halves
+   read as one product rather than two projects. */
+:root {
+  --ground: #0E1316;
+  --surface: #151C20;
+  --surface-2: #1C252A;
+  --line: #2A353B;
+  --ink: #E8EEF1;
+  --ink-2: #AFBEC6;
+  --ink-3: #7E8F98;
+  --accent: #E8A344;
+
+  /* Status colors are RESERVED. They mean one thing each, they are never
+     reused as decoration, and every one of them ships beside a text label -
+     nothing here is distinguishable by color alone. */
+  --st-present: #5FBF93;
+  --st-late: #E0A94E;
+  --st-half: #7FA9D4;
+  --st-absent: #E07A63;
+  --st-pending: #7E8F98;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-accent: var(--accent);
+  --color-st-present: var(--st-present);
+  --color-st-late: var(--st-late);
+  --color-st-half: var(--st-half);
+  --color-st-absent: var(--st-absent);
+  --color-st-pending: var(--st-pending);
+}
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-feature-settings: "tnum";
+}
+.tnum { font-variant-numeric: tabular-nums; }
+
+@theme inline {
+  --font-display: Archivo, ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   shadcn token layer.
+
+   The components under components/ui are written against shadcn's vocabulary
+   (background, muted, border, primary...). Rather than let them ship a second
+   palette that clashes with the one above, every token here is an ALIAS onto
+   the Boxcode colours - so a shadcn Button is amber-on-graphite like the rest
+   of the product, and changing --accent once still changes everything.
+
+   One deliberate omission: shadcn also defines `accent` to mean "subtle hover
+   background". This codebase already uses `bg-accent` to mean the amber brand
+   colour, and re-pointing it would repaint every existing button. The ghost
+   and outline button variants therefore hover on `surface-2` directly instead
+   of on shadcn's `accent`. See components/ui/button.tsx.
+--------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--ground);
+  --color-foreground: var(--ink);
+
+  --color-muted: var(--surface);
+  --color-muted-foreground: var(--ink-2);
+
+  --color-border: var(--line);
+  --color-input: var(--line);
+  --color-ring: var(--accent);
+
+  --color-primary: var(--accent);
+  --color-primary-foreground: #1A1206;
+
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--ink);
+
+  --color-destructive: var(--st-absent);
+  --color-destructive-foreground: #1A1206;
+}
+
+/* ---------------------------------------------------------------------------
+   Dashboard light theme.
+
+   Scoped to a class rather than redefined on :root, because :root is shared
+   with the sign-in page, which stays the dark animated design already shipped
+   and approved. Every dashboard component already reads colour through these
+   custom properties (bg-surface, text-ink, border-line...), so overriding the
+   properties on one wrapping element re-skins everything under it without
+   touching a single component file.
+
+   Status and accent colours are deepened from the dark-theme values, not
+   reused as-is: a hue tuned to sit on near-black graphite is usually too pale
+   for 4.5:1 text contrast on white. These are chosen to hold that contrast
+   AND to read as one deliberate family rather than five different app's
+   colours - which is the actual complaint about copying a reference
+   dashboard's palette wholesale rather than reusing its layout.
+--------------------------------------------------------------------------- */
+.bx-light {
+  --ground: #EEF0F3;
+  --surface: #FFFFFF;
+  --surface-2: #F7F8FA;
+  --line: #E4E7EC;
+  --ink: #101828;
+  --ink-2: #475467;
+  --ink-3: #98A2B3;
+  --accent: #B45309;
+  --st-present: #15803D;
+  --st-late: #C2410C;
+  --st-half: #1D4ED8;
+  --st-absent: #B91C1C;
+  --st-pending: #6B7280;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+/* One card shape, used everywhere a dashboard panel needs to read as a
+   raised surface rather than a flat outlined box - the thing a plain border
+   cannot do on a light background the way it could on dark graphite. */
+.bx-card {
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: 0 1px 2px 0 rgba(16, 24, 40, 0.04), 0 1px 3px 0 rgba(16, 24, 40, 0.06);
+}
+
+
+/* ---------------------------------------------------------------------------
+   Auth page animation.
+
+   These are CSS keyframes rather than JavaScript-driven ones on purpose, and
+   it is worth knowing why before moving them back.
+
+   The first version drove all of this through Framer Motion: 36 background
+   paths animating `pathLength`, plus a `filter: blur()` on every character.
+   Neither of those can be handed to the compositor - a blur and an SVG dash
+   offset both force the element to be re-rasterised on every single frame - so
+   sixty of them ran on the main thread forever. Leaving the page open for ten
+   seconds was enough to start dropping paint tiles: the word disappeared and
+   the panel tore.
+
+   Everything below animates ONLY `transform` and `opacity`, which the
+   compositor handles on its own thread. The stagger comes from
+   `animation-delay`, which offsets an element's whole timeline permanently, so
+   it survives every loop rather than only the first one.
+--------------------------------------------------------------------------- */
+
+/* One slice crossing a character: 0.7s of travel inside a 3s cycle. */
+@keyframes bx-slice-ltr {
+  0%     { transform: translateX(-100%); opacity: 0; }
+  11.6%  { transform: translateX(0%);    opacity: 1; }
+  23.3%  { transform: translateX(100%);  opacity: 0; }
+  100%   { transform: translateX(100%);  opacity: 0; }
+}
+
+@keyframes bx-slice-rtl {
+  0%     { transform: translateX(100%);  opacity: 0; }
+  11.6%  { transform: translateX(0%);    opacity: 1; }
+  23.3%  { transform: translateX(-100%); opacity: 0; }
+  100%   { transform: translateX(-100%); opacity: 0; }
+}
+
+.bx-slice {
+  animation-duration: 3s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+}
+.bx-slice-ltr { animation-name: bx-slice-ltr; }
+.bx-slice-rtl { animation-name: bx-slice-rtl; }
+
+/* The background paths: one slow drift on the whole field, not 36 separate
+   stroke animations. A single transform on a single layer. */
+@keyframes bx-drift {
+  0%   { transform: translate3d(0, 0, 0) scale(1.05); }
+  50%  { transform: translate3d(-2.5%, 1.5%, 0) scale(1.08); }
+  100% { transform: translate3d(0, 0, 0) scale(1.05); }
+}
+
+@keyframes bx-breathe {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.65; }
+}
+
+.bx-paths {
+  animation: bx-drift 42s ease-in-out infinite, bx-breathe 15s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Reduced motion means no motion. The word and the paths still render. */
+@media (prefers-reduced-motion: reduce) {
+  .bx-slice, .bx-paths { animation: none; }
+  .bx-slice { opacity: 0; }
+  .bx-paths { opacity: 0.5; }
+}
+
+/* ===========================================================================
+   frontend-main additions. Everything below extends the approved base above;
+   nothing above this line was changed, because the sign-in page depends on it.
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   Dashboard dark theme.
+
+   Same trick as .bx-light: the components read colour through custom
+   properties, so a second scoped class re-skins the shell without touching a
+   component. These are NOT the sign-in page's raw :root values - surfaces are
+   lifted a step so cards still separate from the ground, and the status hues
+   are the dark-tuned originals, which were designed for graphite.
+--------------------------------------------------------------------------- */
+.bx-dark,
+.bx-dark-mode #bx-shell {
+  --ground: #0E1316;
+  --surface: #151C20;
+  --surface-2: #1C252A;
+  --line: #2A353B;
+  --ink: #E8EEF1;
+  --ink-2: #AFBEC6;
+  --ink-3: #7E8F98;
+  --accent: #E8A344;
+  --st-present: #5FBF93;
+  --st-late: #E0A94E;
+  --st-half: #7FA9D4;
+  --st-absent: #E07A63;
+  --st-pending: #7E8F98;
+  background: var(--ground);
+  color: var(--ink);
+}
+.bx-dark .bx-card,
+.bx-dark-mode #bx-shell .bx-card {
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ---------------------------------------------------------------------------
+   Surfaces.
+
+   Three tiers, used sparingly: bx-card (primary, solid), bx-glass (floating
+   chrome - topbar, dropdowns, dialogs), bx-tint (secondary washes). Glass is
+   reserved for things that FLOAT over content; giving it to every card makes
+   nothing feel elevated.
+--------------------------------------------------------------------------- */
+.bx-glass {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+.bx-glass-strong {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid var(--line);
+}
+
+/* A very quiet ambient wash behind the dashboard, so large empty regions have
+   depth without a background video's cost. Pure gradients: zero per-frame work. */
+.bx-ambient {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 60%),
+    radial-gradient(900px 420px at -10% 30%, color-mix(in srgb, var(--st-half) 5%, transparent), transparent 55%),
+    var(--ground);
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. Compositor-only properties, small distances, fast durations.
+--------------------------------------------------------------------------- */
+@keyframes bx-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.bx-rise { animation: bx-rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* Stagger by supplying --bx-i on each child. */
+.bx-rise-i { animation: bx-rise 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--bx-i, 0) * 45ms); }
+
+@keyframes bx-pop {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.bx-pop { animation: bx-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; transform-origin: top right; }
+
+/* Live-presence dot: a slow breathing ring, not a strobe. */
+@keyframes bx-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-present) 45%, transparent); }
+  60%      { box-shadow: 0 0 0 5px transparent; }
+}
+.bx-pulse { animation: bx-pulse 2.4s ease-out infinite; }
+
+/* Skeletons: opacity only, so a page of them costs nothing. */
+@keyframes bx-shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.bx-skeleton {
+  animation: bx-shimmer 1.6s ease-in-out infinite;
+  background: var(--surface-2);
+  border-radius: 0.375rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bx-rise, .bx-rise-i, .bx-pop { animation-duration: 0.01ms; animation-delay: 0ms; }
+  .bx-pulse, .bx-skeleton { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Focus. One visible ring everywhere; never removed, only styled.
+--------------------------------------------------------------------------- */
+#bx-shell :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Table rows that lead somewhere. */
+.bx-rowlink { transition: background-color 120ms ease; }
+.bx-rowlink:hover { background: var(--surface-2); }
+
+/* Thin, theme-aware scrollbars for internal panes. */
+.bx-scroll { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
