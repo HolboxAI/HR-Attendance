@@ -76,7 +76,7 @@ def _ensure_logins() -> None:
 _ensure_logins()
 
 IST = ZoneInfo("Asia/Kolkata")
-OFFICE = (23.0315, 72.5298)
+OFFICE = (23.03479, 72.53238)
 HOME = (23.0480, 72.5400)          # ~2.1km away
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 512 + b"\xff\xd9"
 

@@ -13,7 +13,7 @@ export function haversineM(lat1: number, lng1: number, lat2: number, lng2: numbe
 /** PROVISIONAL - from a map pin, not yet confirmed on site. */
 export const OFFICE = {
   name: 'IIMA Ventures, Ahmedabad',
-  lat: 23.0315,
-  lng: 72.5298,
+  lat: 23.03479,
+  lng: 72.53238,
   radiusM: 200,
 };

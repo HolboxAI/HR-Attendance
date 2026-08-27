@@ -2,7 +2,7 @@
 
     python scripts/set_office.py                          show current
     python scripts/set_office.py --radius 50000           testing: accept punches from anywhere nearby
-    python scripts/set_office.py --lat 23.0315 --lng 72.5298 --radius 150
+    python scripts/set_office.py --lat 23.03479 --lng 72.53238 --radius 200
     python scripts/set_office.py --reset                  back to the configured office
 
 The punch endpoint reads these from the database, so a change takes effect on

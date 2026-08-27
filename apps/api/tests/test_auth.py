@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient                      # noqa: E402
 from sqlalchemy import select                                  # noqa: E402
 
 from app.core.config import settings                           # noqa: E402
+from app.core.office import OFFICE                              # noqa: E402
 from app.core.security import hash_password                    # noqa: E402
 from app.db.base import Base                                   # noqa: E402
 from app.db.session import SessionLocal, engine                # noqa: E402
@@ -34,7 +35,15 @@ from app.models.org import Organization                        # noqa: E402
 from app.services.storage import storage                       # noqa: E402
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 512 + b"\xff\xd9"
-AT_OFFICE = {"lat": "23.0315", "lng": "72.5298", "accuracy_m": "12"}
+# From the office config, never a literal copy - see the same note in
+# test_enrolment.py. A hardcoded pair silently turns "is this punch
+# authorised" into "is this punch inside the geofence" the day the office
+# moves, and the failure names the wrong thing entirely.
+AT_OFFICE = {
+    "lat": str(OFFICE["lat"]),
+    "lng": str(OFFICE["lng"]),
+    "accuracy_m": "12",
+}
 PW = "correct-horse-battery-staple"
 
 ok = True

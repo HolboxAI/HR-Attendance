@@ -25,6 +25,7 @@ os.environ["STORAGE_DIR"] = str(TMP / "uploads")
 from sqlalchemy import select                                  # noqa: E402
 
 from app.core.config import settings                           # noqa: E402
+from app.core.office import OFFICE                              # noqa: E402
 from app.core.security import hash_password                    # noqa: E402
 from app.db.base import Base                                   # noqa: E402
 from app.db.session import SessionLocal, engine                # noqa: E402
@@ -169,7 +170,16 @@ from fastapi.testclient import TestClient    # noqa: E402
 from app.main import app                     # noqa: E402
 
 client = TestClient(app)
-AT_OFFICE = {"lat": "23.0315", "lng": "72.5298", "accuracy_m": "12"}
+# Derived from the office config, never hardcoded. These were once a literal
+# copy of the coordinates, which silently broke the moment the real office was
+# measured: the punch landed outside the geofence, the face check never ran
+# (the pipeline stops at the first failure), and the test failed on a missing
+# similarity score rather than on the thing that actually moved.
+AT_OFFICE = {
+    "lat": str(OFFICE["lat"]),
+    "lng": str(OFFICE["lng"]),
+    "accuracy_m": "12",
+}
 
 
 def sign_in(emp):
