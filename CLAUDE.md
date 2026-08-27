@@ -24,6 +24,8 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_leave.py       # the leave checklist
     apps/api/.venv/bin/python apps/api/tests/test_export.py      # month-end register
     apps/api/.venv/bin/python apps/api/tests/test_offline_punch.py  # the offline queue
+    apps/api/.venv/bin/python apps/api/tests/test_retention.py   # photo deletion
+    apps/api/.venv/bin/python apps/api/tests/test_migrations.py  # schema upgrades
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd apps/web && npx tsc --noEmit
     cd apps/mobile && npx tsc --noEmit
@@ -161,6 +163,15 @@ exists so page JavaScript can never read a token.
   into browser code.
 - **bcrypt hashes a SHA-256 digest, not the raw password** (`app/core/security.py`).
   bcrypt ignores everything past 72 bytes; digesting first covers any length.
+- **Schema changes go through Alembic now, not `create_all`.** After editing a
+  model: `.venv/bin/alembic revision --autogenerate -m "what changed"`, read
+  the generated file, then `scripts/init_db.py`. Skipping this leaves the
+  column missing on every database that already exists, and the failure shows
+  up as a confusing query error rather than at setup.
+- **A database from before migrations is adopted, not rebuilt.** `init_db.py`
+  detects tables with no `alembic_version` and stamps them at the baseline.
+  That is why the pilot's punches do not have to be thrown away to gain a
+  version table.
 - **`node_modules` and `.venv` are platform-specific.** Installing them from one
   machine and running on another fails with native-module errors. `run.sh`
   detects this and rebuilds.
@@ -169,6 +180,26 @@ exists so page JavaScript can never read a token.
 
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
 and leave. Mobile app runs in Expo Go. All tests pass.
+
+**Photo retention is enforced, not just promised.** `scripts/purge_photos.py`
+deletes punch selfies past `PUNCH_SELFIE_RETENTION_DAYS` (90) and reference
+photos belonging to people who left more than
+`REFERENCE_PHOTO_DAYS_AFTER_EXIT` (30) days ago. Dry run by default; `--apply`
+to actually delete. Put it on cron in production.
+
+- **It deletes FILES, never rows.** `punch_events` stays append-only - the
+  punch, its verdict and its rejection reason all survive, and `photo_key`
+  remains as the record that an image existed. Readers already tolerate a
+  missing file.
+- **Every sweep writes an audit row**, because "where did that photo go" needs
+  an answer better than "we think a cron ate it".
+
+**The schema is managed by Alembic.** `scripts/init_db.py` runs
+`alembic upgrade head` rather than `create_all`, in development too - so the
+upgrade path is exercised daily by the people who can fix it, instead of being
+tried for the first time against real attendance data. `tests/test_migrations.py`
+proves a migrated database matches the models exactly, that migrations reverse
+cleanly, and that a pre-migration database keeps its rows.
 
 **Offline punches are really queued now.** The app used to say "saved on your
 phone and will sync automatically" while persisting nothing - the punch, the
@@ -245,23 +276,22 @@ the dashboard. They are fixed by state notification, not arithmetic. A wrong
 holiday marks the whole company off on the wrong day.
 
 Not built yet, in priority order:
-1. **Correction UI** - the API endpoint works; HR should not need curl. The PRD
-   flow is employee requests -> manager approves -> day recomputes, which does
-   not exist yet: corrections are HR-only and direct.
-2. **Selfie retention.** The PRD requires punch selfies deleted after 90 days.
-   No job does this. `storage.punch_key` folders them by date precisely so a
-   purge can be a directory delete.
-3. **Alembic migrations.** None exist - the schema is `create_all` only, so
-   "Postgres is one connection string away" is not yet true.
-4. **Carry-forward at year end** - the flags and the cap are stored and
+1. **Correction workflow** - the PRD (section 11) wants employee requests ->
+   manager approves -> day recomputes, with a `correction_requests` table and
+   Draft/Pending/Approved/Rejected/Cancelled states. What exists is
+   `POST /admin/correct`: HR-only, direct, no UI.
+2. **Notifications** - the expanded PRD lists six (correction submitted /
+   approved / rejected, missing punch-out, late threshold, invite). None are
+   built; `MobileDevice.push_token` is a column nothing ever writes to.
+3. **Carry-forward at year end** - the flags and the cap are stored and
    editable, but nothing yet runs the roll-over that moves EL into next year's
    `opening` and lapses CL/SL.
-5. **Manager relationships** - `manager_id` exists and the scoping works
+4. **Manager relationships** - `manager_id` exists and the scoping works
    (`visible_employees`), but the seed sets nobody's manager, so no one is a
    manager in practice.
-6. **A "Check in" entry point on the dashboard**, so an admin can mark their own
+5. **A "Check in" entry point on the dashboard**, so an admin can mark their own
    attendance without reaching for their phone.
-7. Then payroll (India: PF, ESI, PT, TDS, Form 16).
+6. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish
 

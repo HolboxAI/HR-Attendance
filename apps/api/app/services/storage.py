@@ -42,6 +42,41 @@ class LocalStorage:
     def path_for(self, key: str) -> Path:
         return self._resolve(key)
 
+    # --- retention ---------------------------------------------------------
+    #
+    # Deliberately prefix-based rather than path-based. S3 has no directories,
+    # only key prefixes, so an S3Storage can implement exactly these two and
+    # the retention job does not change.
+
+    def keys_under(self, prefix: str) -> list[str]:
+        base = self._resolve(prefix)
+        if not base.exists():
+            return []
+        # Relative to the RESOLVED root: _resolve() follows symlinks, and on
+        # macOS /var is a link to /private/var, so an unresolved root does not
+        # match the paths rglob hands back.
+        root = self.root.resolve()
+        return sorted(
+            str(f.relative_to(root)) for f in base.rglob("*") if f.is_file()
+        )
+
+    def delete(self, key: str) -> int:
+        """Delete one object. Returns bytes freed, 0 if it was already gone."""
+        path = self._resolve(key)
+        if not path.is_file():
+            return 0
+        size = path.stat().st_size
+        path.unlink()
+        # Tidy the date folder once it empties, so data/uploads does not become
+        # a list of a thousand empty directories.
+        for parent in (path.parent,):
+            try:
+                if parent != self.root and not any(parent.iterdir()):
+                    parent.rmdir()
+            except OSError:
+                pass
+        return size
+
 
 def punch_key(when: date, punch_id: uuid.UUID) -> str:
     """Foldered by date so a day's selfies can be inspected - or purged - as a unit."""

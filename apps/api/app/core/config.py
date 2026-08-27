@@ -54,6 +54,19 @@ class Settings(BaseSettings):
     # Photos are files on disk for now, S3 later. Same interface either way.
     storage_dir: Path = DATA_DIR / "uploads"
 
+    # Retention. Biometric data is the one category where keeping it "just in
+    # case" is a liability rather than a convenience, so both of these have an
+    # expiry and a job that enforces it.
+    #
+    # A punch selfie proves who punched on a day someone disputes. Ninety days
+    # covers three payroll cycles, which is longer than any dispute we expect
+    # and short enough that a breach is not a photo album of the whole company.
+    punch_selfie_retention_days: int = 90
+
+    # The reference photo goes when the person leaves. Not the same day - HR
+    # may still be closing out their final month - but not indefinitely either.
+    reference_photo_days_after_exit: int = 30
+
     # Shared secret for the parked gate-reader ingest path. Empty means the
     # endpoint is closed: a reader that cannot authenticate must not be able to
     # file attendance for anyone.
