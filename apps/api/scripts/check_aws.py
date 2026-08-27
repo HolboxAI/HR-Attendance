@@ -62,6 +62,20 @@ def main() -> None:
         fail("boto3 is not installed", ".venv/bin/pip install -r requirements.txt")
 
     print("\n2. Which credentials are these?")
+
+    # Shape check before the network call. A truncated secret is by far the
+    # most common way this fails, and AWS answers it with
+    # "SignatureDoesNotMatch", which reads like a signing bug rather than
+    # "you pasted 31 of 40 characters". Never prints the values.
+    key_id = settings.aws_access_key_id or ""
+    secret = settings.aws_secret_access_key or ""
+    if key_id and len(key_id) != 20:
+        print(f"{WARN} Access key ID is {len(key_id)} characters; AWS issues 20.")
+    if secret and len(secret) != 40:
+        print(f"{WARN} Secret key is {len(secret)} characters; AWS issues 40. "
+              f"It looks truncated - re-copy the whole value.")
+    if (key_id and key_id != key_id.strip()) or (secret and secret != secret.strip()):
+        print(f"{WARN} There is whitespace around a value in .env. Remove it.")
     # Through the app's own resolver, not boto3 directly. A preflight that
     # resolved credentials differently could pass while the app quietly used
     # another account.
@@ -73,9 +87,21 @@ def main() -> None:
     except NoCredentialsError:
         fail("No credentials found at all",
              "put AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in apps/api/.env")
-    except (ClientError, BotoCoreError) as exc:
-        fail(f"Credentials were rejected: {type(exc).__name__}",
-             "check the key is active in IAM and was copied whole")
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        hints = {
+            "SignatureDoesNotMatch":
+                "the SECRET is wrong or truncated - AWS secrets are 40 characters",
+            "InvalidClientTokenId":
+                "the ACCESS KEY ID does not exist - check it was not deactivated",
+            "AccessDenied":
+                "the key is valid but has no permissions attached yet",
+        }
+        fail(f"Credentials were rejected: {code or type(exc).__name__}",
+             hints.get(code, "check the key is active in IAM and was copied whole"))
+    except BotoCoreError as exc:
+        fail(f"Could not reach AWS: {type(exc).__name__}",
+             "check network access and that AWS_REGION is a real region")
 
     arn = who["Arn"]
     print(f"{TICK} Authenticated as {arn}")
