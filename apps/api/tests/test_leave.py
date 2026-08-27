@@ -17,6 +17,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 TMP = Path(tempfile.mkdtemp(prefix="boxcode-leave-"))
 os.environ["DATABASE_URL"] = f"sqlite:///{TMP / 'test.db'}"
+# Pinned, not inherited. Settings read apps/api/.env, so a developer with
+# FACE_PROVIDER=rekognition configured would have these tests calling real
+# AWS with synthetic images - billed, slow, offline-hostile, and failing for
+# a reason that has nothing to do with the code under test.
+os.environ["FACE_PROVIDER"] = "stub"
 os.environ["STORAGE_DIR"] = str(TMP / "uploads")
 
 from fastapi.testclient import TestClient                      # noqa: E402

@@ -20,6 +20,11 @@ TMP = Path(tempfile.mkdtemp(prefix="boxcode-enrol-"))
 # Point the app at a scratch database BEFORE anything imports settings, since
 # the engine is built at import time from this value.
 os.environ["DATABASE_URL"] = f"sqlite:///{TMP / 'test.db'}"
+# Pinned, not inherited. Settings read apps/api/.env, so a developer with
+# FACE_PROVIDER=rekognition configured would have these tests calling real
+# AWS with synthetic images - billed, slow, offline-hostile, and failing for
+# a reason that has nothing to do with the code under test.
+os.environ["FACE_PROVIDER"] = "stub"
 os.environ["STORAGE_DIR"] = str(TMP / "uploads")
 
 from sqlalchemy import select                                  # noqa: E402

@@ -30,8 +30,33 @@ MAX_POSE_DEGREES = 35.0
 NOT_ENROLLED = "No reference photo on file - ask HR to enrol your face"
 
 
+def _error_code(exc: Exception) -> str:
+    """Rekognition's error code, or "" for anything that is not a ClientError.
+
+    Read defensively rather than through botocore's types, so this module
+    still imports and behaves on a machine with no boto3 installed - which is
+    every developer running FACE_PROVIDER=stub.
+    """
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        return str(response.get("Error", {}).get("Code", ""))
+    return ""
+
+
 def _looks_like_an_image(data: bytes) -> bool:
     return data.startswith(b"\xff\xd8\xff") or data.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+# Rekognition error codes that mean "the image you sent is not usable",
+# not "the service is having a bad day". The distinction decides whether a
+# punch is REFUSED or waved through with the check recorded as not performed,
+# so getting it wrong in the generous direction accepts anything unparseable.
+CLIENT_IMAGE_ERRORS = frozenset({
+    "InvalidImageFormatException",     # not a JPEG/PNG, or corrupt
+    "ImageTooLargeException",
+    "InvalidParameterException",       # Rekognition's "no face in this image"
+    "InvalidS3ObjectException",
+})
 
 
 class FaceUnavailable(Exception):
@@ -97,8 +122,14 @@ class RekognitionFaceService:
             resp = self._client.detect_faces(
                 Image={"Bytes": image_bytes}, Attributes=["DEFAULT"]
             )
-        except Exception as exc:  # boto raises a wide family; all mean the same here
-            raise FaceUnavailable(str(exc)) from exc
+        except Exception as exc:
+            code = _error_code(exc)
+            if code in CLIENT_IMAGE_ERRORS:
+                # The employee's own submission is unusable. That is a refusal
+                # with a reason, not an outage - treating it as an outage let a
+                # 1KB file of zeroes through as "face check not performed".
+                return FaceResult(False, None, "That photo could not be read - try again")
+            raise FaceUnavailable(f"{code or type(exc).__name__}: {exc}") from exc
         faces = resp.get("FaceDetails", [])
         if not faces:
             return FaceResult(False, None, "No face detected - move into better light")
@@ -132,7 +163,10 @@ class RekognitionFaceService:
                 SimilarityThreshold=MATCH_THRESHOLD,
             )
         except Exception as exc:
-            raise FaceUnavailable(str(exc)) from exc
+            code = _error_code(exc)
+            if code in CLIENT_IMAGE_ERRORS:
+                return FaceResult(False, None, "That photo could not be read - try again")
+            raise FaceUnavailable(f"{code or type(exc).__name__}: {exc}") from exc
         matches = resp.get("FaceMatches", [])
         if not matches:
             return FaceResult(False, None, "Face does not match the enrolled photo")

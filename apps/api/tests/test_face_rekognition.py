@@ -19,10 +19,24 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# Pinned before settings are imported. Group 8 asserts the default provider is
+# the stub, which is only true if the developer's .env is not consulted - and
+# the whole point of this suite is that the Rekognition path is exercised
+# through an injected client, never a real one.
+os.environ["FACE_PROVIDER"] = "stub"
+
 from app.services.face import (                                # noqa: E402
     MATCH_THRESHOLD, NOT_ENROLLED, FaceUnavailable,
     RekognitionFaceService, StubFaceService, get_face_service,
 )
+
+
+class AwsError(Exception):
+    """Shaped like botocore's ClientError: the code lives in .response."""
+
+    def __init__(self, code):
+        super().__init__(code)
+        self.response = {"Error": {"Code": code}}
 
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 512 + b"\xff\xd9"
 OTHER = b"\xff\xd8\xff\xe0" + b"\x11" * 512 + b"\xff\xd9"
@@ -150,6 +164,30 @@ try:
     svc(FakeRekognition(raises=Exception("boom"))).verify(enrolled_bytes=JPEG, selfie_bytes=OTHER)
 except FaceUnavailable:
     check("outage is not FaceResult(matched=False)", True, True)
+
+print("7b. A bad image is a REFUSAL, not an outage")
+# The distinction that let a 1KB file of zeroes through as "face check not
+# performed": Rekognition reports an unreadable image as a client error, and
+# treating that like a service outage means anything unparseable is accepted.
+for code in ("InvalidImageFormatException", "ImageTooLargeException",
+             "InvalidParameterException"):
+    try:
+        r = svc(FakeRekognition(raises=AwsError(code))).verify(
+            enrolled_bytes=JPEG, selfie_bytes=OTHER)
+        check(f"{code} refuses", r.matched, False)
+        check(f"{code} explains itself", bool(r.reason), True)
+    except FaceUnavailable:
+        check(f"{code} refuses", "raised FaceUnavailable", "a refusal")
+
+# ...while genuine service problems must still raise, so the punch is kept.
+for code in ("ThrottlingException", "InternalServerError", "AccessDeniedException"):
+    try:
+        svc(FakeRekognition(raises=AwsError(code))).verify(
+            enrolled_bytes=JPEG, selfie_bytes=OTHER)
+        check(f"{code} is still an outage", "returned a verdict", "FaceUnavailable")
+    except FaceUnavailable:
+        check(f"{code} is still an outage", True, True)
+
 
 print("8. Provider selection")
 os.environ["FACE_PROVIDER"] = "stub"
