@@ -295,6 +295,41 @@ async def punch(
     )
 
 
+class RegisterDeviceRequest(BaseModel):
+    platform: str = "web"
+    model: str | None = None
+
+
+@router.post("/register-device")
+def register_device(
+    body: RegisterDeviceRequest,
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+    install_id: str | None = Depends(install_id_header),
+) -> dict:
+    """Bind THIS device to the signed-in employee, outside of login.
+
+    Login has always done this binding as a side effect, which works for the
+    phone - it signs in exactly once. The dashboard cannot: its session
+    deliberately never carries an install id (a browser must not consume the
+    handset slot just by signing in), so the check-in page had no way to
+    recover from "this phone is not registered" except sending the person to
+    HR. Same rules as login - one handset per person, a conflict is refused
+    with the same wording, and taking over a device someone else retired is
+    allowed. HR clearing a binding still works exactly as before.
+    """
+    if not install_id:
+        raise HTTPException(422, "Send the device identity in X-Install-Id")
+    result = devices.bind(
+        db, employee=emp, install_id=install_id,
+        platform=body.platform, model=body.model,
+    )
+    if not result.ok:
+        raise HTTPException(409, result.reason or "Refused")
+    db.commit()
+    return {"bound": True, "employee_code": emp.emp_code}
+
+
 @router.get("/month")
 def my_month(
     year: int,

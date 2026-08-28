@@ -91,8 +91,14 @@ export function AuthPage() {
       {/* Right Sign-in Form Column */}
       <div className="relative flex min-h-screen flex-col justify-center items-center p-6 z-10">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          // y only, NEVER opacity: this column is the login form, and a form
+          // that starts at opacity 0 exists only if the animation runs. With
+          // a full-screen WebGL canvas booting beside it, a stalled first
+          // frame left the right half of the page blank - rarely, and always
+          // for whoever was trying to sign in. Motion may decorate the form;
+          // it does not get to gate it.
+          initial={{ y: 20 }}
+          animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: 'easeOut' }}
           className="w-full max-w-md space-y-6 rounded-3xl glass-panel p-8 sm:p-10 border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl"
         >

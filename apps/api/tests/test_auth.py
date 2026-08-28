@@ -217,10 +217,23 @@ box("manager-scoped", check("HR sees everyone", len(r.json()["rows"]), 5))
 
 print("6. Exactly one login form; no separate admin credential")
 paths = set(schema["paths"])
-login_paths = {p for p in paths if "login" in p or "signin" in p or "register" in p}
+# /mobile/register-device is allowed through by name: it REGISTERS A HANDSET
+# to an already-authenticated employee - it takes no password, creates no
+# account, and is useless without a session, which the check below proves.
+# The property this group guards is "no second way to become someone", and a
+# device binding is not a way to become anyone.
+login_paths = {
+    p for p in paths
+    if ("login" in p or "signin" in p or "register" in p)
+    and p != "/api/v1/mobile/register-device"
+}
 box("one-login", check("exactly one login endpoint", login_paths, {"/api/v1/auth/login"}))
 box("one-login", check("no signup endpoint",
-                       any("register" in p or "signup" in p for p in paths), False))
+                       any(("register" in p and p != "/api/v1/mobile/register-device")
+                           or "signup" in p for p in paths), False))
+box("one-login", check("register-device without a session is refused",
+                       client.post("/api/v1/mobile/register-device",
+                                   json={"platform": "web"}).status_code, 401))
 # The same endpoint, the same body shape, for every role.
 for who, emp in (("employee", nikunj), ("manager", maya),
                  ("hr_admin", ashley), ("super_admin", krish)):

@@ -141,12 +141,11 @@ export function CameraCaptureModal({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // If front camera, mirror image for natural snapshot
-    if (facingMode === 'user') {
-      ctx.translate(width, 0);
-      ctx.scale(-1, 1);
-    }
-
+    // The CAPTURE is not mirrored. The live preview is (CSS scaleX(-1),
+    // like every selfie camera), but this frame goes to Rekognition to be
+    // compared against an enrolment photo that was taken unmirrored - and a
+    // flipped face costs similarity points against a non-flipped reference
+    // for no reason. Vanity gets the preview; identity gets the pixels.
     ctx.drawImage(video, 0, 0, width, height);
 
     canvas.toBlob(
@@ -229,7 +228,10 @@ export function CameraCaptureModal({
             <img
               src={previewUrl}
               alt={`Captured photo for ${employeeName}`}
-              className="w-full h-full object-cover"
+              // Mirrored for DISPLAY only, so the still matches what the live
+              // preview showed. The underlying file is unmirrored - see the
+              // capture comment above.
+              className={`w-full h-full object-cover ${facingMode === 'user' ? '-scale-x-100' : ''}`}
             />
           ) : (
             /* Live Video Feed */
