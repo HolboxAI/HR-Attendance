@@ -16,7 +16,15 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    # :3000 is the dashboard. :8081 is Expo's WEB build of the mobile app -
+    # a browser preview used when a phone's Expo Go lags the project's SDK.
+    # The real handset never appears here: native fetch has no origin and no
+    # CORS. So this widens nothing for production phones; it lets the web
+    # preview reach the same API the phone would.
+    allow_origins=[
+        "http://localhost:3000", "http://127.0.0.1:3000",
+        "http://localhost:8081", "http://127.0.0.1:8081",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

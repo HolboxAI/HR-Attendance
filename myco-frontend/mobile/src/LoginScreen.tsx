@@ -109,24 +109,6 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
             : <Text style={s.buttonText}>Sign in</Text>}
         </Pressable>
 
-        <Pressable
-          style={s.demoButton}
-          onPress={() => {
-            onSignedIn({
-              user_id: 'demo-001',
-              email: 'krish@boxcode.ai',
-              role: 'employee',
-              employee_id: 'emp-001',
-              employee_code: 'BX042',
-              full_name: 'Krish Sharma',
-              can_punch: true,
-              is_admin: false,
-            });
-          }}
-          accessibilityRole="button"
-        >
-          <Text style={s.demoButtonText}>⚡ Quick UI Preview Mode</Text>
-        </Pressable>
 
         <Text style={s.note}>
           There is no self-service signup — HR creates your account.{'\n'}
