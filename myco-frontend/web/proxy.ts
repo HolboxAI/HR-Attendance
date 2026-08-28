@@ -77,7 +77,23 @@ export async function proxy(request: NextRequest) {
   if (!upstream.ok) return toLogin(request);
 
   const body = await upstream.json();
-  const res = NextResponse.next();
+
+  // The new cookies on the RESPONSE fix the next request; the request being
+  // processed right now still carries the expired token in its cookie
+  // header, and the gateway reads that header. Without this override, the
+  // one call that triggered the refresh - typically the bell's minute poll,
+  // 30 minutes into a tab left open - went upstream with the dead token and
+  // logged a lone 401 before healing itself. Rewrite the header so
+  // downstream sees the fresh token immediately.
+  const reqHeaders = new Headers(request.headers);
+  const kept = (request.headers.get('cookie') ?? '')
+    .split(';')
+    .map((c) => c.trim())
+    .filter((c) => !c.startsWith(`${ACCESS_COOKIE}=`) && !c.startsWith(`${REFRESH_COOKIE}=`));
+  kept.push(`${ACCESS_COOKIE}=${body.access_token}`, `${REFRESH_COOKIE}=${body.refresh_token}`);
+  reqHeaders.set('cookie', kept.join('; '));
+
+  const res = NextResponse.next({ request: { headers: reqHeaders } });
   const secure = process.env.NODE_ENV === 'production';
   res.cookies.set(ACCESS_COOKIE, body.access_token, {
     httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: body.expires_in,

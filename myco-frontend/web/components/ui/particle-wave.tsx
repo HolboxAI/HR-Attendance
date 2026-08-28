@@ -207,6 +207,23 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
     const handleResizeEvent = () => handleResize();
     const handleMouseMoveEvent = (e: MouseEvent) => handleMouseMove(e);
 
+    // Browsers cap live WebGL contexts (~8-16 per page) and reclaim the
+    // oldest when the cap is hit - which dev hot-reload reaches quickly
+    // with two canvases (this one + the login's dot matrix) remounting.
+    // Without these handlers a reclaimed context logged "Context Lost" and
+    // the background silently died until a full reload. preventDefault()
+    // opts in to restoration; on restore, the render loop just resumes.
+    const canvas = canvasRef.current;
+    const onContextLost = (e: Event) => {
+      e.preventDefault();
+      paused.hidden = true;
+    };
+    const onContextRestored = () => {
+      paused.hidden = document.hidden;
+    };
+    canvas?.addEventListener('webglcontextlost', onContextLost);
+    canvas?.addEventListener('webglcontextrestored', onContextRestored);
+
     window.addEventListener('resize', handleResizeEvent);
     window.addEventListener('scroll', onAnyScroll, { capture: true, passive: true });
     document.addEventListener('visibilitychange', onVisibility);
@@ -216,6 +233,8 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
       if (sceneRef.current?.animationId) {
         cancelAnimationFrame(sceneRef.current.animationId);
       }
+      canvas?.removeEventListener('webglcontextlost', onContextLost);
+      canvas?.removeEventListener('webglcontextrestored', onContextRestored);
       window.removeEventListener('resize', handleResizeEvent);
       window.removeEventListener('scroll', onAnyScroll, { capture: true } as EventListenerOptions);
       document.removeEventListener('visibilitychange', onVisibility);
@@ -234,8 +253,22 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
           }
         }
         renderer.dispose();
+        sceneRef.current = null;
+        // dispose() frees GL objects but leaves the CONTEXT alive until GC;
+        // under hot-reload those zombie contexts are what pushed the page
+        // over the browser's cap. Hand it back deliberately - but ONLY if
+        // the canvas is really leaving the DOM. React StrictMode runs
+        // effect -> cleanup -> effect on the SAME canvas, and force-losing
+        // its context in between hands the second initScene a dead context
+        // ("Cannot read properties of null (reading 'precision')"). Defer
+        // one tick: a StrictMode replay keeps the canvas connected and
+        // skips this; a true unmount has removed it.
+        setTimeout(() => {
+          if (canvas && !canvas.isConnected) renderer.forceContextLoss();
+        }, 0);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
