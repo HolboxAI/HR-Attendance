@@ -11,7 +11,7 @@ const SIZE = 'text-[clamp(2.75rem,7vw,5rem)]';
 
 /**
  * Per-character "shutter": three coloured slices sweep across each letter on a
- * repeating 3-second loop.
+ * repeating 2-second loop (the keyframes live in globals.css).
  *
  * Two deliberate departures from the component this came from, both of which
  * exist because the original made the word disappear.

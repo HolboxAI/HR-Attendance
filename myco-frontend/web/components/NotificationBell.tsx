@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import {
   AlarmClock, Bell, CalendarClock, CalendarPlus, ClipboardList, LogOut, ScanFace,
@@ -113,8 +114,24 @@ export function NotificationBell() {
         )}
       </button>
 
+      {/* The backdrop is a PORTAL because the topbar animates its own
+          transform, and a transformed ancestor turns `fixed` into "fixed to
+          the topbar" - the blur would cover a 58px strip instead of the
+          page. From <body>, z-15 slots above the content (z-10) and below
+          the topbar (z-20), so the page behind the panel blurs while the
+          dropdown itself stays crisp. Only rendered while open, so it never
+          runs on the server. */}
+      {open &&
+        createPortal(
+          <div
+            aria-hidden
+            className="fixed inset-0 z-[15] bg-black/20 backdrop-blur-[6px]"
+          />,
+          document.body,
+        )}
+
       {open && (
-        <div className="bx-pop absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-2xl glass-panel border border-line bg-surface/90 backdrop-blur-2xl shadow-2xl">
+        <div className="bx-pop absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-2xl glass-panel border border-line bg-surface/95 backdrop-blur-2xl shadow-2xl">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <span className="text-xs font-bold uppercase tracking-widest text-ink-3 font-mono">
               Notifications

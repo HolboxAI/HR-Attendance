@@ -75,7 +75,9 @@ export function AuthPage() {
             <BoxcodeLogo className="size-full text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="font-display text-sm font-bold tracking-tight text-white">Boxcode</span>
+            {/* Plain text on purpose - the shutter treatment belongs to the
+                big product name in the centre, not the corner mark. */}
+            <span className="font-display text-sm font-bold tracking-tight text-white">Holbox</span>
             <span className="text-[10px] text-white/50 font-mono">Workforce Portal</span>
           </div>
         </div>

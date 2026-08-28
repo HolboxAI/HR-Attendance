@@ -275,6 +275,27 @@ body {
 }
 .bx-pop { animation: bx-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; transform-origin: top right; }
 
+/* Shutter-text slices (components/ui/hero-shutter-text.tsx). The sweep
+   occupies the first 35% of a 2s timeline, then the slice rests invisible
+   until the loop comes round - "repeats every 2 seconds" is the period of
+   the whole effect, not of the sweep. Base opacity 0 matters: during each
+   slice's animation-delay the element shows its static style, and a slice
+   visible at rest just tints the word purple forever - which is exactly
+   what these looked like before this block existed. */
+@keyframes bx-slice-ltr {
+  0%    { transform: translateX(-100%); opacity: 0; }
+  17.5% { opacity: 1; }
+  35%, 100% { transform: translateX(100%); opacity: 0; }
+}
+@keyframes bx-slice-rtl {
+  0%    { transform: translateX(100%); opacity: 0; }
+  17.5% { opacity: 1; }
+  35%, 100% { transform: translateX(-100%); opacity: 0; }
+}
+.bx-slice { opacity: 0; }
+.bx-slice-ltr { animation: bx-slice-ltr 2s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+.bx-slice-rtl { animation: bx-slice-rtl 2s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+
 /* Live-presence dot: slow breathing ring */
 @keyframes bx-pulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-present) 50%, transparent); }
@@ -292,7 +313,8 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .bx-rise, .bx-rise-i, .bx-pop, .fade-in-up { animation-duration: 0.01ms; animation-delay: 0ms; }
-  .bx-pulse, .bx-skeleton { animation: none; }
+  /* Slices stay at their resting opacity 0: the word reads as plain text. */
+  .bx-pulse, .bx-skeleton, .bx-slice-ltr, .bx-slice-rtl { animation: none; }
 }
 
 /* ---------------------------------------------------------------------------
