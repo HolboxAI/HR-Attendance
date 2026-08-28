@@ -295,6 +295,60 @@ async def punch(
     )
 
 
+class EnrolmentStatusResponse(BaseModel):
+    enrolled: bool
+    pending: bool
+    last_decision: str | None
+    last_note: str | None
+
+
+@router.get("/enrolment", response_model=EnrolmentStatusResponse)
+def my_enrolment(
+    db: Session = Depends(get_db), emp: Employee = Depends(get_current_employee),
+) -> EnrolmentStatusResponse:
+    from sqlalchemy import select as _select
+
+    from app.models.face import EnrolmentRequest
+    from app.services.enrolment import active_enrolment
+
+    rows = db.scalars(
+        _select(EnrolmentRequest)
+        .where(EnrolmentRequest.employee_id == emp.id)
+        .order_by(EnrolmentRequest.created_at.desc())
+    ).all()
+    latest = rows[0] if rows else None
+    decided = next((r for r in rows if r.status in ("approved", "rejected")), None)
+    return EnrolmentStatusResponse(
+        enrolled=active_enrolment(db, emp) is not None,
+        pending=latest is not None and latest.status == "pending",
+        last_decision=decided.status if decided else None,
+        last_note=decided.note if decided else None,
+    )
+
+
+@router.post("/enrolment", response_model=EnrolmentStatusResponse)
+async def submit_enrolment_photo(
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+    photo: UploadFile = File(...),
+) -> EnrolmentStatusResponse:
+    """Offer your own photo as your next reference photo.
+
+    Quality-gated NOW (so a blurry photo bounces with its reason instead of
+    wasting HR's tap), but never live until an admin vouches that the face is
+    yours - the one property self-service must not remove, because the
+    reference photo is what every future punch is compared against.
+    """
+    from app.services.enrolment import submit_request
+
+    image = await photo.read()
+    request, quality = submit_request(db, employee=emp, image=image)
+    if request is None:
+        raise HTTPException(422, quality.reason or "That photo cannot be used")
+    db.commit()
+    return my_enrolment(db=db, emp=emp)
+
+
 class RegisterDeviceRequest(BaseModel):
     platform: str = "web"
     model: str | None = None

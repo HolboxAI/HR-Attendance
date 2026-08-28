@@ -1,10 +1,15 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
 import { setPassword } from './api';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+
 import SurveyScreen from './SurveyScreen';
+import {
+  getEnrolmentStatus, submitEnrolmentPhoto, type EnrolmentStatus,
+} from './api';
 import { theme } from './theme';
 import type { Identity } from './auth';
 
@@ -47,6 +52,8 @@ export default function ProfileScreen({
         <Text style={s.meta}>Role: {me.role.replace('_', ' ')}</Text>
       </View>
 
+      <FaceEnrolmentCard />
+
       <PasswordCard />
 
       <View style={s.card}>
@@ -71,6 +78,121 @@ export default function ProfileScreen({
     </ScrollView>
   );
 }
+
+/**
+ * Your reference photo, from your own phone. Submitting never enrols - it
+ * queues the photo for an admin to vouch that the face is yours, which is
+ * the one step self-service must not remove: the reference photo is what
+ * every future check-in is compared against.
+ */
+function FaceEnrolmentCard() {
+  const [status, setStatus] = useState<EnrolmentStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [camera, setCamera] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [camPerm, requestCam] = useCameraPermissions();
+  const cameraRef = useRef<CameraView>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setStatus(await getEnrolmentStatus());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load enrolment');
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function openCamera() {
+    setError(null);
+    if (!camPerm?.granted) {
+      const r = await requestCam();
+      if (!r.granted) {
+        setError('Camera permission is needed to take your reference photo.');
+        return;
+      }
+    }
+    setCamera(true);
+  }
+
+  async function capture() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const shot = await cameraRef.current?.takePictureAsync({
+        // Full quality: this photo is compared against for YEARS. Bytes are
+        // the cheapest part of a reference photo.
+        quality: 0.95,
+        skipProcessing: true,
+      });
+      if (!shot?.uri) throw new Error('Could not capture a photo');
+      const next = await submitEnrolmentPhoto(shot.uri);
+      setStatus(next);
+      setCamera(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not submit the photo');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const line = !status
+    ? 'Loading…'
+    : status.enrolled && status.pending
+      ? 'Enrolled · a replacement photo is waiting for approval'
+      : status.enrolled
+        ? 'Enrolled · check-ins verify against your photo'
+        : status.pending
+          ? 'Waiting for an admin to approve your photo'
+          : status.lastDecision === 'rejected'
+            ? `Rejected: ${status.lastNote ?? 'retake and submit again'}`
+            : 'Not enrolled - without a reference photo the face check cannot run';
+
+  return (
+    <View style={s.card}>
+      <Text style={s.cardTitle}>FACE ENROLMENT</Text>
+      <Text style={s.body}>{line}</Text>
+
+      {camera ? (
+        <>
+          <CameraView ref={cameraRef} style={s.enrolCamera} facing="front" />
+          <Pressable
+            style={s.secondaryBtn}
+            onPress={capture}
+            disabled={busy}
+            accessibilityRole="button"
+          >
+            <Text style={s.secondaryText}>
+              {busy ? 'Submitting…' : 'Capture & submit for approval'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={s.secondaryBtn}
+            onPress={() => setCamera(false)}
+            accessibilityRole="button"
+          >
+            <Text style={s.secondaryText}>Cancel</Text>
+          </Pressable>
+        </>
+      ) : (
+        <Pressable style={s.secondaryBtn} onPress={openCamera} accessibilityRole="button">
+          <Text style={s.secondaryText}>
+            {status?.enrolled || status?.pending ? 'Submit a new photo' : 'Take my reference photo'}
+          </Text>
+        </Pressable>
+      )}
+
+      {error && <Text style={s.enrolError}>○ {error}</Text>}
+      <Text style={s.note}>
+        Straight at the camera, good light, nobody else in frame. An admin
+        approves it before it goes live - it never activates itself.
+      </Text>
+    </View>
+  );
+}
+
 
 function PasswordCard() {
   const [current, setCurrent] = useState('');
@@ -157,6 +279,10 @@ function PasswordCard() {
 }
 
 const s = StyleSheet.create({
+  enrolCamera: {
+    height: 300, borderRadius: 12, overflow: 'hidden', marginTop: 10,
+  },
+  enrolError: { color: c.crit, marginTop: 8, fontSize: 13 },
   screen: { flex: 1, backgroundColor: c.ground },
   content: { padding: 20, paddingTop: 24, gap: 14 },
   title: { color: c.ink, fontSize: 24, fontWeight: '700', letterSpacing: -0.4 },

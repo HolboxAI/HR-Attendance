@@ -412,11 +412,17 @@ Not built yet, in priority order:
    updating Expo Go from the App Store (or run the iOS simulator, where the
    CLI installs the matching client itself). mobile/.env already carries the
    laptop's LAN address; start the stack with `./run.sh --lan`.
-2. **JWT_SECRET is still the dev default, in a public repo.** Anyone reading
-   it can forge any employee's token, super_admin included. One line in
-   apps/api/.env (a commented block is waiting there). The single most
-   important undone thing.
+2. ~~JWT_SECRET~~ DONE 2026-08-28: a random 64-char secret lives in
+   apps/api/.env (gitignored). Rotating it signs everyone out once - that is
+   the expected effect, not a bug.
 3. **9 remaining face enrolments**, then `REQUIRE_FACE_ENROLMENT=true`.
+   Self-service now exists: employees submit their own photo from the app's
+   Profile tab (quality-gated by Rekognition at submission), it goes PENDING,
+   and HR approves it on the web enrolment page - approving is vouching that
+   the face belongs to the person, which is the one step self-service must
+   never remove (an unvouched photo lets anyone enrol a friend's face).
+   Nobody approves their own photo. POST/GET /mobile/enrolment,
+   /admin/enrolments/requests + /decide; tests/test_enrolment_requests.py.
 4. **Scheduled jobs** (missing-punch-out nudge, late/absent threshold,
    monthly accrual on a timer - accrual is manual today). Still no scheduler.
 5. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.

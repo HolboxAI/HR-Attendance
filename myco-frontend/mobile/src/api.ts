@@ -268,6 +268,52 @@ export async function cancelCorrection(id: string): Promise<void> {
   }
 }
 
+/* ------------------------------------------------------------- enrolment */
+
+export type EnrolmentStatus = {
+  enrolled: boolean;
+  pending: boolean;
+  lastDecision: 'approved' | 'rejected' | null;
+  lastNote: string | null;
+};
+
+function toEnrolmentStatus(j: Record<string, unknown>): EnrolmentStatus {
+  return {
+    enrolled: !!j.enrolled,
+    pending: !!j.pending,
+    lastDecision: (j.last_decision as EnrolmentStatus['lastDecision']) ?? null,
+    lastNote: (j.last_note as string | null) ?? null,
+  };
+}
+
+export async function getEnrolmentStatus(): Promise<EnrolmentStatus> {
+  const res = await authed('/api/v1/mobile/enrolment');
+  if (!res.ok) throw new Error(await detail(res, `Could not load enrolment (${res.status})`));
+  return toEnrolmentStatus(await res.json());
+}
+
+/**
+ * Offer your own photo as your reference photo. It goes PENDING until an
+ * admin vouches that the face is yours - a photo nobody vouched for would
+ * let anyone register a friend's face and hand them their attendance.
+ * Quality problems (blur, two faces, no face) are refused right here with
+ * the reason, so a doomed photo never wastes anyone's tap.
+ */
+export async function submitEnrolmentPhoto(photoUri: string): Promise<EnrolmentStatus> {
+  const form = new FormData();
+  if (Platform.OS === 'web') {
+    const blob = await (await fetch(photoUri)).blob();
+    form.append('photo', blob, 'me.jpg');
+  } else {
+    form.append('photo', {
+      uri: photoUri, name: 'me.jpg', type: 'image/jpeg',
+    } as unknown as Blob);
+  }
+  const res = await authed('/api/v1/mobile/enrolment', { method: 'POST', body: form });
+  if (!res.ok) throw new Error(await detail(res, `Could not submit (${res.status})`));
+  return toEnrolmentStatus(await res.json());
+}
+
 /* ---------------------------------------------------------- notifications */
 
 export async function getNotifications(): Promise<NotificationItem[]> {

@@ -36,6 +36,11 @@ export const getMyMonth = (year: number, month: number) =>
 
 export const getEnrolments = () => apiGet<Enrolments>('/api/v1/admin/enrolments');
 
+export const getEnrolmentRequests = () =>
+  apiGet<import('@/components/PendingEnrolments').EnrolmentRequestRow[]>(
+    '/api/v1/admin/enrolments/requests',
+  );
+
 /* ------------------------------------------------------------------ leave */
 
 export const getLeavePolicy = () => apiFetch<LeavePolicyRow>('/api/v1/admin/leave/policy');

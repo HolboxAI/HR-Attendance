@@ -56,3 +56,33 @@ class MobileDevice(Base, TimestampMixin):
     push_token: Mapped[str | None] = mapped_column(String(400))
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EnrolmentRequest(Base, TimestampMixin):
+    """An employee's own photo, waiting for a human to vouch for it.
+
+    Self-service enrolment cannot skip the vouching step: the reference photo
+    is the identity anchor for every future face check, and an unreviewed
+    self-enrolment lets anyone register a friend's face and hand them their
+    attendance. So the employee does the camera work from their own phone -
+    the part that was HR's chore - and HR keeps the one-tap part that makes
+    the photo mean something: confirming the face belongs to the person.
+
+    Append-only like everything else here: deciding sets status, never
+    deletes. A new submission supersedes a pending one rather than editing it.
+    """
+
+    __tablename__ = "enrolment_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
+    )
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("employees.id"), index=True, nullable=False
+    )
+    photo_key: Mapped[str] = mapped_column(String(400), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    note: Mapped[str | None] = mapped_column(String(300))

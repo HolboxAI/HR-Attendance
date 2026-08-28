@@ -7,6 +7,7 @@ face check actually verify".
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -22,8 +23,11 @@ from app.db.session import get_db
 from app.models.employee import Employee
 from app.models.enums import UserRole
 from app.models.org import Department
+from app.api.deps import get_current_user
+from app.models.face import EnrolmentRequest
 from app.services.enrolment import (
-    active_enrolment, enrol, history, retire, storage,
+    active_enrolment, decide_request, enrol, history, pending_requests,
+    request_bytes, retire, storage,
 )
 
 # Reference photos are biometric data about identifiable people. HR and above,
@@ -168,3 +172,67 @@ def delete_enrolment(employee_code: str, db: Session = Depends(get_db)) -> Enrol
         message="Reference photo withdrawn - this employee is no longer enrolled",
         photo_count=len(history(db, emp)),
     )
+
+
+# ---------------------------------------------------------------------------
+# Self-service submissions awaiting a vouch
+# ---------------------------------------------------------------------------
+
+class PendingRequestRow(BaseModel):
+    id: uuid.UUID
+    employee_code: str
+    full_name: str
+    already_enrolled: bool
+    submitted_at: datetime
+
+
+class DecideEnrolmentRequest(BaseModel):
+    approve: bool
+    note: str | None = None
+
+
+@router.get("/requests", response_model=list[PendingRequestRow])
+def list_requests(db: Session = Depends(get_db)) -> list[PendingRequestRow]:
+    rows = []
+    for r in pending_requests(db):
+        emp = db.get(Employee, r.employee_id)
+        if emp is None:
+            continue
+        rows.append(PendingRequestRow(
+            id=r.id, employee_code=emp.emp_code, full_name=emp.full_name,
+            already_enrolled=active_enrolment(db, emp) is not None,
+            submitted_at=r.created_at,
+        ))
+    return rows
+
+
+@router.get("/requests/{request_id}/photo")
+def request_photo(request_id: uuid.UUID, db: Session = Depends(get_db)) -> Response:
+    row = db.get(EnrolmentRequest, request_id)
+    if row is None:
+        raise HTTPException(404, "No such request")
+    try:
+        image = request_bytes(db, row)
+    except FileNotFoundError:
+        raise HTTPException(410, "The photo file is gone - ask them to resubmit")
+    return Response(content=image, media_type="image/jpeg")
+
+
+@router.post("/requests/{request_id}/decide")
+def decide(
+    request_id: uuid.UUID,
+    body: DecideEnrolmentRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+) -> dict:
+    row = db.get(EnrolmentRequest, request_id)
+    if row is None:
+        raise HTTPException(404, "No such request")
+    ok, reason = decide_request(
+        db, request=row, approver=user, approve=body.approve, note=body.note,
+    )
+    if not ok:
+        db.rollback()
+        raise HTTPException(409, reason or "Could not decide")
+    db.commit()
+    return {"status": row.status}

@@ -23,8 +23,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.employee import Employee
-from app.models.face import FaceEnrollment
+from app.models.employee import Employee, User
+from app.models.face import EnrolmentRequest, FaceEnrollment
 from app.services.face import FaceResult, get_face_service
 from app.services.storage import enrolment_key, image_extension, storage
 
@@ -142,3 +142,133 @@ def retire(db: Session, employee: Employee) -> bool:
     row.is_active = False
     db.flush()
     return True
+
+
+# ---------------------------------------------------------------------------
+# Self-service submissions: the employee does the camera work, HR vouches.
+# ---------------------------------------------------------------------------
+
+def submit_request(
+    db: Session, *, employee: Employee, image: bytes,
+) -> tuple[EnrolmentRequest | None, FaceResult]:
+    """An employee offers their own photo as the next reference photo.
+
+    The quality gate runs NOW, at submission, with whatever provider is live -
+    so under Rekognition a blurry or two-faced photo bounces immediately with
+    its reason, instead of poisoning the queue and wasting HR's tap. What the
+    gate cannot check is the one thing that keeps this a request rather than
+    an enrolment: whether the face belongs to this employee. That is the
+    decision a human makes.
+    """
+    if len(image) > MAX_ENROLMENT_BYTES:
+        return None, FaceResult(False, None, "Photo too large - keep it under 8 MB")
+
+    quality = get_face_service().quality_check(image)
+    if not quality.matched:
+        return None, quality
+
+    # One pending request per person. A newer submission supersedes the old
+    # one - decided, not deleted, so the history of what was offered survives.
+    for old in db.scalars(
+        select(EnrolmentRequest).where(
+            EnrolmentRequest.employee_id == employee.id,
+            EnrolmentRequest.status == "pending",
+        )
+    ):
+        old.status = "superseded"
+        old.decided_at = datetime.now(timezone.utc)
+        old.note = "Replaced by a newer submission"
+
+    request = EnrolmentRequest(
+        id=uuid.uuid4(), org_id=employee.org_id, employee_id=employee.id,
+        photo_key=storage.put(
+            f"enrolment-requests/{employee.id}/{uuid.uuid4().hex}.{image_extension(image)}",
+            image,
+        ),
+        status="pending",
+    )
+    db.add(request)
+    db.flush()
+
+    from app.services.notifications import notify_hr
+
+    notify_hr(
+        db, org_id=employee.org_id, category="enrolment.submitted",
+        title=f"{employee.full_name} submitted a face photo",
+        body="Review it on the enrolment page - approving makes it their reference photo.",
+        data={"employee_code": employee.emp_code, "request_id": str(request.id)},
+    )
+    return request, quality
+
+
+def pending_requests(db: Session) -> list[EnrolmentRequest]:
+    return list(db.scalars(
+        select(EnrolmentRequest)
+        .where(EnrolmentRequest.status == "pending")
+        .order_by(EnrolmentRequest.created_at)
+    ))
+
+
+def request_bytes(db: Session, request: EnrolmentRequest) -> bytes:
+    return storage.get(request.photo_key)
+
+
+def decide_request(
+    db: Session, *, request: EnrolmentRequest, approver: User,
+    approve: bool, note: str | None = None,
+) -> tuple[bool, str | None]:
+    """HR's half: vouch for the face, or say why not.
+
+    Approving runs the photo through the SAME enrol() path an HR-taken photo
+    uses - append-only versioning, quality re-check and all - so a
+    self-submitted reference photo is indistinguishable downstream from one
+    HR captured. Nobody vouches for their own photo, for the same reason
+    nobody approves their own leave.
+    """
+    if request.status != "pending":
+        return False, f"Already {request.status}"
+    if approver.employee_id == request.employee_id:
+        return False, "You cannot approve your own photo - ask another admin"
+
+    employee = db.get(Employee, request.employee_id)
+    if employee is None or not employee.is_active:
+        return False, "Employee record is inactive"
+
+    request.decided_by = approver.id
+    request.decided_at = datetime.now(timezone.utc)
+    request.note = note
+
+    from app.models.employee import User as _User
+    from app.services.notifications import notify
+
+    owner = db.scalar(select(_User).where(_User.employee_id == employee.id))
+
+    if approve:
+        enrolment, quality = enrol(
+            db, employee=employee, image=request_bytes(db, request),
+            actor_id=approver.id,
+        )
+        if enrolment is None:
+            # The photo passed at submission but fails now - provider got
+            # stricter, or the file rotted. Refuse the decision rather than
+            # half-apply it.
+            return False, quality.reason or "Photo no longer passes the quality check"
+        request.status = "approved"
+        if owner is not None:
+            notify(
+                db, org_id=employee.org_id, user=owner,
+                category="enrolment.approved", title="Face photo approved",
+                body="Your reference photo is live - check-ins now verify against it.",
+                data={"request_id": str(request.id)},
+            )
+    else:
+        request.status = "rejected"
+        if owner is not None:
+            notify(
+                db, org_id=employee.org_id, user=owner,
+                category="enrolment.rejected", title="Face photo rejected",
+                body=note or "Retake and submit again from the app.",
+                data={"request_id": str(request.id)},
+            )
+    db.flush()
+    return True, None

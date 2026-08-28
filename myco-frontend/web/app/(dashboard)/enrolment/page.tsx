@@ -1,10 +1,12 @@
 import { EnrolmentTable } from '@/components/EnrolmentTable';
-import { getEnrolments } from '@/lib/api';
+import { PendingEnrolments } from '@/components/PendingEnrolments';
+import { getEnrolments, getEnrolmentRequests } from '@/lib/api';
 
 export const dynamic = 'force-dynamic';
 
 export default async function EnrolmentPage() {
   const data = await getEnrolments();
+  const requests = (await getEnrolmentRequests()) ?? [];
 
   if (!data) {
     return (
@@ -27,6 +29,8 @@ cd apps/api &amp;&amp; .venv/bin/uvicorn app.main:app --reload</pre>
           One high-resolution reference photo per employee. Live webcam snapshots and uploaded files are converted to biometric embeddings for kiosk and mobile punch verification.
         </p>
       </div>
+
+      <PendingEnrolments rows={requests} />
 
       <section className="grid gap-3.5 sm:grid-cols-3">
         <div className="glass-panel rounded-2xl p-5">
