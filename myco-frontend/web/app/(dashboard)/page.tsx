@@ -15,7 +15,7 @@ import {
   getPending, getRejected, hhmm,
 } from '@/lib/api';
 import { capabilitiesFor } from '@/lib/capabilities';
-import { proxy } from '@/lib/format';
+import { istYearMonth, proxy } from '@/lib/format';
 import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -28,18 +28,27 @@ export const dynamic = 'force-dynamic';
  * itself. Employees get their own month: they have no company overview to
  * see, and a wall of admin shortcuts that all 403 would be worse than useful.
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ y?: string; m?: string }>;
+}) {
   const me = await currentIdentity();
   const caps = capabilitiesFor(me?.role);
   const result = await getBoard();
 
   // Not an approver: their own attendance IS their overview.
   if (!result.ok && result.reason === 'forbidden') {
-    const now = new Date();
-    const mine = await getMyMonth(now.getUTCFullYear(), now.getUTCMonth() + 1);
+    // Month defaults come from the ORG's clock, not UTC - on the 1st before
+    // 05:30 IST, getUTCMonth() still says last month.
+    const ist = istYearMonth();
+    const { y, m } = await searchParams;
+    const year = Number(y) || ist.year;
+    const month = Number(m) || ist.month;
+    const mine = await getMyMonth(year, month);
     return (
       <div className="space-y-8 fade-in-up">
-        <MyMonth data={mine} name={me?.full_name ?? null} />
+        <MyMonth data={mine} name={me?.full_name ?? null} year={year} month={month} />
         <section className="grid gap-4 sm:grid-cols-3">
           <Link href="/leave" className="glass-panel glass-panel-hover block rounded-2xl p-5 group">
             <div className="size-10 rounded-xl bg-surface-2 border border-line flex items-center justify-center text-ink-2 mb-3 group-hover:scale-105 transition-transform">

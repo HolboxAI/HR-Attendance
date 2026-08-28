@@ -2,10 +2,29 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { Bell } from 'lucide-react';
+import {
+  AlarmClock, Bell, CalendarClock, CalendarPlus, ClipboardList, LogOut, ScanFace,
+} from 'lucide-react';
 
 import type { NotificationRow } from '@/lib/format';
 import { timeAgo } from '@/lib/format';
+
+/**
+ * One glyph per category the backend actually emits - including the
+ * scheduler's nudges (late check-in, missing punch-out, monthly accrual),
+ * which with PUSH_PROVIDER=null exist ONLY here. An unrecognised category
+ * falls back to the plain bell rather than rendering nothing.
+ */
+function categoryIcon(category: string) {
+  const cls = 'size-3.5';
+  if (category === 'attendance_late') return <AlarmClock className={cls} aria-hidden />;
+  if (category === 'attendance_punch_out') return <LogOut className={cls} aria-hidden />;
+  if (category === 'leave_accrual') return <CalendarPlus className={cls} aria-hidden />;
+  if (category.startsWith('leave')) return <CalendarClock className={cls} aria-hidden />;
+  if (category.startsWith('correction')) return <ClipboardList className={cls} aria-hidden />;
+  if (category.startsWith('enrolment')) return <ScanFace className={cls} aria-hidden />;
+  return <Bell className={cls} aria-hidden />;
+}
 
 /**
  * A real bell, not a decorative one. notify() on the backend always writes a
@@ -22,10 +41,23 @@ export function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch('/api/gateway/api/v1/notifications/unread-count')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => body && setUnread(body.unread))
-      .catch(() => undefined);
+    // The scheduler writes nudges while a tab sits open all day, so a
+    // count fetched once at mount goes stale by mid-morning. Poll on the
+    // scheduler's own cadence and refresh when the tab regains focus -
+    // cheap (one count query) and honest.
+    function refresh() {
+      fetch('/api/gateway/api/v1/notifications/unread-count')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => body && setUnread(body.unread))
+        .catch(() => undefined);
+    }
+    refresh();
+    const timer = setInterval(refresh, 60_000);
+    window.addEventListener('focus', refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+    };
   }, []);
 
   useEffect(() => {
@@ -100,7 +132,8 @@ export function NotificationBell() {
               <p className="px-4 py-6 text-center text-sm text-ink-3">Loading…</p>
             ) : items.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-ink-3">
-                Nothing yet - decisions on your leave and corrections will appear here.
+                Nothing yet - leave and correction decisions, check-in
+                reminders and punch-out nudges all land here.
               </p>
             ) : (
               items.map((n) => (
@@ -112,10 +145,11 @@ export function NotificationBell() {
                     n.read ? 'opacity-60' : ''
                   }`}
                 >
-                  <span className="flex items-baseline gap-2">
+                  <span className="flex items-center gap-2">
                     {!n.read && (
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
                     )}
+                    <span className="shrink-0 text-ink-3">{categoryIcon(n.category)}</span>
                     <span className="min-w-0 flex-1 truncate font-medium text-ink">{n.title}</span>
                     <span className="shrink-0 text-[11px] text-ink-3">{timeAgo(n.created_at)}</span>
                   </span>

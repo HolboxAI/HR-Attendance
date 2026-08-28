@@ -1,7 +1,10 @@
 import { Directory, type DirectoryRow } from '@/components/Directory';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
+import { AddEmployeeButton } from '@/components/PeopleAdmin';
 import { getBoard, getDevices, getEnrolments } from '@/lib/api';
+import { capabilitiesFor } from '@/lib/capabilities';
+import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +15,8 @@ export const dynamic = 'force-dynamic';
  * stay absent when they don't.
  */
 export default async function PeoplePage() {
+  const me = await currentIdentity();
+  const caps = capabilitiesFor(me?.role);
   const board = await getBoard();
 
   if (!board.ok) {
@@ -42,10 +47,13 @@ export default async function PeoplePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="People"
-        sub="Everyone you can see, with today's status. Accounts are created by HR from the seed scripts - there is no self-service signup, and no create button here until the API grows one."
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeader
+          title="People"
+          sub="Everyone you can see, with today's status. New hires are created here by HR - there is no self-service signup, deliberately."
+        />
+        {caps.canManagePeople && <AddEmployeeButton />}
+      </div>
       <Directory rows={rows} />
     </div>
   );

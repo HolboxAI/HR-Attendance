@@ -1,8 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+
+import { MonthCalendar } from '@/components/MonthCalendar';
 import { statusGlyph, statusLabel } from '@/components/Status';
-import { hhmm, hours, type MonthDay } from '@/lib/format';
+import { hhmm, hours, istToday, istYearMonth, monthLabel, type MonthDay } from '@/lib/format';
 
 type Data = {
   employee_code: string;
@@ -16,9 +20,15 @@ type Data = {
  *
  * Everyone with an employee record can look at their own attendance - that is
  * not an administrative privilege, and five of the seven people here have no
- * other reason to open this site.
+ * other reason to open this site. The calendar grid and the prev/next links
+ * mirror what an admin gets on /people/[code], because "what did my March
+ * look like" is not an admin question either.
  */
-export function MyMonth({ data, name }: { data: Data; name: string | null }) {
+export function MyMonth({
+  data, name, year, month,
+}: {
+  data: Data; name: string | null; year: number; month: number;
+}) {
   const [hoveredDate, setHoveredDate] = useState<string | null>(null);
 
   if (!data) {
@@ -30,19 +40,46 @@ export function MyMonth({ data, name }: { data: Data; name: string | null }) {
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Org-timezone today, NOT toISOString(): UTC's date is yesterday until
+  // 05:30 IST, which hid today's row exactly when it mattered.
+  const today = istToday();
   // Future dates are not "absent", they simply have not happened.
   const days = data.days.filter((d) => d.date <= today);
 
+  const now = istYearMonth();
+  const prev = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
+  const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
+  const notFuture = year < now.year || (year === now.year && month < now.month);
+
   return (
     <div className="space-y-8 fade-in-up">
-      <div>
-        <h1 className="font-display text-3xl font-bold tracking-tight text-ink">
-          {name ?? data.full_name}
-        </h1>
-        <p className="mt-1 text-sm text-ink-3 font-mono">
-          Your attendance this month. Recorded live via biometric mobile check-in.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-ink">
+            {name ?? data.full_name}
+          </h1>
+          <p className="mt-1 text-sm text-ink-3 font-mono">
+            Your attendance · {monthLabel(year, month)}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <Link
+            href={`/?y=${prev.y}&m=${prev.m}`}
+            aria-label="Previous month"
+            className="rounded-xl border border-line p-2 text-ink-2 hover:bg-surface-2 transition-all active:scale-95"
+          >
+            <ChevronLeft className="size-4" aria-hidden />
+          </Link>
+          {notFuture && (
+            <Link
+              href={`/?y=${next.y}&m=${next.m}`}
+              aria-label="Next month"
+              className="rounded-xl border border-line p-2 text-ink-2 hover:bg-surface-2 transition-all active:scale-95"
+            >
+              <ChevronRight className="size-4" aria-hidden />
+            </Link>
+          )}
+        </div>
       </div>
 
       <section className="grid gap-3.5 sm:grid-cols-3">
@@ -64,6 +101,13 @@ export function MyMonth({ data, name }: { data: Data; name: string | null }) {
             {hours(data.totals.late_minutes)}
           </div>
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-3 font-mono">
+          Month at a Glance
+        </h2>
+        <MonthCalendar days={data.days} year={year} month={month} />
       </section>
 
       <section className="space-y-3">

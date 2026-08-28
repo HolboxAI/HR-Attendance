@@ -7,7 +7,7 @@ import { Tiles } from '@/components/Tiles';
 import { MyMonth } from '@/components/MyMonth';
 import { KineticTicker } from '@/components/ui/kinetic-ticker';
 import { getBoard, getMyMonth, getRejected, hhmm } from '@/lib/api';
-import { proxy } from '@/lib/format';
+import { istYearMonth, proxy } from '@/lib/format';
 import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -25,9 +25,9 @@ export default async function BoardPage({
   // is broken would be a lie. They get their own attendance instead - which is
   // the thing they actually came for.
   if (!result.ok && result.reason === 'forbidden') {
-    const now = new Date();
-    const mine = await getMyMonth(now.getUTCFullYear(), now.getUTCMonth() + 1);
-    return <MyMonth data={mine} name={me?.full_name ?? null} />;
+    const ist = istYearMonth();
+    const mine = await getMyMonth(ist.year, ist.month);
+    return <MyMonth data={mine} name={me?.full_name ?? null} year={ist.year} month={ist.month} />;
   }
 
   if (!result.ok) {

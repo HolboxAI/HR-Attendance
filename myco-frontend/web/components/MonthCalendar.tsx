@@ -1,5 +1,5 @@
 import { statusGlyph, statusLabel, statusText } from '@/components/Status';
-import { hours, type MonthDay } from '@/lib/format';
+import { hours, istToday, type MonthDay } from '@/lib/format';
 
 /**
  * A month at a glance: a real 7-column calendar, weeks aligned, each day
@@ -12,7 +12,9 @@ export function MonthCalendar({
 }: {
   days: MonthDay[]; year: number; month: number;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  // Org-timezone today - toISOString() is UTC, which is yesterday until
+  // 05:30 IST, so the highlight ring sat on the wrong square overnight.
+  const today = istToday();
   const firstDow = new Date(Date.UTC(year, month - 1, 1)).getUTCDay(); // 0 = Sunday
   const blanks = Array.from({ length: firstDow });
 

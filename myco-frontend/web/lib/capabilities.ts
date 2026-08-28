@@ -37,6 +37,8 @@ export type Capabilities = {
   canManageEnrolment: boolean;
   /** hr_admin+ · device bindings, unbind a lost phone */
   canManageDevices: boolean;
+  /** hr_admin+ · hire, edit, offboard, re-issue a temporary password */
+  canManagePeople: boolean;
   /** super_admin · reserved: no endpoint requires this today (PRD §1.2) */
   isSuperAdmin: boolean;
 };
@@ -50,6 +52,7 @@ export function capabilitiesFor(role: string | undefined): Capabilities {
     canManageLeavePolicy: r >= RANK.hr_admin,
     canManageEnrolment: r >= RANK.hr_admin,
     canManageDevices: r >= RANK.hr_admin,
+    canManagePeople: r >= RANK.hr_admin,
     isSuperAdmin: r >= RANK.super_admin,
   };
 }

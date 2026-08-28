@@ -290,6 +290,22 @@ export function timeAgo(iso: string): string {
   return dayMonth(iso);
 }
 
+/**
+ * "Today" as YYYY-MM-DD in the ORG's timezone - the backend's org_today()
+ * lesson applied to the browser. toISOString() answers in UTC, which between
+ * midnight and 05:30 IST is YESTERDAY, so a calendar keyed on it highlighted
+ * the wrong day and hid today's row exactly when the night shift was on.
+ */
+export function istToday(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: IST }); // en-CA = YYYY-MM-DD
+}
+
+/** The current year and month in the org's timezone, for month defaults. */
+export function istYearMonth(): { year: number; month: number } {
+  const [y, m] = istToday().split('-');
+  return { year: Number(y), month: Number(m) };
+}
+
 export function monthLabel(year: number, month: number): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-IN', {
     month: 'long', year: 'numeric', timeZone: 'UTC',

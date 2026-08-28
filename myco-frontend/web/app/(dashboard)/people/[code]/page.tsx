@@ -4,7 +4,10 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { ErrorState } from '@/components/ErrorState';
 import { MonthCalendar } from '@/components/MonthCalendar';
+import { ResetPasswordButton } from '@/components/PeopleAdmin';
 import { Status } from '@/components/Status';
+import { capabilitiesFor } from '@/lib/capabilities';
+import { currentIdentity } from '@/lib/session';
 import {
   getBoard, getCorrectionsPending, getDevices, getEnrolments, getMonth,
   getRejected, getTeamBalances, hhmm, hours, monthLabel,
@@ -36,6 +39,8 @@ export default async function EmployeeDetailPage({
   const year = Number(y) || now.getUTCFullYear();
   const month = Number(m) || now.getUTCMonth() + 1;
 
+  const me = await currentIdentity();
+  const caps = capabilitiesFor(me?.role);
   const board = await getBoard();
   if (!board.ok) {
     return (
@@ -127,6 +132,11 @@ export default async function EmployeeDetailPage({
             </div>
           )}
         </div>
+        {caps.canManagePeople && (
+          <div className="w-full border-t border-line/60 pt-3">
+            <ResetPasswordButton code={code} name={monthData.full_name} />
+          </div>
+        )}
       </div>
 
       {/* Month */}

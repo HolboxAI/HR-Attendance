@@ -24,9 +24,17 @@ cd apps/api &amp;&amp; .venv/bin/uvicorn app.main:app --reload</pre>
   return (
     <div className="space-y-8 fade-in-up">
       <div>
-        <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Biometric Face Enrolment</h1>
+        <h1 className="font-display text-3xl font-bold tracking-tight text-ink">Face Enrolment</h1>
+        {/* Say what is actually stored. The system keeps only the photo - the
+            check-in selfie is compared 1:1 against it at punch time, and no
+            embedding, template or face signature is ever saved. Claiming
+            otherwise in a privacy-sensitive feature is how you lose an
+            argument with an employee later. */}
         <p className="mt-1 max-w-prose text-sm text-ink-3">
-          One high-resolution reference photo per employee. Live webcam snapshots and uploaded files are converted to biometric embeddings for kiosk and mobile punch verification.
+          One reference photo per employee. Each check-in selfie is compared
+          against it, one-to-one, at punch time. Only the photo itself is
+          stored - no biometric template or face signature is kept - and it is
+          deleted on a schedule after someone leaves.
         </p>
       </div>
 
@@ -70,7 +78,7 @@ cd apps/api &amp;&amp; .venv/bin/uvicorn app.main:app --reload</pre>
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-3">
-            Employee Biometric Directory
+            Reference Photo Directory
           </h2>
           <span className="text-[11px] font-mono text-ink-3">
             Supports Webcam Capture & File Upload
