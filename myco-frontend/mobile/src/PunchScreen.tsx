@@ -87,7 +87,14 @@ export default function PunchScreen() {
       // Photo and position are taken in the same moment on purpose - never
       // compare a selfie taken here against a location recorded elsewhere.
       const [photo, position] = await Promise.all([
-        cameraRef.current?.takePictureAsync({ quality: 0.6, skipProcessing: true }),
+        cameraRef.current?.takePictureAsync({
+          // 0.9, not 0.6: this image is what Rekognition compares against the
+          // enrolled photo, and 0.6 JPEG on a dim front camera reads as the
+          // "photo too blurry" refusal. Bytes are cheap; a false reject at
+          // the door is not.
+          quality: 0.9,
+          skipProcessing: true,
+        }),
         Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
       ]);
       photoUri = photo?.uri ?? '';
@@ -140,8 +147,11 @@ export default function PunchScreen() {
         message: saved
           ? `No signal - saved on your phone at ${hhmmLocal(capturedAt)} and will `
             + 'send itself when you are back online.'
-          : 'Could not check in and could not save it either. Please try again '
-            + 'when you have signal.',
+          : Platform.OS === 'web'
+            ? 'Could not reach the server, and the browser preview cannot '
+              + 'queue offline punches - that part needs the phone app.'
+            : 'Could not check in and could not save it either. Please try again '
+              + 'when you have signal.',
       });
     }
   }, [today]);

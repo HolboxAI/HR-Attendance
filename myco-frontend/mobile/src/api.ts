@@ -13,6 +13,8 @@
  * the punch screen catches the throw and queues (src/queue.ts), which is the
  * honest version of working offline.
  */
+import { Platform } from 'react-native';
+
 import { authHeaders, signOut } from './session';
 import { API_BASE } from './config';
 import type {
@@ -86,9 +88,20 @@ export async function submitPunch(args: {
   const now = new Date();
   try {
     const form = new FormData();
-    form.append('selfie', {
-      uri: args.photoUri, name: 'punch.jpg', type: 'image/jpeg',
-    } as unknown as Blob);
+    if (Platform.OS === 'web') {
+      // The {uri, name, type} file part is a React Native convention; a
+      // browser's fetch serializes that object to "[object Object]", the
+      // server receives a string where it expects an image, refuses with a
+      // validation error - and the person is told their punch failed for
+      // "signal" reasons when the request never carried a photo at all. On
+      // web the blob: URI has to be fetched back into an actual Blob.
+      const blob = await (await fetch(args.photoUri)).blob();
+      form.append('selfie', blob, 'punch.jpg');
+    } else {
+      form.append('selfie', {
+        uri: args.photoUri, name: 'punch.jpg', type: 'image/jpeg',
+      } as unknown as Blob);
+    }
     form.append('lat', String(args.lat ?? ''));
     form.append('lng', String(args.lng ?? ''));
     form.append('accuracy_m', String(args.accuracyM ?? ''));
