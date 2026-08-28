@@ -5,6 +5,10 @@ import { cn } from '@/lib/utils';
 interface HeroTextProps {
   text?: string;
   className?: string;
+  /** Tailwind font-size class for every layer. Defaults to the hero size -
+      the lead-in line ("WELCOME TO") passes a smaller one and still gets
+      the identical slice treatment on every character. */
+  size?: string;
 }
 
 const SIZE = 'text-[clamp(2.75rem,7vw,5rem)]';
@@ -31,7 +35,9 @@ const SIZE = 'text-[clamp(2.75rem,7vw,5rem)]';
  * No 'use client' - there is no state, no effect and no browser API here, so
  * this stays a server component and ships no JavaScript at all.
  */
-export default function HeroText({ text = 'IMMERSE', className = '' }: HeroTextProps) {
+export default function HeroText({
+  text = 'IMMERSE', className = '', size = SIZE,
+}: HeroTextProps) {
   const characters = text.split('');
 
   return (
@@ -56,7 +62,7 @@ export default function HeroText({ text = 'IMMERSE', className = '' }: HeroTextP
             <span
               className={cn(
                 'font-display block font-black leading-none tracking-tighter text-ink',
-                SIZE,
+                size,
               )}
             >
               {char === ' ' ? ' ' : char}
@@ -69,7 +75,7 @@ export default function HeroText({ text = 'IMMERSE', className = '' }: HeroTextP
                   'bx-slice pointer-events-none absolute inset-0 z-10 font-display font-black leading-none select-none',
                   s.cls,
                   s.tint,
-                  SIZE,
+                  size,
                 )}
                 style={{ clipPath: s.clip, animationDelay: `${s.delay}s` }}
               >

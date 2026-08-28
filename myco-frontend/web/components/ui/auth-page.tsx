@@ -82,9 +82,14 @@ export function AuthPage() {
           </div>
         </div>
 
-        {/* The welcome block: plain lead-in, then the product name under the shutter treatment */}
+        {/* The welcome block: lead-in and product name BOTH under the shutter
+            treatment - same slices, two sizes, one 2s loop. */}
         <div className="my-auto flex flex-col items-center gap-6 text-center">
-          <p className="text-xs uppercase tracking-[0.4em] text-white/50 font-mono">Welcome to</p>
+          <HeroText
+            text="WELCOME TO"
+            size="text-[clamp(1.1rem,2vw,1.6rem)]"
+            className="gap-[0.3em] opacity-90"
+          />
           <HeroText text="HOLBOX" />
           <HolboxMark className="size-16" />
         </div>

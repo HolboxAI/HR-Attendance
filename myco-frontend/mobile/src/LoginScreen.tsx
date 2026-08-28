@@ -5,19 +5,20 @@ import {
 } from 'react-native';
 
 import { signIn } from './session';
-import { theme } from './theme';
-import { BoxcodeLogo } from './BoxcodeLogo';
 import type { Identity } from './auth';
 
-const c = theme.color;
-
 /**
- * The web sign-in, ported the way the frontend PRD §6.2 asks: the split
- * panel does not apply on a phone (the web version itself hides it below
- * 1024px), so this is the centred lockup, "Welcome to" + HOLBOX with the
- * shutter treatment, then the form. Same credentials, same endpoint, no
- * Google button (there is no OAuth backend - a dead button on a phone is
- * worse than none), and the same honest no-signup footer.
+ * The web login page, rebuilt natively - same structure, same words, same
+ * motion. Dot-matrix black ground, the corner brand, "WELCOME TO" and
+ * "HOLBOX" both under the shutter treatment on one 2-second loop, the cube
+ * mark, then the sign-in card: "Sign in to Holbox", the disabled Google
+ * button with its honest note, OR CREDENTIALS, email + password, the white
+ * pill. Nothing about the WIRING changed - submit() still calls the same
+ * signIn() and hands the same Identity up.
+ *
+ * No SVG and no new dependency: the cube is Views under skew/rotate
+ * transforms, the slices are clipped Texts driven by Animated with the
+ * native driver, so this renders identically in Expo web, iOS and Android.
  */
 export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) => void }) {
   const [email, setEmail] = useState('');
@@ -37,194 +38,484 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
   }
 
   return (
-    <KeyboardAvoidingView
-      style={s.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-        <View style={{ alignItems: 'center', marginBottom: 12 }}>
-          <BoxcodeLogo size={48} color={c.ink} />
-        </View>
-        <Text style={s.brand}>Boxcode</Text>
+    <View style={s.root}>
+      <DotGridBackground />
+      <View style={s.vignette} pointerEvents="none" />
 
-        <View style={s.lockup}>
-          <Text style={s.welcome}>Welcome to</Text>
-          <HolboxShutter />
-        </View>
-
-        <Text style={s.label}>Email</Text>
-        <TextInput
-          style={s.input}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="username"
-          placeholder="you@boxcode.ai"
-          placeholderTextColor={c.ink3}
-          editable={!busy}
-          accessibilityLabel="Email"
-        />
-
-        <Text style={s.label}>Password</Text>
-        <View style={s.passwordRow}>
-          <TextInput
-            style={[s.input, s.passwordInput]}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
-            textContentType="password"
-            onSubmitEditing={submit}
-            returnKeyType="go"
-            editable={!busy}
-            accessibilityLabel="Password"
-          />
-          <Pressable
-            onPress={() => setShowPassword((v) => !v)}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-            style={s.showBtn}
-          >
-            <Text style={s.showText}>{showPassword ? 'Hide' : 'Show'}</Text>
-          </Pressable>
-        </View>
-
-        {error && (
-          <View style={s.error} accessibilityLiveRegion="polite">
-            <Text style={s.errorGlyph}>○</Text>
-            <Text style={s.errorText}>{error}</Text>
+      <KeyboardAvoidingView
+        style={s.keyboardView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+          {/* Corner brand - plain on purpose, the shutter belongs to the
+              centre name. Same rule as the web page. */}
+          <View style={s.cornerBrand}>
+            <View style={s.cornerLogoBox}>
+              <HolboxCube size={22} />
+            </View>
+            <View>
+              <Text style={s.cornerName}>Holbox</Text>
+              <Text style={s.cornerSub}>Workforce Portal</Text>
+            </View>
           </View>
-        )}
 
-        <Pressable
-          style={[s.button, busy && s.buttonBusy]}
-          onPress={submit}
-          disabled={busy}
-          accessibilityRole="button"
-        >
-          {busy
-            ? <ActivityIndicator color={c.accentInk} />
-            : <Text style={s.buttonText}>Sign in</Text>}
-        </Pressable>
+          {/* Welcome block: lead-in and product name, both shuttered. */}
+          <View style={s.hero}>
+            <ShutterText text="WELCOME TO" fontSize={17} gap={5} />
+            <View style={{ height: 14 }} />
+            <ShutterText text="HOLBOX" fontSize={54} gap={2} />
+            <View style={{ height: 22 }} />
+            <HolboxCube size={58} />
+          </View>
 
+          {/* Sign-in card */}
+          <View style={s.card}>
+            <Text style={s.cardTitle}>Sign in to Holbox</Text>
+            <Text style={s.cardSub}>Attendance, leave and approvals for your team.</Text>
 
-        <Text style={s.note}>
-          There is no self-service signup — HR creates your account.{'\n'}
-          Signing in registers this phone to you; if you have changed handset,
-          ask HR to unbind the old one first.
-        </Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            <View style={s.googleBtn}>
+              <Text style={s.googleG}>G</Text>
+              <Text style={s.googleText}>Continue with Google</Text>
+            </View>
+            <Text style={s.googleNote}>
+              Google sign-in is not enabled yet — use your email and password.
+            </Text>
+
+            <View style={s.dividerRow}>
+              <View style={s.dividerLine} />
+              <Text style={s.dividerText}>OR CREDENTIALS</Text>
+              <View style={s.dividerLine} />
+            </View>
+
+            <View style={s.form}>
+              <Text style={s.label}>Email Address</Text>
+              <TextInput
+                style={s.input}
+                value={email}
+                onChangeText={(t) => { setEmail(t); setError(null); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                textContentType="username"
+                placeholder="your.email@boxcode.ai"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                editable={!busy}
+                accessibilityLabel="Email"
+              />
+
+              <Text style={s.label}>Password</Text>
+              <View style={s.passwordRow}>
+                <TextInput
+                  style={[s.input, s.passwordInput]}
+                  value={password}
+                  onChangeText={(t) => { setPassword(t); setError(null); }}
+                  secureTextEntry={!showPassword}
+                  textContentType="password"
+                  placeholder="••••••••••••"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  onSubmitEditing={submit}
+                  returnKeyType="go"
+                  editable={!busy}
+                  accessibilityLabel="Password"
+                />
+                <Pressable
+                  onPress={() => setShowPassword((v) => !v)}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                  style={s.showBtn}
+                >
+                  <Text style={s.showText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                </Pressable>
+              </View>
+
+              {error && (
+                <View style={s.errorBox} accessibilityLiveRegion="polite">
+                  <Text style={s.errorText}>{error}</Text>
+                </View>
+              )}
+
+              <Pressable
+                style={[s.submitBtn, busy && s.submitBtnBusy]}
+                onPress={submit}
+                disabled={busy}
+                accessibilityRole="button"
+              >
+                {busy
+                  ? <ActivityIndicator color="#000000" />
+                  : <Text style={s.submitBtnText}>Sign in  →</Text>}
+              </Pressable>
+            </View>
+
+            <Text style={s.footerNote}>
+              By continuing, you agree to Boxcode's Security Policy and Privacy
+              Terms.
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
-const WORD = 'HOLBOX'.split('');
+/* ------------------------------------------------------------------------ */
+/* Shutter text - the web effect, in Animated                               */
+/* ------------------------------------------------------------------------ */
+
+const SLICES = [
+  { top: 0.0, h: 0.35, color: '#8B7CF6', dir: 1, shift: 0 },
+  { top: 0.35, h: 0.3, color: '#D4D4D8', dir: -1, shift: 100 },
+  { top: 0.65, h: 0.35, color: '#8B7CF6', dir: 1, shift: 200 },
+] as const;
+
+const SWEEP_MS = 700;
+const PERIOD_MS = 2000; // "repeats every 2 seconds" is the whole loop
 
 /**
- * The shutter treatment from the approved web sign-in, rebuilt with RN
- * Animated instead of CSS keyframes. One amber slice sweeps each letter,
- * staggered along the word; only `translateX` animates, on the native driver.
- * The rule the web version learned the hard way carries over verbatim: the
- * LETTERS never animate opacity - if the animation fails, you get a plain
- * HOLBOX, never a blank screen.
+ * Per-character slice shutter. Each character carries three clipped copies
+ * of itself (purple / light / purple thirds) that sweep across on a 2s
+ * loop, staggered per character and per slice - the same recipe as the
+ * CSS keyframes in the web app's globals.css.
+ *
+ * ONE clock per word, not one timer per slice. The first version ran a
+ * separate Animated loop for every slice of every character - 48 timers
+ * for these two words - which the JS driver (what Animated falls back to
+ * on Expo web) visibly choked on. Now a single 0->1 clock ticks the whole
+ * 2s period and every slice reads its own window out of it through
+ * interpolate(), which the native driver runs entirely off-thread on a
+ * real phone.
  */
-function HolboxShutter() {
-  const sweeps = useRef(WORD.map(() => new Animated.Value(-1))).current;
+function ShutterText({
+  text, fontSize, gap = 2,
+}: { text: string; fontSize: number; gap?: number }) {
+  const chars = text.split('');
+  const clock = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    const anims = sweeps.map((v, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(i * 140),
-          Animated.timing(v, {
-            toValue: 1, duration: 700,
-            easing: Easing.inOut(Easing.ease), useNativeDriver: true,
-          }),
-          Animated.delay(2300 - i * 140),
-          Animated.timing(v, { toValue: -1, duration: 0, useNativeDriver: true }),
-        ]),
-      ),
+    // The reset is an explicit zero-duration timing, not loop()'s own
+    // resetBeforeIteration - react-native-web failed to restart the latter,
+    // leaving the clock parked at 1 and the word permanently at rest.
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(clock, {
+          toValue: 1, duration: PERIOD_MS,
+          easing: Easing.linear, useNativeDriver: true, isInteraction: false,
+        }),
+        Animated.timing(clock, {
+          toValue: 0, duration: 0, useNativeDriver: true, isInteraction: false,
+        }),
+      ]),
     );
-    anims.forEach((a) => a.start());
-    return () => anims.forEach((a) => a.stop());
-  }, [sweeps]);
+    loop.start();
+    return () => loop.stop();
+  }, [clock]);
 
   return (
-    <View style={s.word} accessibilityLabel="HOLBOX">
-      {WORD.map((ch, i) => (
-        <View key={i} style={s.letterBox}>
-          <Text style={s.letter} allowFontScaling={false}>{ch}</Text>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              s.slice,
-              {
-                transform: [{
-                  translateX: sweeps[i].interpolate({
-                    inputRange: [-1, 1], outputRange: [-34, 34],
-                  }),
-                }],
-              },
-            ]}
-          />
-        </View>
+    <View
+      style={[s.shutterRow, { columnGap: gap }]}
+      accessibilityLabel={text}
+      accessibilityRole="image"
+    >
+      {chars.map((ch, i) => (
+        <ShutterChar key={`${i}-${ch}`} char={ch} index={i} fontSize={fontSize} clock={clock} />
       ))}
     </View>
   );
 }
 
+function ShutterChar({
+  char, index, fontSize, clock,
+}: { char: string; index: number; fontSize: number; clock: Animated.Value }) {
+  const lineH = Math.round(fontSize * 1.06);
+  const [w, setW] = useState(Math.ceil(fontSize * 0.8));
+
+  const baseStyle = {
+    fontSize, lineHeight: lineH, fontWeight: '900' as const,
+    letterSpacing: -0.5, color: '#FAFAFA',
+  };
+
+  if (char === ' ') return <View style={{ width: fontSize * 0.5 }} />;
+
+  return (
+    <View
+      style={{ height: lineH, overflow: 'hidden' }}
+      onLayout={(e) => setW(Math.max(4, Math.round(e.nativeEvent.layout.width)))}
+    >
+      <Text style={baseStyle} allowFontScaling={false}>{char}</Text>
+      {SLICES.map((slice, n) => {
+        // This slice's window on the shared 2s clock: 50ms base + 40ms per
+        // character + 100ms per layer, sweeping for 700ms, resting after -
+        // the web's animation-delay arithmetic, as interpolation ranges.
+        const start = (50 + index * 40 + slice.shift) / PERIOD_MS;
+        const end = start + SWEEP_MS / PERIOD_MS;
+        return (
+          <View
+            key={n}
+            pointerEvents="none"
+            style={{
+              position: 'absolute', left: 0, right: 0,
+              top: slice.top * lineH, height: slice.h * lineH,
+              overflow: 'hidden',
+            }}
+          >
+            <Animated.Text
+              allowFontScaling={false}
+              style={[
+                baseStyle,
+                {
+                  position: 'absolute', left: 0, top: -slice.top * lineH,
+                  color: slice.color,
+                  opacity: clock.interpolate({
+                    inputRange: [0, start, (start + end) / 2, end, 1],
+                    outputRange: [0, 0, 1, 0, 0],
+                  }),
+                  transform: [{
+                    translateX: clock.interpolate({
+                      inputRange: [0, start, end, 1],
+                      outputRange: [
+                        -w * slice.dir, -w * slice.dir,
+                        w * slice.dir, w * slice.dir,
+                      ],
+                    }),
+                  }],
+                },
+              ]}
+            >
+              {char}
+            </Animated.Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+/* The Holbox cube, in Views - no SVG dependency                            */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The brand cube from the web's HolboxMark, built from transformed Views:
+ * a scaled-rotated square for the dark top face, skewed rectangles for the
+ * white and blue side faces, and a rotated bordered square for the ring.
+ * Brand colours are fixed hex - a logo does not re-theme.
+ */
+function HolboxCube({ size }: { size: number }) {
+  // Derived from the web SVG's coordinates (viewBox 0 0 100 100), scaled by
+  // k. Each face slopes 23.5 units over 45 of width -> skew 27.6deg, and
+  // because skewY pivots a View around its own centre, the pre-skew rect
+  // top is the wanted top plus half the total shear (11.75 units).
+  const k = size / 100;
+  const skew = '27.6deg';
+  const face = { w: 45 * k, h: 47 * k, top: 38.25 * k };
+  const diamondSide = 63.6 * k;                   // 90k wide after rotation
+  const ringSide = 23.3 * k;
+
+  return (
+    <View style={{ width: 100 * k, height: 100 * k }} accessibilityLabel="Holbox logo">
+      {/* left face - white, top edge sloping DOWN towards the centre seam */}
+      <View
+        style={{
+          position: 'absolute', left: 5 * k, top: face.top,
+          width: face.w, height: face.h, backgroundColor: '#FFFFFF',
+          transform: [{ skewY: skew }],
+        }}
+      />
+      {/* right face - vivid blue, mirrored slope */}
+      <View
+        style={{
+          position: 'absolute', left: 50 * k, top: face.top,
+          width: face.w, height: face.h, backgroundColor: '#2E5BFF',
+          transform: [{ skewY: `-${skew}` }],
+        }}
+      />
+      {/* top face: a square squashed and rotated into the isometric diamond,
+          drawn LAST so its lower edges sit cleanly over the face tops */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 50 * k - diamondSide / 2, top: 26.5 * k - diamondSide / 2,
+          width: diamondSide, height: diamondSide, backgroundColor: '#141BC8',
+          transform: [{ scaleY: 0.522 }, { rotate: '45deg' }],
+        }}
+      />
+      {/* diamond ring set into the lower front */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 50 * k - ringSide / 2, top: 71 * k - ringSide / 2,
+          width: ringSide, height: ringSide,
+          borderWidth: Math.max(1.5, 5 * k), borderColor: '#2E5BFF',
+          backgroundColor: 'transparent',
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+/* Dot-matrix ground - the web canvas effect's honest native cousin         */
+/* ------------------------------------------------------------------------ */
+
+function DotGridBackground() {
+  const pulse = useRef(new Animated.Value(0.25)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 0.55, duration: 3500,
+          easing: Easing.inOut(Easing.quad), useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0.25, duration: 3500,
+          easing: Easing.inOut(Easing.quad), useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const rows = Array.from({ length: 26 });
+  const cols = Array.from({ length: 14 });
+
+  return (
+    <Animated.View style={[s.dotGrid, { opacity: pulse }]} pointerEvents="none">
+      {rows.map((_, r) => (
+        <View key={r} style={s.dotRow}>
+          {cols.map((_, cI) => <View key={cI} style={s.dot} />)}
+        </View>
+      ))}
+    </Animated.View>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: c.ground },
-  scroll: { padding: 24, paddingTop: 72, gap: 8 },
-  brand: {
-    color: c.ink, fontSize: 22, fontWeight: '800', letterSpacing: -0.5,
-    textAlign: 'center',
-  },
-  lockup: { alignItems: 'center', marginTop: 28, marginBottom: 28, gap: 2 },
-  welcome: { color: c.ink3, fontSize: 14, letterSpacing: 2, textTransform: 'uppercase' },
-  word: { flexDirection: 'row', marginTop: 4 },
-  letterBox: {
-    width: 34, height: 46, alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  letter: { color: c.ink, fontSize: 38, fontWeight: '900', letterSpacing: 0 },
-  slice: {
-    position: 'absolute', top: 4, bottom: 4, width: 12,
-    backgroundColor: c.accent, opacity: 0.85, borderRadius: 2,
+  root: { flex: 1, backgroundColor: '#000000' },
+  keyboardView: { flex: 1, zIndex: 10 },
+  scroll: {
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 58 : 34,
+    paddingBottom: 40,
+    alignItems: 'center',
+    minHeight: '100%',
   },
 
+  dotGrid: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'space-around',
+    paddingVertical: 8,
+    zIndex: 1,
+  },
+  dotRow: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 10 },
+  dot: { width: 2.5, height: 2.5, borderRadius: 1.25, backgroundColor: '#FFFFFF', opacity: 0.35 },
+
+  vignette: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    borderColor: 'rgba(0, 0, 0, 0.8)',
+    borderWidth: 30,
+    zIndex: 2,
+  },
+
+  cornerBrand: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  cornerLogoBox: {
+    width: 36, height: 36, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cornerName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', letterSpacing: -0.3 },
+  cornerSub: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
+
+  hero: { alignItems: 'center', marginTop: 34, marginBottom: 34 },
+  shutterRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
+
+  card: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 26,
+  },
+  cardTitle: { color: '#FFFFFF', fontSize: 26, fontWeight: '900', letterSpacing: -0.6 },
+  cardSub: { color: 'rgba(255,255,255,0.6)', fontSize: 13, marginTop: 4, marginBottom: 18 },
+
+  googleBtn: {
+    width: '100%',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+    borderRadius: 999, paddingVertical: 12,
+    opacity: 0.6,
+  },
+  googleG: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '800' },
+  googleText: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600' },
+  googleNote: {
+    color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center',
+    marginTop: 8, lineHeight: 15,
+  },
+
+  dividerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginVertical: 18, width: '100%',
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
+  dividerText: { color: 'rgba(255,255,255,0.4)', fontSize: 11, letterSpacing: 1.5 },
+
+  form: { width: '100%' },
   label: {
-    color: c.ink3, fontSize: 11, letterSpacing: 1.4,
-    textTransform: 'uppercase', marginTop: 12,
+    color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600',
+    marginTop: 10, marginBottom: 6,
   },
   input: {
-    backgroundColor: c.surface2, borderColor: c.line, borderWidth: 1,
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12,
-    color: c.ink, fontSize: 16, marginTop: 6,
+    width: '100%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14, paddingVertical: 12,
+    color: '#FFFFFF', fontSize: 14,
   },
-  passwordRow: { position: 'relative' },
-  passwordInput: { paddingRight: 64 },
+  passwordRow: { position: 'relative', width: '100%' },
+  passwordInput: { paddingRight: 60 },
   showBtn: {
-    position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center',
+    position: 'absolute', right: 14, top: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
   },
-  showText: { color: c.accent, fontSize: 13, fontWeight: '600', marginTop: 6 },
-  error: { flexDirection: 'row', gap: 8, marginTop: 16, alignItems: 'flex-start' },
-  errorGlyph: { color: c.crit, fontSize: 14, lineHeight: 20 },
-  errorText: { color: c.crit, fontSize: 14, flex: 1, lineHeight: 20 },
-  button: {
-    backgroundColor: c.accent, borderRadius: 8, paddingVertical: 15,
-    alignItems: 'center', marginTop: 24,
+  showText: { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: '600' },
+
+  errorBox: {
+    marginTop: 14, padding: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)', borderWidth: 1,
+    borderRadius: 12,
   },
-  buttonBusy: { opacity: 0.7 },
-  buttonText: { color: c.accentInk, fontSize: 16, fontWeight: '700' },
-  demoButton: {
-    backgroundColor: c.surface2, borderColor: c.line, borderWidth: 1,
-    borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginTop: 10,
+  errorText: { color: '#FCA5A5', fontSize: 12 },
+
+  submitBtn: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 18,
   },
-  demoButtonText: { color: c.ink, fontSize: 14, fontWeight: '600' },
-  note: {
-    color: c.ink3, fontSize: 12, lineHeight: 18, marginTop: 20, textAlign: 'center',
+  submitBtnBusy: { opacity: 0.7 },
+  submitBtnText: { color: '#000000', fontSize: 15, fontWeight: '700' },
+
+  footerNote: {
+    marginTop: 16, fontSize: 11, lineHeight: 16, textAlign: 'center',
+    color: 'rgba(255,255,255,0.4)',
   },
 });
