@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { proxy, type CorrectionRow } from '@/lib/format';
 
@@ -14,13 +14,23 @@ const DIRECTION_LABEL: Record<string, string> = { in: 'Check-in', out: 'Check-ou
  * call - not in this component and not in the route - so there is no path
  * where a correction is approved and the board still disagrees with it.
  */
-export function PendingCorrections({ rows }: { rows: CorrectionRow[] }) {
+export function PendingCorrections({
+  rows, focus = null,
+}: { rows: CorrectionRow[]; focus?: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+
+  // Arriving from a notification: scroll the named request into view. The
+  // ring on the card itself (below) does the highlighting.
+  useEffect(() => {
+    if (focus) {
+      document.getElementById(`correction-${focus}`)?.scrollIntoView({ block: 'center' });
+    }
+  }, [focus]);
 
   async function decide(id: string, approve: boolean) {
     setBusy(id);
@@ -60,8 +70,11 @@ export function PendingCorrections({ rows }: { rows: CorrectionRow[] }) {
         return (
           <div
             key={r.id}
+            id={`correction-${r.id}`}
             onMouseEnter={() => setHoveredId(r.id)}
-            className={`rounded-2xl glass-panel border border-line p-5 transition-all duration-300 ${
+            className={`rounded-2xl glass-panel border p-5 transition-all duration-300 ${
+              focus === r.id ? 'border-accent ring-2 ring-accent/40' : 'border-line'
+            } ${
               isHovered ? 'bg-surface-2/60 scale-[1.01]' : 'hover:bg-surface-2/40'
             } ${isDimmed ? 'opacity-40 scale-[0.99]' : 'opacity-100'}`}
           >
@@ -75,7 +88,13 @@ export function PendingCorrections({ rows }: { rows: CorrectionRow[] }) {
                 })}
               </span>
               <span className="tnum text-xs font-mono text-ink-3">
-                claiming {new Date(r.claimed_at).toLocaleTimeString('en-IN', {
+                {/* The API's timestamp is UTC but arrives without a Z; raw
+                    new Date() read it as local and showed HR a claim time
+                    5h30 off. Same normalisation the format helpers use. */}
+                claiming {new Date(
+                  r.claimed_at.endsWith('Z') || r.claimed_at.includes('+')
+                    ? r.claimed_at : `${r.claimed_at}Z`,
+                ).toLocaleTimeString('en-IN', {
                   hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata',
                 })}
               </span>

@@ -144,6 +144,14 @@ def decide(
           entity_id=request.id, action="approve" if approve else "reject",
           changes={"status": {"old": "pending", "new": request.status.value}}, note=note)
 
+    # The "needs a correction" rows in every admin's inbox are now dealt
+    # with - one decision clears them all, or the inbox nags about finished
+    # work until people stop reading it.
+    notifications.resolve_matching(
+        db, org_id=request.org_id, category="correction.submitted",
+        data_key="correction_id", data_value=str(request.id),
+    )
+
     if approve:
         recompute_day(db, employee, request.shift_date)
 
@@ -175,6 +183,12 @@ def cancel(db: Session, *, request: CorrectionRequest, actor: User) -> Correctio
     audit(db, org_id=request.org_id, actor=actor, entity="correction_request",
           entity_id=request.id, action="cancel",
           changes={"status": {"old": "pending", "new": "cancelled"}})
+    # Withdrawn is dealt with too - the admins' "needs a correction" rows
+    # must not outlive the request they point at.
+    notifications.resolve_matching(
+        db, org_id=request.org_id, category="correction.submitted",
+        data_key="correction_id", data_value=str(request.id),
+    )
     return CorrectionOutcome(True, request=request)
 
 

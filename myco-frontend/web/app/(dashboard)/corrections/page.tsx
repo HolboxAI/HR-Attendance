@@ -16,7 +16,14 @@ export const dynamic = 'force-dynamic';
  * and the direct add-punch path. The page asks the API rather than guessing
  * from the role name.
  */
-export default async function CorrectionsPage() {
+export default async function CorrectionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ focus?: string }>;
+}) {
+  // ?focus= comes from a "needs a correction" notification: land with that
+  // exact request highlighted, not just on the right page.
+  const { focus } = await searchParams;
   const now = new Date();
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth() + 1;
@@ -57,7 +64,7 @@ export default async function CorrectionsPage() {
           <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-3">
             Waiting for a decision · {pending.data.length}
           </h2>
-          <PendingCorrections rows={pending.data} />
+          <PendingCorrections rows={pending.data} focus={focus ?? null} />
         </section>
       )}
 

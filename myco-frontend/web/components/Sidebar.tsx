@@ -148,7 +148,7 @@ export function SidebarNav({
 }
 
 import { MenuToggle } from '@/components/ui/menu-toggle';
-import { BoxcodeLogo } from '@/components/ui/boxcode-logo';
+import { HolboxMark } from '@/components/ui/boxcode-logo';
 
 export function SidebarBrand({
   collapsed = false,
@@ -162,13 +162,13 @@ export function SidebarBrand({
   return (
     <div className={`py-3.5 border-b border-line flex items-center justify-between transition-all duration-300 ${collapsed ? 'px-2 justify-center' : 'px-4'}`}>
       <Link href="/" className="flex items-center gap-2.5 text-ink group">
-        <div className="size-7 shrink-0 rounded-lg bg-surface-2 border border-line flex items-center justify-center text-ink shadow-xs group-hover:scale-105 transition-transform p-1">
-          <BoxcodeLogo className="w-full h-full text-ink" />
+        <div className="size-7 shrink-0 rounded-lg bg-surface-2 border border-line flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform p-1">
+          <HolboxMark className="w-full h-full" />
         </div>
         {!collapsed && (
           <div className="flex flex-col overflow-hidden whitespace-nowrap transition-all duration-200">
             <div className="flex items-center gap-1.5">
-              <span className="font-display text-sm font-bold tracking-tight text-ink">Boxcode</span>
+              <span className="font-display text-sm font-bold tracking-tight text-ink">Holbox</span>
               <span className="text-[8px] font-mono uppercase tracking-wider px-1 py-0.5 rounded bg-surface-2 text-ink-3 border border-line">
                 HRMS
               </span>

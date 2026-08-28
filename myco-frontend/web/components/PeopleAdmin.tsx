@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { Check, Copy, KeyRound, UserPlus, X } from 'lucide-react';
+import { Check, Copy, KeyRound, Send, UserPlus, X } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { proxy } from '@/lib/format';
@@ -235,6 +235,91 @@ function Field({
         className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-1 focus:ring-accent/40"
       />
     </label>
+  );
+}
+
+/* ----------------------------------------------------------- send message */
+
+/**
+ * A typed, human message into one employee's inbox - the follow-up to a
+ * "needs attention" flag that a status code can't carry ("you forgot to
+ * punch out, come see me"). Rides POST /notifications/send, so the row is
+ * permanent and will ring their phone the day push is wired.
+ */
+export function SendMessageButton({ code, name }: { code: string; name: string }) {
+  const [open, setOpen] = useState(false);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+
+  async function send(e: React.FormEvent) {
+    e.preventDefault();
+    if (!message.trim()) return;
+    setError(null);
+    setBusy(true);
+    const res = await fetch(proxy('/api/v1/notifications/send'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee_code: code, message: message.trim() }),
+    }).catch(() => null);
+    setBusy(false);
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => null) : null;
+      setError(typeof body?.detail === 'string' ? body.detail : 'Could not send - try again');
+      return;
+    }
+    setSent(true);
+    setMessage('');
+    setTimeout(() => {
+      setSent(false);
+      setOpen(false);
+    }, 1800);
+  }
+
+  return (
+    <div className={open ? 'flex-1 basis-full sm:basis-auto sm:min-w-[320px]' : ''}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2 transition-all active:scale-95"
+      >
+        <Send className="size-3.5 text-ink-3" aria-hidden />
+        Send message
+      </button>
+
+      {open && (
+        <form onSubmit={send} className="mt-3 space-y-2">
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={2}
+            maxLength={1000}
+            placeholder={`A note for ${name} - lands in their app inbox…`}
+            className="w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-1 focus:ring-accent/40"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={busy || !message.trim()}
+              className="rounded-xl bg-ink px-4 py-2 text-xs font-black uppercase tracking-wider text-ground hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? 'Sending…' : 'Send to their inbox'}
+            </button>
+            {sent && (
+              <span className="text-xs font-semibold text-st-present">
+                <span aria-hidden>● </span>Delivered - it is in their notifications now
+              </span>
+            )}
+            {error && (
+              <span role="alert" className="text-xs text-st-absent">
+                <span aria-hidden>○ </span>{error}
+              </span>
+            )}
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 

@@ -147,6 +147,99 @@ def build(db: Session, *, employees: list[Employee], year: int, month: int) -> l
     return out
 
 
+def to_pdf(rows: list[Row], *, year: int, month: int, org_name: str) -> bytes:
+    """The same register as a printable PDF - landscape A4, one row per
+    employee, one narrow column per day, the totals block on the right.
+
+    Same `build()` rows as the CSV, so the two formats cannot disagree.
+    The PDF exists because "email HR the register" usually means a document
+    someone signs and files, not a spreadsheet; the CSV stays the payroll
+    format. fpdf2 is imported here, not at module top, so the CSV path never
+    depends on it.
+    """
+    from fpdf import FPDF
+
+    _, last = calendar.monthrange(year, month)
+
+    pdf = FPDF(orientation="landscape", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=10)
+    pdf.set_margins(8, 10, 8)
+    pdf.add_page()
+
+    # Column plan across the 281mm printable width: identity block, one slim
+    # column per day, then the totals that HR actually reads.
+    day_w = 5.4
+    id_w = {"code": 14, "name": 34}
+    totals = [
+        ("P", "present", 9), ("HD", "half_day", 9), ("A", "absent", 9),
+        ("L", "on_leave", 9), ("LOP", "lop", 10), ("Pay", "days_payable", 11),
+        ("Hours", "hours", 13),
+    ]
+
+    def header_block() -> None:
+        pdf.set_font("helvetica", "B", 13)
+        pdf.cell(0, 7, f"{org_name} - Attendance Register - {date(year, month, 1):%B %Y}",
+                 new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("helvetica", "", 7)
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        pdf.cell(0, 4, f"Generated {stamp} - recomputed from punch events at export time.",
+                 new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 4, LEGEND, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 4, "Days payable = present + half days + PAID leave + weekly offs + "
+                       "public holidays; unpaid (LOP) leave excluded and listed separately.",
+                 new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+        pdf.set_font("helvetica", "B", 6)
+        pdf.set_fill_color(240, 240, 242)
+        pdf.cell(id_w["code"], 8, "Code", border=1, fill=True, align="C")
+        pdf.cell(id_w["name"], 8, "Name", border=1, fill=True)
+        for d in range(1, last + 1):
+            wd = date(year, month, d).weekday()
+            pdf.set_fill_color(226, 226, 230) if wd == 6 else pdf.set_fill_color(240, 240, 242)
+            pdf.cell(day_w, 8, f"{d}", border=1, fill=True, align="C")
+        pdf.set_fill_color(240, 240, 242)
+        for label, _key, w in totals:
+            pdf.cell(w, 8, label, border=1, fill=True, align="C")
+        pdf.ln()
+
+    header_block()
+    pdf.set_font("helvetica", "", 6.5)
+    for r in rows:
+        if pdf.get_y() > 185:            # room for one more row, else new page
+            pdf.add_page()
+            header_block()
+            pdf.set_font("helvetica", "", 6.5)
+
+        pdf.set_font("helvetica", "", 6.5)
+        pdf.cell(id_w["code"], 6, r.employee.emp_code, border=1)
+        name = r.employee.full_name
+        pdf.cell(id_w["name"], 6, name if len(name) <= 22 else name[:21] + "...", border=1)
+        for d in range(1, last + 1):
+            code = r.days.get(d, "")
+            # An absence should be findable at arm's length: light red fill,
+            # never colour alone - the code letter is still the signal.
+            if code == "A":
+                pdf.set_fill_color(252, 228, 228)
+            elif code in ("WO", "PH"):
+                pdf.set_fill_color(238, 238, 241)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+            pdf.cell(day_w, 6, code, border=1, fill=True, align="C")
+        vals = {
+            "present": f"{r.present:g}", "half_day": str(r.half_day),
+            "absent": str(r.absent), "on_leave": f"{r.on_leave:g}",
+            "lop": f"{r.lop:g}", "days_payable": f"{r.days_payable:g}",
+            "hours": f"{r.worked_minutes // 60}:{r.worked_minutes % 60:02d}",
+        }
+        pdf.set_fill_color(255, 255, 255)
+        for _label, key, w in totals:
+            pdf.cell(w, 6, vals[key], border=1, align="C")
+        pdf.ln()
+
+    return bytes(pdf.output())
+
+
 def to_csv(rows: list[Row], *, year: int, month: int, org_name: str) -> str:
     _, last = calendar.monthrange(year, month)
     buf = io.StringIO()

@@ -36,6 +36,46 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
       ctx.scale(dpr, dpr);
     };
 
+    // Border glow, the cheap way. The old version wrote viewport-space
+    // --x/--y onto <html> on every mousemove AND every animation frame,
+    // which invalidated the ::before gradient of EVERY card on the page at
+    // once (they all read the inherited var). Combined with
+    // background-attachment: fixed in the CSS, that made both mousemove
+    // and scroll repaint the entire page - the "very very laggy" scroll.
+    //
+    // Now each element near the cursor gets its own element-LOCAL --lx/--ly
+    // (rAF-throttled, reads batched before writes so there is no layout
+    // thrash), and everything else keeps the off-screen default and never
+    // repaints. Scroll costs nothing: the gradients live in element space.
+    let borderRaf = 0;
+    let glowOn = false;
+    const GLOW_REACH = 420; // the CSS gradient is 400px; light neighbours too
+
+    const updateBorderGlow = () => {
+      borderRaf = 0;
+      const els = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.glass-panel, .bx-card, [data-glow], aside, header',
+        ),
+      );
+      const rects = els.map((el) => el.getBoundingClientRect()); // all reads…
+      els.forEach((el, i) => {                                   // …then all writes
+        const r = rects[i];
+        const near =
+          targetX > r.left - GLOW_REACH && targetX < r.right + GLOW_REACH &&
+          targetY > r.top - GLOW_REACH && targetY < r.bottom + GLOW_REACH;
+        if (near) {
+          el.style.setProperty('--lx', `${targetX - r.left}px`);
+          el.style.setProperty('--ly', `${targetY - r.top}px`);
+          el.dataset.glowNear = '1';
+        } else if (el.dataset.glowNear) {
+          el.style.setProperty('--lx', '-1000px');
+          el.style.setProperty('--ly', '-1000px');
+          delete el.dataset.glowNear;
+        }
+      });
+    };
+
     const handleMouseMove = (event: MouseEvent) => {
       targetX = event.clientX;
       targetY = event.clientY;
@@ -44,13 +84,16 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
         mouseX = targetX;
         mouseY = targetY;
       }
-      document.documentElement.style.setProperty('--x', `${event.clientX}px`);
-      document.documentElement.style.setProperty('--y', `${event.clientY}px`);
-      document.documentElement.style.setProperty('--glow-opacity', '1');
+      if (!glowOn) {
+        glowOn = true;
+        document.documentElement.style.setProperty('--glow-opacity', '1');
+      }
+      if (!borderRaf) borderRaf = requestAnimationFrame(updateBorderGlow);
     };
 
     const handleMouseLeave = () => {
       lastMoveTime = 0;
+      glowOn = false;
       document.documentElement.style.setProperty('--glow-opacity', '0');
     };
 
@@ -92,11 +135,14 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
         mouseY += (targetY - mouseY) * 0.2;
       }
 
-      if (currentOpacity > 0.005 && mouseX !== -1000 && mouseY !== -1000) {
-        document.documentElement.style.setProperty('--x', `${mouseX}px`);
-        document.documentElement.style.setProperty('--y', `${mouseY}px`);
-        document.documentElement.style.setProperty('--glow-opacity', currentOpacity.toFixed(3));
+      // The cursor going idle fades the border glow out via the CSS
+      // transition - one var write on the transition, never one per frame.
+      if (!isMoving && glowOn) {
+        glowOn = false;
+        document.documentElement.style.setProperty('--glow-opacity', '0');
+      }
 
+      if (currentOpacity > 0.005 && mouseX !== -1000 && mouseY !== -1000) {
         // Theme detection
         const isDark =
           document.documentElement.classList.contains('bx-dark-mode') ||
@@ -148,6 +194,7 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseleave', handleMouseLeave);
       cancelAnimationFrame(animationFrameId);
+      if (borderRaf) cancelAnimationFrame(borderRaf);
     };
   }, [config.radius, config.brightness, config.color]);
 

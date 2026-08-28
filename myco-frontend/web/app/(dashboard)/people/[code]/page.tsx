@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { ErrorState } from '@/components/ErrorState';
 import { MonthCalendar } from '@/components/MonthCalendar';
-import { ResetPasswordButton } from '@/components/PeopleAdmin';
+import { ResetPasswordButton, SendMessageButton } from '@/components/PeopleAdmin';
 import { Status } from '@/components/Status';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity } from '@/lib/session';
@@ -132,11 +132,15 @@ export default async function EmployeeDetailPage({
             </div>
           )}
         </div>
-        {caps.canManagePeople && (
-          <div className="w-full border-t border-line/60 pt-3">
+        {/* This page is manager-and-above already; messaging is scoped the
+            same way the board is, so anyone who can see this person can
+            nudge them. Reset password stays HR-only. */}
+        <div className="flex w-full flex-wrap items-start gap-3 border-t border-line/60 pt-3">
+          <SendMessageButton code={code} name={monthData.full_name} />
+          {caps.canManagePeople && (
             <ResetPasswordButton code={code} name={monthData.full_name} />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Month */}

@@ -3,8 +3,10 @@
 import { useMemo, useState } from 'react';
 import { BellOff, CheckCheck } from 'lucide-react';
 
+import Link from 'next/link';
+
 import { EmptyState } from '@/components/EmptyState';
-import { timeAgo, type NotificationRow } from '@/lib/format';
+import { notificationHref, timeAgo, type NotificationRow } from '@/lib/format';
 
 const CATEGORY_LABEL: Record<string, string> = {
   leave: 'Leave',
@@ -121,17 +123,17 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
           {shown.map((n, i) => {
             const isHovered = hoveredId === n.id;
             const isDimmed = hoveredId !== null && !isHovered;
-            return (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => markRead(n)}
-                onMouseEnter={() => setHoveredId(n.id)}
-                style={{ ['--bx-i' as string]: Math.min(i, 10) }}
-                className={`bx-rise-i block w-full px-5 py-4 text-left transition-all duration-300 cursor-pointer ${
-                  isHovered ? 'bg-surface-2/70' : 'hover:bg-surface-2/50'
-                } ${isDimmed ? 'opacity-40' : n.read ? 'opacity-60' : 'opacity-100'}`}
-              >
+            // A row that names an action links to where the action happens
+            // ("needs a correction" -> that exact pending card); reading it
+            // is a side effect of going there. Rows with no destination stay
+            // plain mark-as-read buttons.
+            const href = notificationHref(n);
+            const cls = `bx-rise-i block w-full px-5 py-4 text-left transition-all duration-300 cursor-pointer ${
+              isHovered ? 'bg-surface-2/70' : 'hover:bg-surface-2/50'
+            } ${isDimmed ? 'opacity-40' : n.read ? 'opacity-60' : 'opacity-100'}`;
+            const style = { ['--bx-i' as string]: Math.min(i, 10) };
+            const inner = (
+              <>
                 <span className="flex items-baseline gap-2.5">
                   {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-ink" aria-hidden />}
                   <span className="min-w-0 flex-1 text-xs font-semibold text-ink transition-transform duration-300 group-hover:translate-x-1.5">{n.title}</span>
@@ -142,6 +144,21 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
                 </span>
                 <span className="mt-1 block text-xs text-ink-2 font-mono">{n.body}</span>
                 {!n.read && <span className="sr-only">Unread. Activate to mark read.</span>}
+              </>
+            );
+            return href ? (
+              <Link
+                key={n.id} href={href} onClick={() => markRead(n)}
+                onMouseEnter={() => setHoveredId(n.id)} style={style} className={cls}
+              >
+                {inner}
+              </Link>
+            ) : (
+              <button
+                key={n.id} type="button" onClick={() => markRead(n)}
+                onMouseEnter={() => setHoveredId(n.id)} style={style} className={cls}
+              >
+                {inner}
               </button>
             );
           })}

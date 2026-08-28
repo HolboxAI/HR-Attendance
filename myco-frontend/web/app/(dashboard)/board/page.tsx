@@ -126,12 +126,22 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
           <strong className="text-ink font-semibold">Month-end register.</strong>{' '}
           Every employee, every day, recomputed live from punches at download time.
         </p>
-        <a
-          href={proxy(`/api/v1/admin/export/month.csv?year=${monthOf.year}&month=${monthOf.month}`)}
-          className="whitespace-nowrap rounded-xl bg-ink text-ground px-5 py-2.5 text-xs font-black uppercase tracking-wider shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer"
-        >
-          Download {monthOf.label} CSV
-        </a>
+        {/* Same build() rows behind both formats: CSV for payroll, PDF for
+            the printed, signed copy. They cannot disagree about a day. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={proxy(`/api/v1/admin/export/month.csv?year=${monthOf.year}&month=${monthOf.month}`)}
+            className="whitespace-nowrap rounded-xl bg-ink text-ground px-5 py-2.5 text-xs font-black uppercase tracking-wider shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer"
+          >
+            Download {monthOf.label} CSV
+          </a>
+          <a
+            href={proxy(`/api/v1/admin/export/month.pdf?year=${monthOf.year}&month=${monthOf.month}`)}
+            className="whitespace-nowrap rounded-xl glass-panel border border-line px-5 py-2.5 text-xs font-black uppercase tracking-wider text-ink shadow-xs hover:bg-surface-2 transition-all active:scale-95 cursor-pointer"
+          >
+            PDF
+          </a>
+        </div>
       </div>
 
       <Tiles summary={board.summary} />

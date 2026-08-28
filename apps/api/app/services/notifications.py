@@ -108,3 +108,32 @@ def mark_read(db: Session, *, notification: Notification) -> None:
     if notification.read_at is None:
         notification.read_at = datetime.now(timezone.utc)
         db.flush()
+
+
+def resolve_matching(
+    db: Session, *, org_id: uuid.UUID, category: str, data_key: str, data_value: str,
+) -> int:
+    """Mark every copy of one actionable notification read, org-wide.
+
+    "Karan needs a correction" fans out to every admin; once ONE of them
+    decides it, the item is dealt with for all of them, and an inbox that
+    keeps nagging about finished work teaches people to ignore it. Marked
+    read, never deleted - the row stays as the record that they were told.
+    The data filter runs in Python because `data` is a JSON column and this
+    fires once per decision over at most a screenful of unread rows.
+    """
+    rows = db.scalars(
+        select(Notification).where(
+            Notification.org_id == org_id,
+            Notification.category == category,
+            Notification.read_at.is_(None),
+        )
+    ).all()
+    cleared = 0
+    for row in rows:
+        if str((row.data or {}).get(data_key)) == str(data_value):
+            row.read_at = datetime.now(timezone.utc)
+            cleared += 1
+    if cleared:
+        db.flush()
+    return cleared

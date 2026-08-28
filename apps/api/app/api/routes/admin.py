@@ -387,3 +387,32 @@ def export_month(
             "Cache-Control": "no-store",
         },
     )
+
+@router.get("/export/month.pdf")
+def export_month_pdf(
+    year: int = Query(...),
+    month: int = Query(ge=1, le=12),
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
+) -> Response:
+    """The same register as a printable PDF - for the copy that gets signed
+    and filed rather than fed to payroll. Built from the same build() rows
+    as the CSV, so the two documents cannot disagree about a single day."""
+    employees = visible_employees(db, user)
+    rows = export.build(db, employees=employees, year=year, month=month)
+    org = db.get(Organization, user.org_id)
+    body = export.to_pdf(
+        rows, year=year, month=month, org_name=org.name if org else "Boxcode",
+    )
+    db.commit()
+
+    name = f"attendance-{year}-{month:02d}.pdf"
+    return Response(
+        content=body,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )
+

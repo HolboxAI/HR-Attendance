@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 import type { NotificationRow } from '@/lib/format';
-import { timeAgo } from '@/lib/format';
+import { notificationHref, timeAgo } from '@/lib/format';
 
 /**
  * One glyph per category the backend actually emits - including the
@@ -153,26 +153,44 @@ export function NotificationBell() {
                 reminders and punch-out nudges all land here.
               </p>
             ) : (
-              items.map((n) => (
-                <button
-                  key={n.id}
-                  type="button"
-                  onClick={() => markRead(n)}
-                  className={`block w-full border-b border-line/60 px-4 py-3 text-left text-sm last:border-0 hover:bg-surface-2/60 ${
-                    n.read ? 'opacity-60' : ''
-                  }`}
-                >
-                  <span className="flex items-center gap-2">
-                    {!n.read && (
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-                    )}
-                    <span className="shrink-0 text-ink-3">{categoryIcon(n.category)}</span>
-                    <span className="min-w-0 flex-1 truncate font-medium text-ink">{n.title}</span>
-                    <span className="shrink-0 text-[11px] text-ink-3">{timeAgo(n.created_at)}</span>
-                  </span>
-                  <span className="mt-0.5 block text-xs text-ink-2">{n.body}</span>
-                </button>
-              ))
+              items.map((n) => {
+                const href = notificationHref(n);
+                const inner = (
+                  <>
+                    <span className="flex items-center gap-2">
+                      {!n.read && (
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
+                      )}
+                      <span className="shrink-0 text-ink-3">{categoryIcon(n.category)}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium text-ink">{n.title}</span>
+                      <span className="shrink-0 text-[11px] text-ink-3">{timeAgo(n.created_at)}</span>
+                    </span>
+                    <span className="mt-0.5 block text-xs text-ink-2">{n.body}</span>
+                  </>
+                );
+                const cls = `block w-full border-b border-line/60 px-4 py-3 text-left text-sm last:border-0 hover:bg-surface-2/60 ${
+                  n.read ? 'opacity-60' : ''
+                }`;
+                // A row that names an action opens the place the action
+                // happens; reading it is a side effect of going there.
+                return href ? (
+                  <Link
+                    key={n.id}
+                    href={href}
+                    className={cls}
+                    onClick={() => {
+                      markRead(n);
+                      setOpen(false);
+                    }}
+                  >
+                    {inner}
+                  </Link>
+                ) : (
+                  <button key={n.id} type="button" onClick={() => markRead(n)} className={cls}>
+                    {inner}
+                  </button>
+                );
+              })
             )}
           </div>
         </div>

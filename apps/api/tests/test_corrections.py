@@ -306,7 +306,38 @@ box("cancel", check("an approved one cannot be cancelled", client.post(
     f"/api/v1/corrections/{cid}/cancel", headers=DAKSH).status_code, 409))
 
 
-print("12. Every decision is audited")
+print("12. A decided request stops nagging the admins' inboxes")
+# "Karan needs a correction" fans out to every admin. Once ONE of them
+# decides it, the item is dealt with for all of them - marked read, never
+# deleted, so the record of being told survives.
+nag = client.post("/api/v1/corrections", headers=NIKUNJ, json={
+    "shift_date": date(2026, 8, 21).isoformat(), "direction": "out",
+    "claimed_at": claimed.isoformat(), "reason": "left for the airport"})
+nag_id = nag.json()["id"]
+fresh = [n for n in notes_for(ashley, "correction.submitted")
+         if n.data.get("correction_id") == nag_id]
+box("inbox-clears", check("submitting notifies HR, unread",
+                          [bool(n.read_at) for n in fresh], [False]))
+client.post(f"/api/v1/admin/corrections/{nag_id}/decide", headers=ASHLEY,
+            json={"approve": False, "note": "no"})
+after_decide = [n for n in notes_for(ashley, "correction.submitted")
+                if n.data.get("correction_id") == nag_id]
+box("inbox-clears", check("deciding marks it read for the admins",
+                          [bool(n.read_at) for n in after_decide], [True]))
+box("inbox-clears", check("the row survives as the record", len(after_decide), 1))
+# Withdrawal clears it too - a nag must not outlive its request.
+nag2 = client.post("/api/v1/corrections", headers=NIKUNJ, json={
+    "shift_date": date(2026, 8, 22).isoformat(), "direction": "out",
+    "claimed_at": claimed.isoformat(), "reason": "will withdraw"})
+nag2_id = nag2.json()["id"]
+client.post(f"/api/v1/corrections/{nag2_id}/cancel", headers=NIKUNJ)
+after_cancel = [n for n in notes_for(ashley, "correction.submitted")
+                if n.data.get("correction_id") == nag2_id]
+box("inbox-clears", check("cancelling clears it too",
+                          [bool(n.read_at) for n in after_cancel], [True]))
+
+
+print("13. Every decision is audited")
 db.expire_all()
 logs = db.scalars(select(AuditLog).where(
     AuditLog.entity == "correction_request")).all()
@@ -333,6 +364,7 @@ LABELS = {
     "no-self-approval": "Nobody decides their own, HR included",
     "reject-clean": "Rejecting changes nothing about the day",
     "cancel": "Cancelling is a status, and the owner's alone",
+    "inbox-clears": "A decided request stops nagging the admins",
     "audited": "Every decision is audited",
 }
 for k, label in LABELS.items():

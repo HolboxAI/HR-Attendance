@@ -23,3 +23,7 @@ bcrypt==5.0.0
 # AWS SDK, for Rekognition CompareFaces (FACE_PROVIDER=rekognition).
 # Imported lazily in app/services/face.py so stub-mode dev never needs it.
 boto3==1.43.81
+
+# Month-end register as PDF. fpdf2 is pure Python - no native toolchain,
+# no system packages - which is what keeps ./fix-deps.sh a one-liner.
+fpdf2==2.8.8

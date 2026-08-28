@@ -219,6 +219,19 @@ nik2 = next(row for row in rows2 if row and row[0] == nikunj.emp_code)
 check("newly added holiday shows immediately",
       nik2[idx[f"{LATE.day:02d} {LATE:%a}"]], "PH")
 
+print("7. The PDF is the same register, as an actual PDF")
+r = client.get(URL.replace("month.csv", "month.pdf"), headers=ASHLEY)
+check("downloads", r.status_code, 200)
+check("declared as PDF", r.headers["content-type"], "application/pdf")
+check("named for the month",
+      "attendance-2026-06.pdf" in r.headers["content-disposition"], True)
+check("really is a PDF, not an error page dressed as one",
+      r.content[:5], b"%PDF-")
+check("has substance (a real page of table, not a stub)",
+      len(r.content) > 2000, True)
+check("scoped like the CSV: employee refused",
+      client.get(URL.replace("month.csv", "month.pdf"), headers=NIKUNJ).status_code, 403)
+
 db.close()
 print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
 sys.exit(0 if ok else 1)

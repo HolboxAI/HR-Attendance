@@ -291,6 +291,27 @@ export function timeAgo(iso: string): string {
 }
 
 /**
+ * Where clicking a notification should take you. A row that names an action
+ * ("Karan needs a correction") must open the place the action happens - a
+ * correction row deep-links to its exact card via ?focus=. Categories with
+ * no destination return null and stay a plain mark-as-read row.
+ */
+export function notificationHref(n: NotificationRow): string | null {
+  const c = n.category;
+  if (c === 'correction.submitted') {
+    const id = n.data?.correction_id;
+    return typeof id === 'string' ? `/corrections?focus=${id}` : '/corrections';
+  }
+  if (c.startsWith('correction')) return '/corrections';
+  if (c === 'leave_accrual') return '/leave/balances';
+  if (c.startsWith('leave')) return '/leave';
+  if (c.startsWith('enrolment')) return '/enrolment';
+  if (c === 'attendance_late') return '/checkin';
+  if (c === 'attendance_punch_out') return '/corrections';
+  return null;
+}
+
+/**
  * "Today" as YYYY-MM-DD in the ORG's timezone - the backend's org_today()
  * lesson applied to the browser. toISOString() answers in UTC, which between
  * midnight and 05:30 IST is YESTERDAY, so a calendar keyed on it highlighted

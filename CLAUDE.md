@@ -87,7 +87,7 @@ front end replaceable without touching the backend.
     auth        login, refresh, logout, me, set-password
     mobile      me, month, punch                    (the employee's own data)
     leave       types, balance, request, my-requests, cancel   (also theirs)
-    admin       board, month, rejected, correct, devices, export/month.csv
+    admin       board, month, rejected, correct, devices, export/month.{csv,pdf}
     admin/leave pending, decide, balances, accrue, policy, types, audit
     admin       holidays, enrolments (+ photo)
     ingest      the parked gate-reader path, closed unless DEVICE_INGEST_KEY
@@ -313,7 +313,14 @@ delivery is not. It matters because the PRD says notifications must never be
 the sole source of truth, so the queryable row is the part that has to exist
 unconditionally. Wire `ExpoPushSender` in when there are real devices; nothing
 else changes. Fired today by correction submitted / approved / rejected,
-leave approved / rejected, and the scheduler's three jobs below.
+leave approved / rejected, the scheduler's three jobs below, and manual
+messages: `POST /notifications/send` (manager+, scoped like the board) puts
+a typed note in one employee's inbox. Deciding or cancelling a correction
+marks every admin's "needs a correction" row READ via
+`notifications.resolve_matching()` - dealt-with items stop nagging, but the
+row survives as the record. The month register also exports as PDF
+(`/admin/export/month.pdf`, fpdf2, same `build()` rows as the CSV so the
+two cannot disagree).
 
 **The scheduler exists, and lives inside the API process.** A lifespan task in
 `app/main.py` calls `app/services/scheduler.py:tick()` every 60s. In-process
