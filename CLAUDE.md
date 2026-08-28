@@ -29,6 +29,7 @@ syntax). `run.sh` finds the newest Python automatically.
     apps/api/.venv/bin/python apps/api/tests/test_corrections.py # PRD section 11
     apps/api/.venv/bin/python apps/api/tests/test_carry_forward.py  # year-end rollover
     apps/api/.venv/bin/python apps/api/tests/test_backup.py      # backup + restore
+    apps/api/.venv/bin/python apps/api/tests/test_scheduler.py   # the tick + 3 jobs
     apps/api/.venv/bin/python apps/api/scripts/demo_day.py       # end-to-end
     cd myco-frontend/web && npx tsc --noEmit
     cd myco-frontend/mobile && npx tsc --noEmit
@@ -189,8 +190,9 @@ exists so page JavaScript can never read a token.
 ## Status
 
 Working: punch → verify → store → resolve → HR dashboard, face enrolment, auth,
-leave, corrections, employee admin, and runtime location/presence config. All
-15 test suites pass (~600 assertions). Run them before claiming anything.
+leave, corrections, employee admin, runtime location/presence config, and the
+scheduler (accrual timer + late / punch-out nudges). All 16 test suites pass
+(~640 assertions). Run them before claiming anything.
 
 **Face matching is LIVE on AWS Rekognition** (2026-08-28). Scoped IAM user
 `boxcode-hrms-api` (CompareFaces + DetectFaces only, keys in `apps/api/.env`,
@@ -278,8 +280,9 @@ special happens to them, which is the point.
 - **The cap is recorded, not just applied.** Each run stores both
   `available_before_cap` and `amount` actually carried, so "why does Nikunj
   only have 30, not 34" has an answer in the table, not a guess.
-- Run once, by hand, at the leave-year boundary - there is no scheduler yet
-  (see the notification gaps below), so this is not on a timer.
+- Run once, by hand, at the leave-year boundary - DELIBERATELY not on the
+  scheduler, though one now exists: moving a year of balance is a decision HR
+  should take knowingly, not wake up to.
 
 **Corrections are a request, decided by someone else.** `POST /corrections`
 (employee submits against a flagged day) -> `GET /admin/corrections/pending`
@@ -309,8 +312,39 @@ This is the same split as `FACE_PROVIDER=stub`: the plumbing is real, the
 delivery is not. It matters because the PRD says notifications must never be
 the sole source of truth, so the queryable row is the part that has to exist
 unconditionally. Wire `ExpoPushSender` in when there are real devices; nothing
-else changes. Fired today by correction submitted / approved / rejected, and
-leave approved / rejected.
+else changes. Fired today by correction submitted / approved / rejected,
+leave approved / rejected, and the scheduler's three jobs below.
+
+**The scheduler exists, and lives inside the API process.** A lifespan task in
+`app/main.py` calls `app/services/scheduler.py:tick()` every 60s. In-process
+on purpose: attendance only happens while the API is up, and a laptop
+prototype has no cron worth trusting. Three jobs, all from the PRD's list:
+monthly accrual (current month, first tick that sees it), a "not checked in"
+nudge (shift start + grace + 30min, silent after shift end - by then it is an
+absence the board already shows), and a "you haven't punched out" nudge
+(shift end + 30min, expires after 12h; the correction flow is the recovery
+path past that).
+
+- **Every job is idempotent and THE LOCK IS A ROW**: `scheduled_job_runs` has
+  a unique (job_name, dedupe_key), claimed under a SAVEPOINT before the work.
+  A second firing - another tick, another worker, a restart mid-commit - hits
+  the constraint and walks away. `POST /admin/jobs/tick` and the 60s loop can
+  therefore coexist; clicking twice is a no-op.
+- **`tick()` takes `now` as a parameter** - same reason the resolver does.
+  `tests/test_scheduler.py` replays a week of mornings, night shift included,
+  in under a second.
+- **Late alerts go to the employee and their manager, never the HR fanout** -
+  eleven people would make that a daily wall. Punch-out nudges go to the
+  employee only: they hold the fix (punch now, or file a correction).
+- **Accrual does NOT catch up missed months**: `accrue_month` credits every
+  active employee for whatever month it is given, so backfilling would hand a
+  November hire January's leave. A month missed while the server was down is
+  HR's call via the existing `POST /admin/leave/accrue`.
+- **Any approved leave - full or half - silences the late alert.** Which half
+  of a half-day is on leave is not recorded, so a 09:40 alert at someone
+  excused until 14:00 would be a false alarm.
+- `GET /admin/jobs/runs` (hr_admin) answers "did the timer fire" and "why did
+  the app nudge Shivam on Tuesday" from rows, not logs.
 
 **Photo retention is enforced, not just promised.** `scripts/purge_photos.py`
 deletes punch selfies past `PUNCH_SELFIE_RETENTION_DAYS` (90) and reference
@@ -423,9 +457,12 @@ Not built yet, in priority order:
    never remove (an unvouched photo lets anyone enrol a friend's face).
    Nobody approves their own photo. POST/GET /mobile/enrolment,
    /admin/enrolments/requests + /decide; tests/test_enrolment_requests.py.
-4. **Scheduled jobs** (missing-punch-out nudge, late/absent threshold,
-   monthly accrual on a timer - accrual is manual today). Still no scheduler.
+4. ~~Scheduled jobs~~ DONE 2026-08-28: in-process scheduler, three jobs
+   (accrual timer, late alert, punch-out nudge). See "The scheduler exists"
+   above; tests/test_scheduler.py.
 5. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.
+   The scheduler's nudges make this worth revisiting sooner: a "not checked
+   in" row someone reads at lunch has done half its job.
 6. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish

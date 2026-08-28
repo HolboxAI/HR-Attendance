@@ -189,9 +189,7 @@ def resolve_day(
     day.break_minutes = int(sum(g.total_seconds() for g in gaps) // 60)
 
     # Late / early, measured against the scheduled shift in local time.
-    scheduled_start = datetime.combine(shift_date, policy.start_time, tzinfo=tz)
-    end_date = shift_date + timedelta(days=1) if policy.is_overnight else shift_date
-    scheduled_end = datetime.combine(end_date, policy.end_time, tzinfo=tz)
+    scheduled_start, scheduled_end = shift_bounds(policy, shift_date)
 
     if day.first_in:
         late = (day.first_in.astimezone(tz) - scheduled_start).total_seconds() / 60
@@ -239,10 +237,22 @@ def resolve_day(
     return day
 
 
+def shift_bounds(policy: ShiftPolicy, shift_date: date) -> tuple[datetime, datetime]:
+    """Scheduled start and end of this shift-date, as aware local datetimes.
+
+    The overnight adjustment lives HERE and nowhere else. Three call sites
+    (late minutes, "has the shift ended", the scheduler's alerts) each doing
+    their own end-date arithmetic is exactly the shape of the cutover bug.
+    """
+    tz = ZoneInfo(policy.tz)
+    start = datetime.combine(shift_date, policy.start_time, tzinfo=tz)
+    end_date = shift_date + timedelta(days=1) if policy.is_overnight else shift_date
+    end = datetime.combine(end_date, policy.end_time, tzinfo=tz)
+    return start, end
+
+
 def _shift_has_ended(policy: ShiftPolicy, shift_date: date, as_of: datetime | None) -> bool:
     if as_of is None:
         return True                      # no clock supplied: judge the day whole
-    tz = ZoneInfo(policy.tz)
-    end_date = shift_date + timedelta(days=1) if policy.is_overnight else shift_date
-    scheduled_end = datetime.combine(end_date, policy.end_time, tzinfo=tz)
-    return as_of.astimezone(tz) >= scheduled_end
+    _, scheduled_end = shift_bounds(policy, shift_date)
+    return as_of.astimezone(ZoneInfo(policy.tz)) >= scheduled_end

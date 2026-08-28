@@ -97,6 +97,25 @@ class Settings(BaseSettings):
     # file attendance for anyone.
     device_ingest_key: str = ""
 
+    # --- the in-process scheduler (app/services/scheduler.py) ---
+    # It lives inside the API process on purpose: attendance only happens while
+    # the API is up, and a laptop-hosted prototype has no cron worth trusting.
+    # Every job is idempotent (unique row per firing), so the interval is a
+    # politeness setting, not a correctness one.
+    scheduler_enabled: bool = True
+    scheduler_interval_seconds: int = 60
+
+    # "You haven't checked in" fires this long after shift start + grace.
+    # Grace already forgives ordinary lateness; this is for the day someone
+    # forgot entirely, so it should not fire while they are in the elevator.
+    late_alert_after_minutes: int = 30
+
+    # "You haven't punched out" fires this long after shift end, and goes
+    # stale after the expiry: a nudge about the day before yesterday is noise,
+    # and by then the board already shows the day flagged for correction.
+    punch_out_nudge_after_minutes: int = 30
+    punch_out_nudge_expiry_hours: int = 12
+
     default_geofence_radius_m: int = 200
 
 

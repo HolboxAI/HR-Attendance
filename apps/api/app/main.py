@@ -1,17 +1,71 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     admin, admin_corrections,
-    admin_employees, admin_leave, admin_location, auth, corrections, enrolment,
-    health, ingest, leave, mobile, notifications,
+    admin_employees, admin_jobs, admin_leave, admin_location, auth, corrections,
+    enrolment, health, ingest, leave, mobile, notifications,
 )
 from app.core.config import settings
+
+log = logging.getLogger("boxcode.scheduler")
+
+
+async def _scheduler_loop() -> None:
+    """Tick the scheduled jobs for as long as the API is up.
+
+    In-process on purpose: attendance only happens while the API is running,
+    and a laptop prototype has no cron worth trusting. The DB work is sync
+    SQLAlchemy, so each tick runs in a worker thread rather than blocking the
+    event loop that is also serving punches.
+
+    A tick that fails is logged and the loop keeps going - the alternative is
+    a scheduler that silently died at 9am and nobody's nudge firing again
+    until someone restarts the server and wonders why.
+    """
+    from app.db.session import SessionLocal
+    from app.services.scheduler import tick
+
+    def one_tick() -> dict:
+        db = SessionLocal()
+        try:
+            return tick(db)
+        finally:
+            db.close()
+
+    while True:
+        try:
+            summary = await asyncio.to_thread(one_tick)
+            if summary["jobs"]:
+                log.info("scheduler tick: %s", summary["jobs"])
+            for name, err in summary["errors"].items():
+                log.error("scheduler job %s failed: %s", name, err)
+        except Exception:                 # noqa: BLE001 - the loop must survive
+            log.exception("scheduler tick failed")
+        await asyncio.sleep(settings.scheduler_interval_seconds)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = (
+        asyncio.create_task(_scheduler_loop())
+        if settings.scheduler_enabled
+        else None
+    )
+    yield
+    if task is not None:
+        task.cancel()
+
 
 app = FastAPI(
     title="Boxcode HRMS API",
     version="0.1.0",
     description="Attendance-first HR platform. All capture methods converge on one punch event.",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -42,5 +96,6 @@ app.include_router(corrections.router, prefix=settings.api_prefix)
 app.include_router(admin_corrections.router, prefix=settings.api_prefix)
 app.include_router(admin_employees.router, prefix=settings.api_prefix)
 app.include_router(admin_location.router, prefix=settings.api_prefix)
+app.include_router(admin_jobs.router, prefix=settings.api_prefix)
 app.include_router(notifications.router, prefix=settings.api_prefix)
 
