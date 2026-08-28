@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { AtSignIcon, LockIcon, EyeIcon, EyeOffIcon, ArrowRightIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-import { BoxcodeLogo, BoxcodeMark } from './boxcode-logo';
+import { BoxcodeLogo, HolboxMark } from './boxcode-logo';
 import { Button } from './button';
 import HeroText from './hero-shutter-text';
 import { Input } from './input';
@@ -86,7 +86,7 @@ export function AuthPage() {
         <div className="my-auto flex flex-col items-center gap-6 text-center">
           <p className="text-xs uppercase tracking-[0.4em] text-white/50 font-mono">Welcome to</p>
           <HeroText text="HOLBOX" />
-          <BoxcodeMark className="size-16 text-white/70" />
+          <HolboxMark className="size-16" />
         </div>
       </div>
 
@@ -108,12 +108,13 @@ export function AuthPage() {
             <div className="size-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5">
               <BoxcodeLogo className="size-full text-white" />
             </div>
-            <span className="font-display text-sm font-bold text-white">Boxcode</span>
+            {/* The small-screen twin of the desktop corner brand - same name. */}
+            <span className="font-display text-sm font-bold text-white">Holbox</span>
           </div>
 
           <div className="space-y-1">
             <h1 className="font-display text-3xl font-black tracking-tight text-white">
-              Sign in to Boxcode
+              Sign in to Holbox
             </h1>
             <p className="text-sm text-white/60 font-body">
               Attendance, leave and approvals for your team.
