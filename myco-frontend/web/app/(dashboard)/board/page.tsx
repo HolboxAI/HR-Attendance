@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { BoardExceptionsList } from '@/components/BoardExceptionsList';
 import { BoardRefusedTable } from '@/components/BoardRefusedTable';
 import { BoardToolbar } from '@/components/BoardToolbar';
+import { isFilterKey } from '@/lib/boardFilters';
 import { Tiles } from '@/components/Tiles';
 import { MyMonth } from '@/components/MyMonth';
 import { KineticTicker } from '@/components/ui/kinetic-ticker';
@@ -15,9 +16,12 @@ export const dynamic = 'force-dynamic';
 export default async function BoardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ on?: string }>;
+  searchParams: Promise<{ on?: string; f?: string }>;
 }) {
-  const { on } = await searchParams;
+  const { on, f } = await searchParams;
+  // ?f=absent lands with that chip pre-selected - it is how the dashboard
+  // tiles answer "absent: 3" with THE three people, not a generic page.
+  const filter = isFilterKey(f) ? f : 'all';
   const me = await currentIdentity();
   const result = await getBoard(on);
 
@@ -89,6 +93,8 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
           </p>
         </div>
         <form className="flex items-center gap-2.5 text-xs font-mono">
+          {/* Changing the date must not silently drop an active filter. */}
+          {filter !== 'all' && <input type="hidden" name="f" value={filter} />}
           <label htmlFor="on" className="text-ink-3 font-medium">Date</label>
           <input
             id="on"
@@ -142,13 +148,16 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
         </section>
       )}
 
-      <section className="space-y-3">
+      {/* scroll-mt clears the overlay topbar when a #register link lands here.
+          key={filter} remounts the toolbar when a tile changes ?f= while
+          already on this page - useState(initial) alone would ignore it. */}
+      <section id="register" className="scroll-mt-24 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-mono font-semibold uppercase tracking-wider text-ink-3">
             Everyone · Daily Attendance Register
           </h2>
         </div>
-        <BoardToolbar rows={board.rows} />
+        <BoardToolbar key={filter} rows={board.rows} initial={filter} />
       </section>
 
       {rejected && rejected.length > 0 && (

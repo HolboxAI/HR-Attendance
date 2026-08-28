@@ -156,12 +156,14 @@ export default async function DashboardPage({
             Headcount: <strong className="text-ink">{board.summary.headcount}</strong>
           </span>
         </div>
+        {/* Each count links to the register filtered to the people it counts
+            - the number and its names are one fact, one click apart. */}
         <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5">
-          <MetricTile index={0} label="In office" icon="userCheck" href="/board" value={board.summary.currently_in} sub={`of ${board.summary.headcount} team members`} tone="neutral" />
-          <MetricTile index={1} label="Present" icon="person" href="/board" value={board.summary.present} sub="full shift completed" tone="neutral" />
-          <MetricTile index={2} label="Late" icon="clock" href="/board" value={board.summary.late} sub="past grace window" tone="neutral" />
-          <MetricTile index={3} label="Absent" icon="bellOff" href="/board" value={board.summary.absent} sub="no punch recorded" tone="neutral" />
-          <MetricTile index={4} label="On leave" icon="calendar" href="/leave" value={board.summary.on_leave} sub="approved quota" tone="neutral" />
+          <MetricTile index={0} label="In office" icon="userCheck" href="/board?f=in_office#register" value={board.summary.currently_in} sub={`of ${board.summary.headcount} team members`} tone="neutral" />
+          <MetricTile index={1} label="Present" icon="person" href="/board?f=present#register" value={board.summary.present} sub="full shift completed" tone="neutral" />
+          <MetricTile index={2} label="Late" icon="clock" href="/board?f=late#register" value={board.summary.late} sub="past grace window" tone="neutral" />
+          <MetricTile index={3} label="Absent" icon="bellOff" href="/board?f=absent#register" value={board.summary.absent} sub="no punch recorded" tone="neutral" />
+          <MetricTile index={4} label="On leave" icon="calendar" href="/board?f=on_leave#register" value={board.summary.on_leave} sub="approved leave today" tone="neutral" />
         </div>
       </section>
 
@@ -190,7 +192,7 @@ export default async function DashboardPage({
             />
           )}
           <MetricTile
-            index={2} label="Exceptions" icon="alert" href="/board"
+            index={2} label="Exceptions" icon="alert" href="/board?f=exceptions#register"
             value={board.summary.exceptions} sub="unpaired or flagged" tone="neutral"
           />
           <MetricTile

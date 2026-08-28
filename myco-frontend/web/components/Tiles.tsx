@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { AlertTriangle, CalendarOff, CheckCircle2, Clock3, DoorOpen } from 'lucide-react';
 
 import type { Board } from '@/lib/format';
@@ -5,28 +6,33 @@ import type { Board } from '@/lib/format';
 /**
  * Stat tiles, not a chart. The data's job here is a handful of headline
  * counts - a bar chart of six numbers would be decoration, not information.
+ *
+ * Each tile is a LINK to the register filtered to the people it counts.
+ * "Absent: 3" that answers "which three?" only after a manual scroll and a
+ * chip click was read as a dead card - the number and its names are one
+ * fact, so one click must connect them.
  */
 export function Tiles({ summary }: { summary: Board['summary'] }) {
   const tiles = [
     {
       label: 'In the office', value: summary.currently_in, sub: `of ${summary.headcount} headcount`,
-      icon: DoorOpen,
+      icon: DoorOpen, filter: 'in_office',
     },
     {
       label: 'Present today', value: summary.present, sub: 'full shift verified',
-      icon: CheckCircle2,
+      icon: CheckCircle2, filter: 'present',
     },
     {
       label: 'Late arrival', value: summary.late, sub: 'past grace window',
-      icon: Clock3,
+      icon: Clock3, filter: 'late',
     },
     {
       label: 'Absent', value: summary.absent, sub: 'no punches logged',
-      icon: CalendarOff,
+      icon: CalendarOff, filter: 'absent',
     },
     {
       label: 'Needs attention', value: summary.exceptions, sub: 'exceptions to review',
-      icon: AlertTriangle,
+      icon: AlertTriangle, filter: 'exceptions',
     },
   ];
 
@@ -35,9 +41,10 @@ export function Tiles({ summary }: { summary: Board['summary'] }) {
       {tiles.map((t) => {
         const Icon = t.icon;
         return (
-          <div
+          <Link
             key={t.label}
-            className="glass-panel glass-panel-hover rounded-2xl p-5 relative overflow-hidden group transition-all"
+            href={`/board?f=${t.filter}#register`}
+            className="glass-panel glass-panel-hover block rounded-2xl p-5 relative overflow-hidden group transition-all cursor-pointer"
           >
             <div className="flex items-start justify-between">
               <span className="flex size-9 items-center justify-center rounded-xl bg-surface-2 border border-line text-ink-2 shadow-xs">
@@ -51,7 +58,7 @@ export function Tiles({ summary }: { summary: Board['summary'] }) {
               {t.value}
             </div>
             <div className="mt-1 text-xs text-ink-3 font-mono">{t.sub}</div>
-          </div>
+          </Link>
         );
       })}
     </div>

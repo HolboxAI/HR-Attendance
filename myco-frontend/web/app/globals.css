@@ -312,12 +312,13 @@ body {
 /* ---------------------------------------------------------------------------
    Global High-Impact Light Grey / Obsidian Spotlight Glow on Every Box
 --------------------------------------------------------------------------- */
-.glass-panel,
-.bx-card,
-[data-glow],
-aside,
-header,
-.bx-pop {
+/* The ::before glow needs a positioning context, BUT this must never stomp
+   an element that positions itself: this selector used to match plain
+   `header` and `.bx-pop` unconditionally, which silently turned the
+   overlay topbar and the notification dropdown back into in-flow boxes -
+   the dropdown then GREW the header to ~430px instead of floating over the
+   page. :not(...) excludes anything carrying its own positioning utility. */
+:where(.glass-panel, .bx-card, [data-glow], aside, header, .bx-pop):not(.absolute, .fixed, .sticky) {
   position: relative;
 }
 

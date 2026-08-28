@@ -1,45 +1,42 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 
 import type { BoardRow } from '@/lib/format';
 import { BoardTable } from './BoardTable';
 
-type FilterKey = 'all' | 'present' | 'late' | 'absent' | 'on_leave' | 'exceptions';
-
-const FILTERS: { key: FilterKey; label: string }[] = [
-  { key: 'all', label: 'All' },
-  { key: 'present', label: 'Present' },
-  { key: 'late', label: 'Late' },
-  { key: 'absent', label: 'Absent' },
-  { key: 'on_leave', label: 'On leave' },
-  { key: 'exceptions', label: 'Exceptions' },
-];
-
-function matches(row: BoardRow, filter: FilterKey): boolean {
-  switch (filter) {
-    case 'all': return true;
-    case 'late': return row.late_minutes > 0;
-    case 'exceptions': return row.has_exception;
-    default: return row.status === filter;
-  }
-}
+import { FILTERS, matchesFilter, type FilterKey } from '@/lib/boardFilters';
 
 /**
  * Search and status filters over rows the server already sent - no request
  * fires as you type or click a chip. The board is at most ~60 rows (PRD
  * scope), so filtering in the browser is instant and asking the API to do it
  * would just add a round trip for the same result.
+ *
+ * `initial` lets a link land with a chip pre-selected - the dashboard's
+ * "Absent" tile opens the register already filtered to absent people,
+ * rather than dropping the viewer at the top of an unfiltered page and
+ * calling that an answer. Every filter renders the same BoardTable.
  */
-export function BoardToolbar({ rows }: { rows: BoardRow[] }) {
+export function BoardToolbar({ rows, initial = 'all' }: { rows: BoardRow[]; initial?: FilterKey }) {
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FilterKey>('all');
+  const [filter, setFilter] = useState<FilterKey>(initial);
+
+  // A tile links here as /board?f=…#register, but on a client-side
+  // navigation the fragment is resolved before this section exists, so the
+  // browser never scrolls. Do it on mount. The date form's GET drops the
+  // hash, so changing the date does not re-trigger a jump.
+  useEffect(() => {
+    if (window.location.hash === '#register') {
+      document.getElementById('register')?.scrollIntoView();
+    }
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows
-      .filter((r) => matches(r, filter))
+      .filter((r) => matchesFilter(r, filter))
       .filter(
         (r) =>
           !q ||
