@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { ArrowUpRight, Search } from 'lucide-react';
 
 import { Avatar } from '@/components/Avatar';
+import { FacePeek } from '@/components/FacePeek';
 import { Status } from '@/components/Status';
 
 export type DirectoryRow = {
@@ -97,7 +98,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                     >
                       <td className="px-5 py-3.5">
                         <Link href={`/people/${r.code}`} className="flex items-center gap-3">
-                          <span className="relative shrink-0">
+                          <FacePeek code={r.code} name={r.name} className="relative shrink-0">
                             <Avatar name={r.name} />
                             <span
                               className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
@@ -105,7 +106,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                               }`}
                               aria-hidden
                             />
-                          </span>
+                          </FacePeek>
                           <span className="inline-block transition-transform duration-300 group-hover:translate-x-3">
                             <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
                               {r.name}
@@ -162,7 +163,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                     isDimmed ? 'scale-[0.98]' : 'scale-100 hover:bg-surface-2/60'
                   }`}
                 >
-                  <span className="relative shrink-0">
+                  <FacePeek code={r.code} name={r.name} className="relative shrink-0">
                     <Avatar name={r.name} />
                     <span
                       className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
@@ -170,7 +171,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                       }`}
                       aria-hidden
                     />
-                  </span>
+                  </FacePeek>
                   <div className="min-w-0 flex-1 transition-transform duration-300 group-hover:translate-x-2.5">
                     <span className="block truncate text-sm font-semibold text-ink">{r.name}</span>
                     <span className="block text-xs font-mono text-ink-3">

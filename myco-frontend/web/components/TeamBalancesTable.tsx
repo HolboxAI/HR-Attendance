@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 
+import { FacePeek } from '@/components/FacePeek';
 import type { TeamBalanceRow } from '@/lib/format';
 
 export function TeamBalancesTable({
@@ -44,7 +45,9 @@ export function TeamBalancesTable({
               >
                 <td className="px-4 py-3">
                   <Link href={`/people/${code}`} className="font-semibold text-ink group inline-flex items-center gap-1.5">
-                    <span className="transition-transform duration-300 group-hover:translate-x-1">{e.name}</span>
+                    <FacePeek code={code} name={e.name} className="transition-transform duration-300 group-hover:translate-x-1">
+                      {e.name}
+                    </FacePeek>
                   </Link>
                   <span className="ml-2 text-xs font-mono text-ink-3">{code}</span>
                 </td>

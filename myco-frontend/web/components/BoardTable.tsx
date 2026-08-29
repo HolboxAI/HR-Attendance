@@ -6,6 +6,7 @@ import { ArrowUpRight } from 'lucide-react';
 
 import { hhmm, hours, type BoardRow } from '@/lib/format';
 import { Avatar } from './Avatar';
+import { FacePeek } from './FacePeek';
 import { Status } from './Status';
 
 export function BoardTable({ rows }: { rows: BoardRow[] }) {
@@ -48,7 +49,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
               >
                 <td className="px-5 py-3.5">
                   <Link href={`/people/${r.employee_code}`} className="flex items-center gap-3">
-                    <span className="relative shrink-0">
+                    <FacePeek code={r.employee_code} name={r.full_name} className="relative shrink-0">
                       <Avatar name={r.full_name} />
                       <span
                         className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
@@ -56,7 +57,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                         }`}
                         aria-hidden
                       />
-                    </span>
+                    </FacePeek>
                     <span className="inline-block transition-transform duration-300 group-hover:translate-x-3">
                       <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
                         {r.full_name}
