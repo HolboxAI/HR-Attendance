@@ -11,6 +11,7 @@ import HeroText from './hero-shutter-text';
 import { Input } from './input';
 import { SpotlightCursor } from './spotlight-cursor';
 import { CanvasRevealEffect } from './sign-in-flow-1';
+import { SparklesCore } from './sparkles';
 import Link from 'next/link';
 
 export function AuthPage() {
@@ -91,7 +92,33 @@ export function AuthPage() {
             className="gap-[0.3em] opacity-90"
           />
           <HeroText text="HOLBOX" />
-          <HolboxMark className="size-16" />
+
+          {/* Sparks falling off the name: the demo strip, sized to the
+              column. -mt pulls it up so the glow lines sit right under the
+              letters; pointer-events-none because it is decoration over a
+              page someone is trying to sign in to. */}
+          <div className="pointer-events-none relative -mt-4 h-40 w-full max-w-[34rem]">
+            {/* Gradients */}
+            <div className="absolute inset-x-20 top-0 h-[2px] w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent blur-sm" />
+            <div className="absolute inset-x-20 top-0 h-px w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
+            <div className="absolute inset-x-60 top-0 h-[5px] w-1/4 bg-gradient-to-r from-transparent via-sky-500 to-transparent blur-sm" />
+            <div className="absolute inset-x-60 top-0 h-px w-1/4 bg-gradient-to-r from-transparent via-sky-500 to-transparent" />
+
+            {/* Core component */}
+            <SparklesCore
+              background="transparent"
+              minSize={0.4}
+              maxSize={1}
+              particleDensity={1200}
+              className="h-full w-full"
+              particleColor="#FFFFFF"
+            />
+
+            {/* Radial Gradient to prevent sharp edges */}
+            <div className="absolute inset-0 h-full w-full bg-black [mask-image:radial-gradient(350px_200px_at_top,transparent_20%,white)]" />
+          </div>
+
+          <HolboxMark className="size-16 -mt-6" />
         </div>
       </div>
 
