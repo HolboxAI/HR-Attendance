@@ -11,7 +11,7 @@ import {
 
 import type { Capabilities } from '@/lib/capabilities';
 
-type NavItem = {
+export type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutGrid;
@@ -29,7 +29,7 @@ const all = () => true;
  * empty state than a short sidebar (PRD §7). Visibility comes from the
  * capability model, not per-page role strings; the API stays the boundary.
  */
-const SECTIONS: Section[] = [
+export const SECTIONS: Section[] = [
   {
     title: 'Overview',
     items: [

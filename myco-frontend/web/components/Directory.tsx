@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { ArrowUpRight, Search } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 
 import { Avatar } from '@/components/Avatar';
 import { FacePeek } from '@/components/FacePeek';
+import { HolboxSearch } from '@/components/HolboxSearch';
 import { Status } from '@/components/Status';
 
 export type DirectoryRow = {
@@ -45,15 +46,18 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
   return (
     <div className="space-y-4 fade-in-up">
       <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Same search component as the header, the simple variant: people
+            only, and every keystroke still drives the live table filter. */}
         <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, code or department..."
-            aria-label="Search employees"
-            className="w-full rounded-xl border border-line/70 glass-panel py-2.5 pl-10 pr-4 text-xs font-mono text-ink placeholder:text-ink-3 focus:outline-none focus:ring-1 focus:ring-accent/40 shadow-sm"
+          <HolboxSearch
+            variant="directory"
+            people={rows.map((r) => ({ code: r.code, name: r.name, department: r.department }))}
+            onQueryChange={setQuery}
+            placeholders={[
+              'Search a name — Himesh, Krish...',
+              'Search a code — BX002...',
+              'Search a department — Engineering...',
+            ]}
           />
         </div>
         <span className="text-xs font-mono text-ink-3">Showing <strong className="text-ink">{filtered.length}</strong> of {rows.length}</span>

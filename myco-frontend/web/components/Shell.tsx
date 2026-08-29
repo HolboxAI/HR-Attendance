@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, LogOut, Menu, Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Menu, X } from 'lucide-react';
 
+import { HolboxSearch } from '@/components/HolboxSearch';
 import { MenuToggle } from '@/components/ui/menu-toggle';
 import { NotificationBell } from '@/components/NotificationBell';
 import { SidebarBrand, SidebarFooter, SidebarNav } from '@/components/Sidebar';
@@ -39,7 +40,6 @@ export function Shell({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const lastScrollY = useRef(0);
   const router = useRouter();
   const pathname = usePathname();
@@ -188,15 +188,22 @@ export function Shell({
             </div>
           </div>
 
-          {/* Quick Search */}
-          <div className="hidden md:flex items-center relative max-w-xs w-full mx-4">
-            <Search className="size-3.5 absolute left-3 text-ink-3 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search people, records..."
-              className="w-full bg-surface-2/60 border border-line rounded-xl pl-9 pr-3 py-1.5 text-xs text-ink placeholder:text-ink-3 focus:outline-none focus:border-ink/40 focus:ring-1 focus:ring-ink/20 transition-all font-body"
+          {/* Quick Search - lives in the Shell, so it is the same working
+              search on every dashboard page, not just the overview. */}
+          <div className="hidden md:flex items-center relative max-w-sm w-full mx-4">
+            <HolboxSearch
+              // Remount per route: arriving somewhere clears whatever query
+              // got you there, so the box is ready for the next search.
+              key={pathname}
+              variant="global"
+              caps={caps}
+              placeholders={[
+                'Search people — try Himesh...',
+                'Jump to a page — Devices, Board...',
+                'Find someone by code — BX007...',
+                'Open Team balances...',
+                'Who is on leave? Try the Board...',
+              ]}
             />
           </div>
 
