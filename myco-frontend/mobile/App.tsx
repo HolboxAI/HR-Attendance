@@ -1,8 +1,12 @@
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, AppState, Pressable, SafeAreaView, StyleSheet, Text, View,
+  ActivityIndicator, AppState, KeyboardAvoidingView, Pressable,
+  StyleSheet, Text, View,
 } from 'react-native';
+import {
+  SafeAreaProvider, SafeAreaView, useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import CorrectionsScreen from './src/CorrectionsScreen';
 import InboxScreen from './src/InboxScreen';
@@ -17,23 +21,37 @@ import { loadApiBaseOverride } from './src/config';
 import { registerForPush } from './src/push';
 import { restore, signOut } from './src/session';
 import { flush } from './src/sync';
-import { theme } from './src/theme';
+import { ThemeProvider, useTheme } from './src/ThemeContext';
+import type { ThemeColors } from './src/theme';
 import type { MonthDay } from './src/types';
-
-const c = theme.color;
 
 type Tab = 'home' | 'attendance' | 'leave' | 'inbox' | 'profile';
 type AttendanceView = 'month' | 'corrections';
 
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppInner />
+      </ThemeProvider>
+    </SafeAreaProvider>
+  );
+}
+
 /**
  * The employee's attendance companion, arranged around one question: can I
- * check in right now? Home is the punch screen and nothing else. Attendance
- * holds the month and the correction flow (the way out of a broken day),
- * Leave and Inbox are theirs, Profile holds account things and the internal
- * Survey tool. Deliberately no navigation library - five tabs and one
- * sub-view do not justify a dependency.
+ * check in right now? Check-in sits in the CENTRE of the tab bar - the main
+ * action lives where thumbs live. Attendance holds the month and the
+ * correction flow (the way out of a broken day), Leave and Inbox are theirs,
+ * Profile holds account things, appearance and the internal Survey tool.
+ * Deliberately no navigation library - five tabs and one sub-view do not
+ * justify a dependency.
  */
-export default function App() {
+function AppInner() {
+  const { c, mode } = useTheme();
+  const insets = useSafeAreaInsets();
+  const s = useMemo(() => makeStyles(c), [c]);
+
   const [tab, setTab] = useState<Tab>('home');
   const [attendanceView, setAttendanceView] = useState<AttendanceView>('month');
   const [correctionPrefill, setCorrectionPrefill] = useState<MonthDay | null>(null);
@@ -89,10 +107,12 @@ export default function App() {
     setAttendanceView('corrections');
   }, []);
 
+  const statusBar = <StatusBar style={mode === 'light' ? 'dark' : 'light'} />;
+
   if (checking) {
     return (
       <SafeAreaView style={[s.root, s.centre]}>
-        <StatusBar style="light" />
+        {statusBar}
         <ActivityIndicator color={c.accent} />
       </SafeAreaView>
     );
@@ -100,7 +120,8 @@ export default function App() {
 
   if (!me) {
     return (
-      <SafeAreaView style={s.root}>
+      // The login screen is a brand surface and stays dark in both themes.
+      <SafeAreaView style={s.loginRoot}>
         <StatusBar style="light" />
         <LoginScreen onSignedIn={setMe} />
       </SafeAreaView>
@@ -108,55 +129,65 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={s.root}>
-      <StatusBar style="light" />
+    <SafeAreaView style={s.root} edges={['top', 'left', 'right']}>
+      {statusBar}
 
-      {tab === 'attendance' && (
-        <View style={s.segmented}>
-          {(['month', 'corrections'] as AttendanceView[]).map((v) => (
-            <Pressable
-              key={v}
-              onPress={() => { setAttendanceView(v); if (v === 'month') setCorrectionPrefill(null); }}
-              style={[s.segment, attendanceView === v && s.segmentOn]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: attendanceView === v }}
-            >
-              <Text style={[s.segmentText, attendanceView === v && s.segmentTextOn]}>
-                {v === 'month' ? 'Month' : 'Corrections'}
-              </Text>
-            </Pressable>
-          ))}
+      {/* Android with edge-to-edge no longer resizes the window for the
+          keyboard, so without this padding a focused field near the bottom
+          of any form disappears under it. Wrapping content AND tab bar means
+          the bar rides above the keyboard rather than being buried. */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+        {tab === 'attendance' && (
+          <View style={s.segmented}>
+            {(['month', 'corrections'] as AttendanceView[]).map((v) => (
+              <Pressable
+                key={v}
+                onPress={() => { setAttendanceView(v); if (v === 'month') setCorrectionPrefill(null); }}
+                style={[s.segment, attendanceView === v && s.segmentOn]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: attendanceView === v }}
+              >
+                <Text style={[s.segmentText, attendanceView === v && s.segmentTextOn]}>
+                  {v === 'month' ? 'Month' : 'Corrections'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {tab === 'home' ? <PunchScreen />
+          : tab === 'attendance' ? (
+            attendanceView === 'month'
+              ? <MonthScreen onRequestCorrection={openCorrection} />
+              : <CorrectionsScreen prefill={correctionPrefill} />
+          )
+          : tab === 'leave' ? <LeaveScreen />
+          : tab === 'inbox' ? <InboxScreen onUnreadChange={setUnread} />
+          : <ProfileScreen me={me} onSignOut={out} />}
+
+        {/* insets.bottom keeps the row clear of Android's gesture/nav bar
+            and the iPhone home indicator; phones with hardware keys get 0
+            and the small base padding still applies. */}
+        <View style={[s.tabs, { paddingBottom: Math.max(insets.bottom, 6) }]}>
+          <TabButton label="Leave" active={tab === 'leave'} onPress={() => setTab('leave')} styles={s} />
+          <TabButton label="Month" active={tab === 'attendance'} onPress={() => setTab('attendance')} styles={s} />
+          <TabButton label="Check in" active={tab === 'home'} onPress={() => setTab('home')} styles={s} />
+          <TabButton
+            label="Inbox" active={tab === 'inbox'} badge={unread}
+            onPress={() => setTab('inbox')} styles={s}
+          />
+          <TabButton label="Profile" active={tab === 'profile'} onPress={() => setTab('profile')} styles={s} />
         </View>
-      )}
-
-      {tab === 'home' ? <PunchScreen />
-        : tab === 'attendance' ? (
-          attendanceView === 'month'
-            ? <MonthScreen onRequestCorrection={openCorrection} />
-            : <CorrectionsScreen prefill={correctionPrefill} />
-        )
-        : tab === 'leave' ? <LeaveScreen />
-        : tab === 'inbox' ? <InboxScreen onUnreadChange={setUnread} />
-        : <ProfileScreen me={me} onSignOut={out} />}
-
-      <View style={s.tabs}>
-        <TabButton label="Check in" active={tab === 'home'} onPress={() => setTab('home')} />
-        <TabButton label="Month" active={tab === 'attendance'} onPress={() => setTab('attendance')} />
-        <TabButton label="Leave" active={tab === 'leave'} onPress={() => setTab('leave')} />
-        <TabButton
-          label="Inbox" active={tab === 'inbox'} badge={unread}
-          onPress={() => setTab('inbox')}
-        />
-        <TabButton label="Profile" active={tab === 'profile'} onPress={() => setTab('profile')} />
-      </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 function TabButton({
-  label, active, badge = 0, onPress,
+  label, active, badge = 0, onPress, styles: s,
 }: {
   label: string; active: boolean; badge?: number; onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
 }) {
   return (
     <Pressable
@@ -176,8 +207,9 @@ function TabButton({
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.ground },
+  loginRoot: { flex: 1, backgroundColor: '#000000' },
   centre: { alignItems: 'center', justifyContent: 'center' },
   tabs: {
     flexDirection: 'row', borderTopWidth: 1, borderTopColor: c.line,

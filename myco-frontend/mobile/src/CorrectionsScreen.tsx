@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
   TextInput, View,
@@ -6,10 +6,10 @@ import {
 
 import { cancelCorrection, getMyCorrections, submitCorrection } from './api';
 import { hhmm, plainDate, STATUS_META } from './format';
-import { theme } from './theme';
+import MiniCalendar from './MiniCalendar';
+import { useTheme } from './ThemeContext';
+import { theme, type ThemeColors } from './theme';
 import type { CorrectionItem, MonthDay, PunchDirection } from './types';
-
-const c = theme.color;
 
 const DATE_HINT = 'YYYY-MM-DD';
 const TIME_HINT = 'HH:MM';
@@ -21,12 +21,16 @@ const TIME_HINT = 'HH:MM';
  * screen says so wherever it could be misread.
  */
 export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | null }) {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
+
   const [items, setItems] = useState<CorrectionItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const [formOpen, setFormOpen] = useState(prefill !== null);
   const [shiftDate, setShiftDate] = useState(prefill?.date ?? '');
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [direction, setDirection] = useState<PunchDirection>(
     prefill && prefill.first_in && !prefill.last_out ? 'out' : 'in',
   );
@@ -87,6 +91,7 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
     }
     setDone(true);
     setFormOpen(false);
+    setCalendarOpen(false);
     setShiftDate(''); setTime(''); setReason('');
     void load();
   }
@@ -102,6 +107,7 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
     <ScrollView
       style={s.screen}
       contentContainerStyle={s.content}
+      keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -127,11 +133,28 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
       {formOpen ? (
         <View style={s.form}>
           <Text style={s.label}>Which day ({DATE_HINT})</Text>
-          <TextInput
-            style={s.input} value={shiftDate} onChangeText={setShiftDate}
-            placeholder="2026-08-26" placeholderTextColor={c.ink3}
-            autoCapitalize="none" autoCorrect={false} keyboardType="numbers-and-punctuation"
-          />
+          <View style={s.dateRow}>
+            <TextInput
+              style={[s.input, { flex: 1, marginTop: 0 }]} value={shiftDate}
+              onChangeText={setShiftDate}
+              placeholder="2026-08-26" placeholderTextColor={c.ink3}
+              autoCapitalize="none" autoCorrect={false} keyboardType="numbers-and-punctuation"
+            />
+            <Pressable
+              style={[s.pickBtn, calendarOpen && s.pickBtnOn]}
+              onPress={() => setCalendarOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={calendarOpen ? 'Close the calendar' : 'Pick the day from a calendar'}
+            >
+              <Text style={[s.pickText, calendarOpen && s.pickTextOn]}>▦ Pick</Text>
+            </Pressable>
+          </View>
+          {calendarOpen && (
+            <MiniCalendar
+              value={shiftDate}
+              onPick={(d) => { setShiftDate(d); setCalendarOpen(false); }}
+            />
+          )}
 
           <Text style={s.label}>What is missing</Text>
           <View style={s.segmented}>
@@ -176,7 +199,7 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
               ? <ActivityIndicator color={c.accentInk} />
               : <Text style={s.submitText}>Submit for approval</Text>}
           </Pressable>
-          <Pressable onPress={() => setFormOpen(false)} accessibilityRole="button">
+          <Pressable onPress={() => { setFormOpen(false); setCalendarOpen(false); }} accessibilityRole="button">
             <Text style={s.cancelLink}>Cancel</Text>
           </Pressable>
         </View>
@@ -244,14 +267,14 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.ground },
-  content: { padding: 20, paddingTop: 24, gap: 12 },
+  content: { padding: 20, paddingTop: 24, gap: 12, paddingBottom: 40 },
   title: { color: c.ink, fontSize: 24, fontWeight: '700', letterSpacing: -0.4 },
   subtitle: { color: c.ink2, fontSize: 14, lineHeight: 20, marginTop: -6 },
 
   okBox: {
-    backgroundColor: '#12291F', borderColor: c.ok, borderWidth: 1,
+    backgroundColor: c.okBg, borderColor: c.ok, borderWidth: 1,
     borderRadius: theme.radius.md, padding: 12,
   },
   okText: { color: c.ok, fontSize: 14 },
@@ -276,12 +299,20 @@ const s = StyleSheet.create({
     color: c.ink, fontSize: 15, marginTop: 6,
   },
   multiline: { minHeight: 64, textAlignVertical: 'top' },
+  dateRow: { flexDirection: 'row', gap: 8, marginTop: 6, alignItems: 'center' },
+  pickBtn: {
+    borderColor: c.line, borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 11,
+  },
+  pickBtnOn: { borderColor: c.accent, backgroundColor: c.hiBg },
+  pickText: { color: c.ink2, fontSize: 14, fontWeight: '600' },
+  pickTextOn: { color: c.accent },
   segmented: { flexDirection: 'row', gap: 8, marginTop: 6 },
   segment: {
     flex: 1, borderWidth: 1, borderColor: c.line, borderRadius: 8,
     paddingVertical: 10, alignItems: 'center',
   },
-  segmentOn: { borderColor: c.accent, backgroundColor: '#33270F' },
+  segmentOn: { borderColor: c.accent, backgroundColor: c.hiBg },
   segmentText: { color: c.ink3, fontSize: 14, fontWeight: '600' },
   segmentTextOn: { color: c.accent },
   formError: { color: c.crit, fontSize: 13, lineHeight: 18, marginTop: 10 },

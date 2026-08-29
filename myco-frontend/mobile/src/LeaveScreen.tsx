@@ -1,27 +1,29 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
   TextInput, View,
 } from 'react-native';
 
 import { applyForLeave, cancelLeave, getLeaveBalance, getMyLeave } from './api';
-import { theme } from './theme';
+import MiniCalendar from './MiniCalendar';
+import { useTheme } from './ThemeContext';
+import type { ThemeColors } from './theme';
 import type { LeaveBalance, LeaveRequestItem } from './types';
 
-const c = theme.color;
-
-const STATUS: Record<LeaveRequestItem['status'], { label: string; glyph: string; tone: string }> = {
-  pending: { label: 'Pending', glyph: '◌', tone: c.warn },
-  approved: { label: 'Approved', glyph: '●', tone: c.ok },
-  rejected: { label: 'Rejected', glyph: '○', tone: c.crit },
-  cancelled: { label: 'Cancelled', glyph: '–', tone: c.ink3 },
-};
-
-/** Dates are typed as YYYY-MM-DD: one unambiguous format, no picker to learn. */
+/** Dates are YYYY-MM-DD - typed, or picked from the calendar beside the field. */
 const DATE_HINT = 'YYYY-MM-DD';
 const looksLikeDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 export default function LeaveScreen() {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
+  const STATUS: Record<LeaveRequestItem['status'], { label: string; glyph: string; tone: string }> = {
+    pending: { label: 'Pending', glyph: '◌', tone: c.warn },
+    approved: { label: 'Approved', glyph: '●', tone: c.ok },
+    rejected: { label: 'Rejected', glyph: '○', tone: c.crit },
+    cancelled: { label: 'Cancelled', glyph: '–', tone: c.ink3 },
+  };
+
   const [balances, setBalances] = useState<LeaveBalance[] | null>(null);
   const [requests, setRequests] = useState<LeaveRequestItem[]>([]);
   const [code, setCode] = useState('CL');
@@ -31,6 +33,8 @@ export default function LeaveScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  // Which field the calendar is filling; only one grid open at a time.
+  const [picking, setPicking] = useState<'from' | 'to' | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -64,6 +68,7 @@ export default function LeaveScreen() {
       return;
     }
     setFrom(''); setTo(''); setReason('');
+    setPicking(null);
     setSent(true);
     load();
   }
@@ -80,6 +85,7 @@ export default function LeaveScreen() {
     <ScrollView
       style={s.root}
       contentContainerStyle={s.content}
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={c.ink3} />}
     >
       <Text style={s.h1}>Leave</Text>
@@ -112,16 +118,50 @@ export default function LeaveScreen() {
           ))}
         </View>
 
-        <TextInput
-          style={s.input} value={from} onChangeText={setFrom}
-          placeholder={`From  ${DATE_HINT}`} placeholderTextColor={c.ink3}
-          autoCapitalize="none" autoCorrect={false} editable={!busy}
-        />
-        <TextInput
-          style={s.input} value={to} onChangeText={setTo}
-          placeholder={`To  ${DATE_HINT}  (same day if blank)`} placeholderTextColor={c.ink3}
-          autoCapitalize="none" autoCorrect={false} editable={!busy}
-        />
+        <View style={s.dateRow}>
+          <TextInput
+            style={[s.input, { flex: 1 }]} value={from} onChangeText={setFrom}
+            placeholder={`From  ${DATE_HINT}`} placeholderTextColor={c.ink3}
+            autoCapitalize="none" autoCorrect={false} editable={!busy}
+          />
+          <Pressable
+            style={[s.pickBtn, picking === 'from' && s.pickBtnOn]}
+            onPress={() => setPicking(picking === 'from' ? null : 'from')}
+            accessibilityRole="button"
+            accessibilityLabel="Pick the start date from a calendar"
+          >
+            <Text style={[s.pickText, picking === 'from' && s.pickTextOn]}>▦</Text>
+          </Pressable>
+        </View>
+        {picking === 'from' && (
+          <MiniCalendar
+            value={from}
+            onPick={(d) => { setFrom(d); setPicking(null); }}
+          />
+        )}
+
+        <View style={s.dateRow}>
+          <TextInput
+            style={[s.input, { flex: 1 }]} value={to} onChangeText={setTo}
+            placeholder={`To  ${DATE_HINT}  (same day if blank)`} placeholderTextColor={c.ink3}
+            autoCapitalize="none" autoCorrect={false} editable={!busy}
+          />
+          <Pressable
+            style={[s.pickBtn, picking === 'to' && s.pickBtnOn]}
+            onPress={() => setPicking(picking === 'to' ? null : 'to')}
+            accessibilityRole="button"
+            accessibilityLabel="Pick the end date from a calendar"
+          >
+            <Text style={[s.pickText, picking === 'to' && s.pickTextOn]}>▦</Text>
+          </Pressable>
+        </View>
+        {picking === 'to' && (
+          <MiniCalendar
+            value={to || from}
+            onPick={(d) => { setTo(d); setPicking(null); }}
+          />
+        )}
+
         <TextInput
           style={s.input} value={reason} onChangeText={setReason}
           placeholder="Reason" placeholderTextColor={c.ink3} editable={!busy}
@@ -186,7 +226,7 @@ export default function LeaveScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.ground },
   centre: { alignItems: 'center', justifyContent: 'center' },
   content: { padding: 20, gap: 10, paddingBottom: 40 },
@@ -221,6 +261,14 @@ const s = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
     color: c.ink, fontSize: 15,
   },
+  dateRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  pickBtn: {
+    borderColor: c.line, borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 13, paddingVertical: 10,
+  },
+  pickBtnOn: { borderColor: c.accent, backgroundColor: c.hiBg },
+  pickText: { color: c.ink2, fontSize: 15, fontWeight: '600' },
+  pickTextOn: { color: c.accent },
   msg: { flexDirection: 'row', gap: 8, alignItems: 'flex-start' },
   msgGlyph: { fontSize: 13, lineHeight: 19 },
   msgText: { fontSize: 13, flex: 1, lineHeight: 19 },

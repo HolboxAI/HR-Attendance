@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -10,10 +10,9 @@ import SurveyScreen from './SurveyScreen';
 import {
   getEnrolmentStatus, submitEnrolmentPhoto, type EnrolmentStatus,
 } from './api';
-import { theme } from './theme';
+import { useTheme, type ThemeMode } from './ThemeContext';
+import { theme, type ThemeColors } from './theme';
 import type { Identity } from './auth';
-
-const c = theme.color;
 
 /**
  * Account things: who is signed in, changing the temporary password HR handed
@@ -27,6 +26,8 @@ export default function ProfileScreen({
   me: Identity;
   onSignOut: () => void;
 }) {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
   const [survey, setSurvey] = useState(false);
 
   if (survey) {
@@ -55,6 +56,8 @@ export default function ProfileScreen({
       <FaceEnrolmentCard />
 
       <PasswordCard />
+
+      <AppearanceCard />
 
       <View style={s.card}>
         <Text style={s.cardTitle}>OFFICE SETUP</Text>
@@ -85,7 +88,39 @@ export default function ProfileScreen({
  * the one step self-service must not remove: the reference photo is what
  * every future check-in is compared against.
  */
+/**
+ * Dark or light, chosen by the person holding the phone and remembered on
+ * the device. Two named options, not a toggle - a switch labelled only by
+ * position violates the "always a word and a glyph" rule.
+ */
+function AppearanceCard() {
+  const { c, mode, setMode } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
+
+  return (
+    <View style={s.card}>
+      <Text style={s.cardTitle}>APPEARANCE</Text>
+      <Text style={s.body}>How the app looks on this phone.</Text>
+      <View style={s.modeRow}>
+        {([['dark', '◑ Dark'], ['light', '○ Light']] as [ThemeMode, string][]).map(([m, label]) => (
+          <Pressable
+            key={m}
+            style={[s.modeBtn, mode === m && s.modeBtnOn]}
+            onPress={() => setMode(m)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: mode === m }}
+          >
+            <Text style={[s.modeText, mode === m && s.modeTextOn]}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function FaceEnrolmentCard() {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
   const [status, setStatus] = useState<EnrolmentStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [camera, setCamera] = useState(false);
@@ -195,6 +230,8 @@ function FaceEnrolmentCard() {
 
 
 function PasswordCard() {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -278,7 +315,15 @@ function PasswordCard() {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  modeRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  modeBtn: {
+    flex: 1, borderWidth: 1, borderColor: c.line, borderRadius: 8,
+    paddingVertical: 11, alignItems: 'center',
+  },
+  modeBtnOn: { borderColor: c.accent, backgroundColor: c.hiBg },
+  modeText: { color: c.ink3, fontSize: 14, fontWeight: '600' },
+  modeTextOn: { color: c.accent },
   enrolCamera: {
     height: 300, borderRadius: 12, overflow: 'hidden', marginTop: 10,
   },

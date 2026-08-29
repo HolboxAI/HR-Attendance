@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 
 import { getMonth } from './api';
 import { hhmm, hoursLabel, monthTitle, plainDate, STATUS_META } from './format';
-import { theme } from './theme';
+import { useTheme } from './ThemeContext';
+import { theme, type ThemeColors } from './theme';
 import type { MonthData, MonthDay } from './types';
-
-const c = theme.color;
 
 /**
  * Your month, day by day - the screen the API has served since /mobile/month
@@ -21,6 +20,9 @@ export default function MonthScreen({
 }: {
   onRequestCorrection: (day: MonthDay) => void;
 }) {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
+
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -164,6 +166,8 @@ export default function MonthScreen({
 }
 
 function Total({ label, value }: { label: string; value: string }) {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
   return (
     <View style={s.total}>
       <Text style={s.totalLabel}>{label}</Text>
@@ -173,6 +177,8 @@ function Total({ label, value }: { label: string; value: string }) {
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
   return (
     <View style={s.detailRow}>
       <Text style={s.detailLabel}>{label}</Text>
@@ -181,7 +187,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.ground },
   content: { padding: 20, paddingTop: 24, gap: 16 },
   nav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

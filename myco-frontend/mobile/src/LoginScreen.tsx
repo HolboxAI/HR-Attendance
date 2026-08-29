@@ -46,10 +46,10 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
       <DotGridBackground />
       <View style={s.vignette} pointerEvents="none" />
 
-      <KeyboardAvoidingView
-        style={s.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      {/* 'padding' on BOTH platforms: Android with edge-to-edge no longer
+          resizes the window for the keyboard, so without this the email and
+          password fields disappear under it while being typed into. */}
+      <KeyboardAvoidingView style={s.keyboardView} behavior="padding">
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           {/* Corner brand - plain on purpose, the shutter belongs to the
               centre name. Same rule as the web page. */}

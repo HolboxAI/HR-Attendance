@@ -346,6 +346,26 @@ export async function getUnreadCount(): Promise<number> {
   return 0;
 }
 
+/**
+ * Answer a message from the inbox. The server works out who to deliver to
+ * from the original notification, so the employee never names a recipient -
+ * that is what keeps this a reply and not a messaging power.
+ */
+export async function replyToNotification(id: string, message: string): Promise<string | null> {
+  try {
+    const res = await authed(`/api/v1/notifications/${id}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    });
+    if (res.ok) return null;
+    return detail(res, `Could not send the reply (${res.status})`);
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
+    return 'Could not reach the server - the reply was not sent';
+  }
+}
+
 export async function markNotificationRead(id: string): Promise<void> {
   try {
     await authed(`/api/v1/notifications/${id}/read`, { method: 'POST' });

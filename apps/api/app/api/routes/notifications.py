@@ -107,6 +107,68 @@ def send_message(
     return _out(row)
 
 
+class ReplyIn(BaseModel):
+    message: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/{notification_id}/reply", response_model=NotificationOut)
+def reply_to_message(
+    notification_id: uuid.UUID,
+    body: ReplyIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Answer a manual message from your own inbox.
+
+    /send is manager+ because reaching an ARBITRARY employee is a board-scoped
+    power. Replying is not that: the recipient is fixed - whoever wrote to you,
+    named in the message's own `data.from` - so any employee may do it without
+    gaining the ability to message anyone else. Replies carry `data.from` too,
+    which is what lets the other side reply back: a thread with no thread
+    table, just the rail both directions already ride.
+    """
+    original = db.get(Notification, notification_id)
+    if original is None or original.user_id != user.id:
+        raise HTTPException(404, "No such notification")
+    if original.category != "message":
+        raise HTTPException(409, "Only messages can be replied to")
+
+    sender_ref = str((original.data or {}).get("from") or "")
+    if not sender_ref:
+        raise HTTPException(409, "This message does not say who sent it")
+
+    # `from` is an emp_code when the sender had an employee row, their email
+    # when they did not (a pure admin account).
+    target: User | None = None
+    emp = db.scalar(select(Employee).where(
+        Employee.org_id == user.org_id, Employee.emp_code == sender_ref.upper(),
+    ))
+    if emp is not None:
+        target = db.scalar(select(User).where(
+            User.employee_id == emp.id, User.is_active.is_(True),
+        ))
+    else:
+        target = db.scalar(select(User).where(
+            User.org_id == user.org_id, User.email == sender_ref,
+            User.is_active.is_(True),
+        ))
+    if target is None:
+        raise HTTPException(409, "The sender no longer has an account to reply to")
+
+    me = db.get(Employee, user.employee_id) if user.employee_id else None
+    my_name = me.full_name if me else user.email
+    row = notification_service.notify(
+        db, org_id=user.org_id, user=target, category="message",
+        title=f"Reply from {my_name}", body=body.message,
+        data={"from": me.emp_code if me else user.email,
+              "reply_to": str(original.id)},
+    )
+    # Replying is the strongest possible proof the message was read.
+    notification_service.mark_read(db, notification=original)
+    db.commit()
+    return _out(row)
+
+
 @router.post("/{notification_id}/read", response_model=NotificationOut)
 def mark_read(
     notification_id: uuid.UUID,

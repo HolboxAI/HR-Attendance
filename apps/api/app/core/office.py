@@ -17,7 +17,7 @@ the building rather than wherever the person happened to stand.
 from app.services.geofence import PresencePolicy
 
 OFFICE = {
-    "name": "Boxcode - IIMA Ventures, Ahmedabad",
+    "name": "Holbox - IIMA Ventures, Ahmedabad",
     "timezone": "Asia/Kolkata",
 
     # 23.03479 N, 72.53238 E - measured on site, not a map pin.

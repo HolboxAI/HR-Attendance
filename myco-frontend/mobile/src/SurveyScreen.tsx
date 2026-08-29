@@ -1,11 +1,10 @@
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { OFFICE, haversineM } from './geo';
-import { theme } from './theme';
-
-const c = theme.color;
+import { useTheme } from './ThemeContext';
+import { theme, type ThemeColors } from './theme';
 
 type Sample = {
   at: string;
@@ -32,6 +31,8 @@ type Sample = {
  * GPS alone won't do it here and we go WIFI_REQUIRED.
  */
 export default function SurveyScreen() {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
   const [live, setLive] = useState<Location.LocationObject | null>(null);
   const [samples, setSamples] = useState<Sample[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -153,6 +154,8 @@ export default function SurveyScreen() {
 }
 
 function Metric({ label, value, tone }: { label: string; value: string; tone: 'ok' | 'warn' | 'bad' | 'dim' }) {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
   const color = tone === 'ok' ? c.ok : tone === 'warn' ? c.warn : tone === 'bad' ? c.crit : c.ink3;
   return (
     <View style={s.metric}>
@@ -162,7 +165,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone: 'o
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (c: ThemeColors) => StyleSheet.create({
   screen: { flex: 1, backgroundColor: c.ground },
   content: { padding: 24, paddingTop: 40, gap: 14 },
   eyebrow: { color: c.accent, fontSize: 12, letterSpacing: 1.6, fontWeight: '600' },
@@ -190,7 +193,7 @@ const s = StyleSheet.create({
   recBtnText: { color: c.accent, fontWeight: '700', fontSize: 15 },
 
   suggest: {
-    backgroundColor: '#33270F', borderRadius: theme.radius.md, padding: 16,
+    backgroundColor: c.hiBg, borderRadius: theme.radius.md, padding: 16,
     borderWidth: 1, borderColor: c.accent, gap: 6,
   },
   suggestLabel: { color: c.accent, fontSize: 11, letterSpacing: 1.4, fontWeight: '700' },
