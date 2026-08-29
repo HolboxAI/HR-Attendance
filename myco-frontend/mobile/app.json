@@ -28,7 +28,11 @@
         "CAMERA",
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -56,6 +60,12 @@
           "defaultChannel": "attendance"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5e7d5891-e037-43c0-8fc8-8ed4b89c9bbf"
+      }
+    },
+    "owner": "holboxai"
   }
 }
