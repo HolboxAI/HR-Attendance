@@ -10,6 +10,13 @@ interface CameraCaptureModalProps {
   onCapture: (file: File) => void;
   onClose: () => void;
   busy?: boolean;
+  /** The modal serves two very different moments - enrolling a reference
+      photo and punching in. The words must say which one is happening, so
+      the caller names the action; enrolment stays the default. */
+  title?: string;
+  subject?: string;
+  confirmLabel?: string;
+  busyLabel?: string;
 }
 
 export function CameraCaptureModal({
@@ -19,6 +26,10 @@ export function CameraCaptureModal({
   onCapture,
   onClose,
   busy = false,
+  title = 'Face Photo Enrolment',
+  subject = 'Taking reference photo for',
+  confirmLabel = 'Enrol Face Photo',
+  busyLabel = 'Enrolling photo\u2026',
 }: CameraCaptureModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -57,6 +68,19 @@ export function CameraCaptureModal({
   useEffect(() => {
     if (!open || capturedBlob) return;
 
+    // Two invariants this effect must hold, both learned from a real bug
+    // ("The play() request was interrupted because the media was removed
+    // from the document" painted over the viewfinder):
+    //
+    // 1. A getUserMedia that resolves AFTER this effect was cleaned up
+    //    (React re-running effects, a quick close-reopen, HMR) must stop
+    //    its own tracks and go away - otherwise two streams fight over one
+    //    <video>, each interrupting the other's load.
+    // 2. An interrupted play() is NOT a camera failure. The element has
+    //    autoPlay and recovers on its own; surfacing the interruption as
+    //    an error swapped the <video> out for the error panel, which then
+    //    guaranteed the "media was removed" rejection it was reporting.
+    let cancelled = false;
     let currentStream: MediaStream | null = null;
     setCameraError(null);
 
@@ -75,14 +99,22 @@ export function CameraCaptureModal({
           audio: false,
         });
 
+        if (cancelled) {
+          mediaStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
         currentStream = mediaStream;
         setStream(mediaStream);
 
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
-          await videoRef.current.play();
+          await videoRef.current.play().catch(() => {
+            /* benign interruption - autoPlay retries with the stream set */
+          });
         }
       } catch (err: any) {
+        if (cancelled) return;
         console.error('Camera initialization error:', err);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           setCameraError('Camera access was denied. Please allow camera permissions in your browser.');
@@ -97,6 +129,7 @@ export function CameraCaptureModal({
     startCamera();
 
     return () => {
+      cancelled = true;
       if (currentStream) {
         currentStream.getTracks().forEach((track) => track.stop());
       }
@@ -194,10 +227,10 @@ export function CameraCaptureModal({
         <div>
           <h2 className="font-display text-base font-bold text-ink flex items-center gap-2">
             <Camera className="size-4 text-accent" />
-            Face Photo Enrolment
+            {title}
           </h2>
           <p className="text-xs text-ink-3 mt-0.5">
-            Taking reference photo for <strong className="text-ink">{employeeName}</strong> ({employeeCode})
+            {subject} <strong className="text-ink">{employeeName}</strong> ({employeeCode})
           </p>
         </div>
         <button
@@ -304,7 +337,7 @@ export function CameraCaptureModal({
                 disabled={busy}
                 className="inline-flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-xs font-bold text-surface shadow-md hover:bg-accent/90 transition-all disabled:opacity-50 active:scale-95"
               >
-                {busy ? 'Enrolling photo…' : 'Enrol Face Photo'}
+                {busy ? busyLabel : confirmLabel}
               </button>
             </>
           ) : (

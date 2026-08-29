@@ -327,6 +327,10 @@ export default function CheckinPage() {
         onCapture={punch}
         onClose={() => setModalOpen(false)}
         busy={busy}
+        title="Camera check-in"
+        subject="Punching as"
+        confirmLabel="Use this photo & punch"
+        busyLabel="Punching…"
       />
     </div>
   );
