@@ -189,8 +189,10 @@ export function Shell({
           </div>
 
           {/* Quick Search - lives in the Shell, so it is the same working
-              search on every dashboard page, not just the overview. */}
-          <div className="hidden md:flex items-center relative max-w-sm w-full mx-4">
+              search on every dashboard page. Except the Directory, which
+              has its own search box right below the header - offering the
+              same field twice on one screen is clutter, not convenience. */}
+          <div className={`${pathname === '/people' ? 'hidden' : 'hidden md:flex'} items-center relative max-w-sm w-full mx-4`}>
             <HolboxSearch
               // Remount per route: arriving somewhere clears whatever query
               // got you there, so the box is ready for the next search.

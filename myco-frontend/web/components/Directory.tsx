@@ -47,10 +47,13 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
     <div className="space-y-4 fade-in-up">
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Same search component as the header, the simple variant: people
-            only, and every keystroke still drives the live table filter. */}
+            only, and every keystroke still drives the live table filter.
+            The header hides its own search on this page - two search boxes
+            one above the other answered the same question twice. */}
         <div className="relative w-full max-w-sm">
           <HolboxSearch
             variant="directory"
+            className="[&>form]:border-ink/30 [&>form]:bg-surface-2 [&>form]:shadow-lg"
             people={rows.map((r) => ({ code: r.code, name: r.name, department: r.department }))}
             onQueryChange={setQuery}
             placeholders={[

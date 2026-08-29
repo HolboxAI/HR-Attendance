@@ -34,6 +34,32 @@ import { proxy } from '@/lib/format';
 
 type Person = { code: string; name: string; department: string | null };
 
+/**
+ * What people actually type for each page, beyond its label - "who is on
+ * leave" should surface the Board and Leave, "phone" should surface Devices.
+ * Keyed by href so a renamed label keeps its vocabulary.
+ */
+const STOPWORDS = new Set([
+  'who', 'what', 'where', 'when', 'how', 'the', 'and', 'for', 'was', 'are',
+  'try', 'open', 'show', 'find', 'goto', 'get',
+]);
+
+const PAGE_KEYWORDS: Record<string, string> = {
+  '/': 'home overview dashboard',
+  '/notifications': 'inbox alerts messages unread',
+  '/board': 'attendance today who is in office present absent late leave register',
+  '/checkin': 'camera punch check in selfie face',
+  '/corrections': 'correction fix missed punch forgot',
+  '/leave': 'leave apply holiday balance sick casual',
+  '/leave/balances': 'team balances leave who is on leave',
+  '/leave/policy': 'policy holidays calendar quota',
+  '/leave/operations': 'accrual year end carry forward',
+  '/leave/audit': 'audit history log',
+  '/people': 'directory people employees staff profiles',
+  '/enrolment': 'face photo enrol biometric',
+  '/devices': 'devices phone handset binding unbind',
+};
+
 type Suggestion = {
   key: string;
   label: string;
@@ -105,13 +131,18 @@ export function HolboxSearch({
 
   const pool: Person[] = people ?? fetched ?? [];
   const q = debounced.toLowerCase().trim();
+  // Token matching, not whole-phrase: the idle placeholders suggest natural
+  // questions ("who is on leave?"), so typing one must still land - any
+  // meaningful word of the query hitting any searchable text counts.
+  // Stopwords are dropped first, or "is" would match Kr-IS-h and the
+  // question would surface the whole company.
+  const tokens = q.replace(/[?.,!]/g, ' ').split(/\s+/)
+    .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+  const hits = (text: string) =>
+    !q || text.includes(q) || tokens.some((t) => text.includes(t));
 
   const peopleMatches: Suggestion[] = pool
-    .filter((p) =>
-      !q
-      || p.name.toLowerCase().includes(q)
-      || p.code.toLowerCase().includes(q)
-      || (p.department ?? '').toLowerCase().includes(q))
+    .filter((p) => hits(`${p.name} ${p.code} ${p.department ?? ''}`.toLowerCase()))
     .slice(0, q ? 6 : 4)
     .map((p) => ({
       key: `person-${p.code}`,
@@ -125,7 +156,7 @@ export function HolboxSearch({
   const pageMatches: Suggestion[] = variant === 'global' && caps
     ? SECTIONS.flatMap((s) => s.items)
       .filter((i) => i.show(caps))
-      .filter((i) => !q || i.label.toLowerCase().includes(q))
+      .filter((i) => hits(`${i.label} ${i.href} ${PAGE_KEYWORDS[i.href] ?? ''}`.toLowerCase()))
       .slice(0, q ? 5 : 4)
       .map((i) => {
         const Icon = i.icon;
@@ -177,9 +208,11 @@ export function HolboxSearch({
             initial="hidden"
             animate="show"
             exit="exit"
-            // backdrop-blur here is the "blur only that square" ask: the
-            // panel frosts exactly the rectangle it covers, nothing else.
-            className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-line bg-surface/70 shadow-2xl backdrop-blur-xl"
+            // glass-panel is the app's own near-opaque card surface (0.9
+            // white in light, 0.85 dark in dark), so the page text cannot
+            // read through it; backdrop-blur frosts what little does - and
+            // only the panel's own rectangle, never the whole screen.
+            className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden glass-panel backdrop-blur-2xl shadow-2xl"
           >
             <motion.ul className="p-1.5">
               {suggestions.map((s) => (
