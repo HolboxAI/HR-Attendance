@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "Boxcode",
-    "slug": "boxcode-hrms",
+    "name": "Holbox Attendance",
+    "slug": "holbox-attendance",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ai.boxcode.hrms",
+      "bundleIdentifier": "com.holbox.attendance",
       "infoPlist": {
-        "NSCameraUsageDescription": "Boxcode uses the camera to confirm it's you when you check in.",
-        "NSLocationWhenInUseUsageDescription": "Boxcode checks your location to confirm you're at the office when you check in."
+        "NSCameraUsageDescription": "Holbox uses the camera to confirm it's you when you check in.",
+        "NSLocationWhenInUseUsageDescription": "Holbox checks your location to confirm you're at the office when you check in."
       }
     },
     "android": {
@@ -22,28 +22,38 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "ai.boxcode.hrms",
+      "package": "com.holbox.attendance",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "boxcode",
+    "scheme": "holbox",
     "plugins": [
       [
         "expo-camera",
         {
-          "cameraPermission": "Boxcode uses the camera to confirm it's you when you check in."
+          "cameraPermission": "Holbox uses the camera to confirm it's you when you check in."
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Boxcode checks your location to confirm you're at the office when you check in."
+          "locationWhenInUsePermission": "Holbox checks your location to confirm you're at the office when you check in."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#141BC8",
+          "defaultChannel": "attendance"
         }
       ]
     ]

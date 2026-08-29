@@ -13,6 +13,7 @@ import ProfileScreen from './src/ProfileScreen';
 import PunchScreen from './src/PunchScreen';
 import { getUnreadCount } from './src/api';
 import type { Identity } from './src/auth';
+import { registerForPush } from './src/push';
 import { restore, signOut } from './src/session';
 import { flush } from './src/sync';
 import { theme } from './src/theme';
@@ -47,6 +48,14 @@ export default function App() {
       .then(setMe)
       .finally(() => setChecking(false));
   }, []);
+
+  // Whoever is signed in gets their phone registered for push - after
+  // login AND after a silent restore, because a reinstalled app or a
+  // rotated token re-announces itself here. Every failure mode inside is
+  // swallowed on purpose; a banner is a courtesy, the Inbox is the truth.
+  useEffect(() => {
+    if (me) registerForPush();
+  }, [me]);
 
   const out = useCallback(async () => {
     await signOut();

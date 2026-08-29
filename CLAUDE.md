@@ -467,9 +467,16 @@ Not built yet, in priority order:
 4. ~~Scheduled jobs~~ DONE 2026-08-28: in-process scheduler, three jobs
    (accrual timer, late alert, punch-out nudge). See "The scheduler exists"
    above; tests/test_scheduler.py.
-5. **Actually pushing.** `PUSH_PROVIDER=null` writes rows and rings nothing.
-   The scheduler's nudges make this worth revisiting sooner: a "not checked
-   in" row someone reads at lunch has done half its job.
+5. ~~Actually pushing~~ WIRED 2026-08-29: `PUSH_PROVIDER=expo` in .env,
+   `ExpoPushSender` posts to Expo's push service (no key needed - the token
+   is the address), phone registers via `POST /mobile/push-token` on every
+   sign-in/restore, token lives ON the MobileDevice binding row so HR
+   unbinding a phone silences it too. notify() only touches the network
+   when tokens exist, which keeps every test DB offline. End-to-end proof:
+   `scripts/send_test_push.py <CODE>`. Awaiting the first standalone APK
+   (eas.json + app.json "Holbox Attendance"/com.holbox.attendance are
+   ready) - needs Krish's `eas login` + a Firebase google-services.json,
+   then `eas build -p android --profile preview`.
 6. Then payroll (India: PF, ESI, PT, TDS, Form 16).
 
 ## Still outstanding from Krish

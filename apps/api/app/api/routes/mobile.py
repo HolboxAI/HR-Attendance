@@ -18,7 +18,7 @@ from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -382,6 +382,41 @@ def register_device(
         raise HTTPException(409, result.reason or "Refused")
     db.commit()
     return {"bound": True, "employee_code": emp.emp_code}
+
+
+class PushTokenRequest(BaseModel):
+    push_token: str = Field(min_length=10, max_length=400)
+
+
+@router.post("/push-token")
+def register_push_token(
+    body: PushTokenRequest,
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+    install_id: str | None = Depends(install_id_header),
+) -> dict:
+    """Attach this phone's push address to its device binding.
+
+    The token goes on the MobileDevice row for THIS install, not on the
+    employee - the binding row is what already answers "which handset is
+    theirs", and a token stored anywhere else could outlive the phone it
+    belongs to. Re-registering after a token rotation just overwrites; a
+    phone HR unbound cannot re-attach (its row is inactive) until the
+    person signs in again, which re-binds through the same front door.
+    """
+    if not install_id:
+        raise HTTPException(422, "Send the device identity in X-Install-Id")
+    from app.models.face import MobileDevice
+    device = db.scalar(select(MobileDevice).where(
+        MobileDevice.employee_id == emp.id,
+        MobileDevice.install_id == install_id,
+        MobileDevice.is_active.is_(True),
+    ))
+    if device is None:
+        raise HTTPException(409, "This phone is not registered - sign in on it first")
+    device.push_token = body.push_token
+    db.commit()
+    return {"stored": True, "employee_code": emp.emp_code}
 
 
 @router.get("/month")

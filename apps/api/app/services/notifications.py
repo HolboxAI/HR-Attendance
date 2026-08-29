@@ -16,6 +16,7 @@ token worth spending API calls on.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -29,29 +30,90 @@ from app.models.notification import Notification
 
 
 class PushSender:
-    def send(self, user: User, title: str, body: str, data: dict) -> bool:
+    def send(self, tokens: list[str], title: str, body: str, data: dict) -> bool:
         """Return True if a push was actually dispatched."""
         raise NotImplementedError
 
 
 class NullPushSender(PushSender):
-    """No device population to push to yet. The row is the notification."""
+    """No push configured. The row is the notification."""
 
-    def send(self, user: User, title: str, body: str, data: dict) -> bool:
+    def send(self, tokens: list[str], title: str, body: str, data: dict) -> bool:
         return False
+
+
+class ExpoPushSender(PushSender):
+    """Hands the message to Expo's push service, which hands it to FCM/APNs.
+
+    One HTTPS call, no account or key needed - the ExponentPushToken the
+    phone registered IS the address and the authorisation. Failure here is
+    swallowed after logging: the PRD's rule is that the row is the
+    notification and the banner is a courtesy, so a push outage must never
+    break the approval or nudge that triggered it.
+    """
+
+    URL = "https://exp.host/--/api/v2/push/send"
+
+    def send(self, tokens: list[str], title: str, body: str, data: dict) -> bool:
+        import httpx
+
+        messages = [
+            {
+                "to": token,
+                "title": title,
+                "body": body,
+                "data": data,
+                "sound": "default",
+                "priority": "high",
+                # The Android channel the app creates on first run - HIGH
+                # importance, so an attendance nudge is a banner, not a
+                # silent tray entry.
+                "channelId": "attendance",
+            }
+            for token in tokens
+        ]
+        try:
+            resp = httpx.post(self.URL, json=messages, timeout=5.0)
+            resp.raise_for_status()
+            tickets = resp.json().get("data", [])
+            ok = any(t.get("status") == "ok" for t in tickets)
+            for t in tickets:
+                if t.get("status") != "ok":
+                    logging.getLogger("boxcode.push").warning(
+                        "expo push refused: %s", t.get("message", t)
+                    )
+            return ok
+        except Exception:                 # noqa: BLE001 - courtesy, not truth
+            logging.getLogger("boxcode.push").warning(
+                "expo push unreachable - the notification row still exists",
+                exc_info=True,
+            )
+            return False
 
 
 def get_push_sender() -> PushSender:
     if settings.push_provider == "expo":
-        # Not implemented: no Expo access token configured yet, and building
-        # it against a fleet of zero registered devices would be untestable
-        # theatre. The seam is here so wiring it in later is one class, the
-        # same trade this codebase already made for face matching and photo
-        # storage.
-        raise NotImplementedError(
-            "PUSH_PROVIDER=expo has no implementation yet - see notifications.py"
-        )
+        return ExpoPushSender()
     return NullPushSender()
+
+
+def _push_tokens_for(db: Session, user: User) -> list[str]:
+    """The push addresses of this person's ACTIVE devices.
+
+    Token lives on the MobileDevice binding row, so an unbound phone stops
+    receiving the moment HR clears it - no separate revocation to forget.
+    """
+    if user.employee_id is None:
+        return []
+    from app.models.face import MobileDevice
+    rows = db.scalars(
+        select(MobileDevice).where(
+            MobileDevice.employee_id == user.employee_id,
+            MobileDevice.is_active.is_(True),
+            MobileDevice.push_token.is_not(None),
+        )
+    ).all()
+    return [r.push_token for r in rows if r.push_token]
 
 
 def notify(
@@ -65,7 +127,11 @@ def notify(
     db.add(row)
     db.flush()
 
-    if get_push_sender().send(user, title, body, data or {}):
+    # Only reach for the network when there is somewhere to deliver - which
+    # also keeps every test database (no tokens, ever) fully offline no
+    # matter what PUSH_PROVIDER says.
+    tokens = _push_tokens_for(db, user)
+    if tokens and get_push_sender().send(tokens, title, body, data or {}):
         row.sent_at = datetime.now(timezone.utc)
     return row
 
