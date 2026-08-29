@@ -53,7 +53,6 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
         <div className="relative w-full max-w-sm">
           <HolboxSearch
             variant="directory"
-            className="[&>form]:border-ink/30 [&>form]:bg-surface-2 [&>form]:shadow-lg"
             people={rows.map((r) => ({ code: r.code, name: r.name, department: r.department }))}
             onQueryChange={setQuery}
             placeholders={[

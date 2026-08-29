@@ -108,14 +108,16 @@ export function HolboxSearch({
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [fetched, setFetched] = useState<Person[] | null>(null);
   const fetchStarted = useRef(false);
   const debounced = useDebounce(query, 200);
 
   // One board fetch per page life, started the first time the field is
-  // focused - not on mount, so pages don't pay for a search nobody opens.
+  // focused or hovered - not on mount, so pages don't pay for a search
+  // nobody opens.
   useEffect(() => {
-    if (!focused || variant !== 'global' || fetchStarted.current) return;
+    if ((!focused && !hovered) || variant !== 'global' || fetchStarted.current) return;
     fetchStarted.current = true;
     fetch(proxy('/api/v1/admin/board'))
       .then((r) => (r.ok ? r.json() : null))
@@ -127,7 +129,7 @@ export function HolboxSearch({
         }
       })
       .catch(() => { /* employees get page suggestions only */ });
-  }, [focused, variant]);
+  }, [focused, hovered, variant]);
 
   const pool: Person[] = people ?? fetched ?? [];
   const q = debounced.toLowerCase().trim();
@@ -183,9 +185,17 @@ export function HolboxSearch({
   return (
     <div
       className={`relative w-full ${className ?? ''}`}
+      // The dropdown is hover-driven, not focus-driven: clicking into the
+      // box just gives you a caret to type with. Hovering the box opens
+      // the suggestions; they stay while the cursor is over them (the
+      // panel is a child of this div, so it keeps `hovered` true) and
+      // collapse the moment it leaves.
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
           setFocused(false);
+          setHovered(false);
           (document.activeElement as HTMLElement | null)?.blur?.();
         }
       }}
@@ -202,7 +212,10 @@ export function HolboxSearch({
       />
 
       <AnimatePresence>
-        {focused && suggestions.length > 0 && (
+        {/* Open while hovered, or while there is typed text being worked
+            on - results must not vanish mid-typing just because the mouse
+            drifted off. An empty box that is merely focused stays shut. */}
+        {(hovered || (focused && query.trim().length > 0)) && suggestions.length > 0 && (
           <motion.div
             variants={container}
             initial="hidden"
