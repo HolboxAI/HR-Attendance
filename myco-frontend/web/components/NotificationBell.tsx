@@ -154,7 +154,11 @@ export function NotificationBell() {
               </p>
             ) : (
               items.map((n) => {
-                const href = notificationHref(n);
+                // Every row goes somewhere. Rows that name an action deep-link
+                // to it; everything else (messages included) opens the full
+                // notifications page, where Mark as read and Reply live - a
+                // dropdown row that only dismissed itself was a dead end.
+                const href = notificationHref(n) ?? '/notifications';
                 const inner = (
                   <>
                     <span className="flex items-center gap-2">
@@ -171,24 +175,20 @@ export function NotificationBell() {
                 const cls = `block w-full border-b border-line/60 px-4 py-3 text-left text-sm last:border-0 hover:bg-surface-2/60 ${
                   n.read ? 'opacity-60' : ''
                 }`;
-                // A row that names an action opens the place the action
-                // happens; reading it is a side effect of going there.
-                return href ? (
+                return (
                   <Link
                     key={n.id}
                     href={href}
                     className={cls}
                     onClick={() => {
-                      markRead(n);
+                      // A message is marked read by replying to it (or by the
+                      // page's own button), not by glancing at the dropdown.
+                      if (n.category !== 'message') markRead(n);
                       setOpen(false);
                     }}
                   >
                     {inner}
                   </Link>
-                ) : (
-                  <button key={n.id} type="button" onClick={() => markRead(n)} className={cls}>
-                    {inner}
-                  </button>
                 );
               })
             )}

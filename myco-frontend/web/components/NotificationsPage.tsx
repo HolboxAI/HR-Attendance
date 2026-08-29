@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BellOff, CheckCheck } from 'lucide-react';
+import { BellOff, Check, CheckCheck, Reply, Send } from 'lucide-react';
 
 import Link from 'next/link';
 
 import { EmptyState } from '@/components/EmptyState';
+import { FacePeek } from '@/components/FacePeek';
 import { notificationHref, timeAgo, type NotificationRow } from '@/lib/format';
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -13,7 +14,23 @@ const CATEGORY_LABEL: Record<string, string> = {
   correction: 'Corrections',
   corrections: 'Corrections',
   attendance: 'Attendance',
+  message: 'Messages',
 };
+
+/**
+ * A message row names its sender in data.from - an emp_code when they have
+ * an employee record, their email when not. Only a code has a face to peek
+ * at, and only a message can be replied to (the backend enforces both).
+ */
+function senderCode(n: NotificationRow): string | null {
+  if (n.category !== 'message') return null;
+  const from = String(n.data?.from ?? '');
+  return from && !from.includes('@') ? from.toUpperCase() : null;
+}
+
+function senderName(n: NotificationRow): string {
+  return n.title.replace(/^(Message|Reply) from /, '');
+}
 
 /** Categories arrive dotted ("correction.submitted"); filter on the family. */
 function family(category: string): string {
@@ -37,6 +54,11 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
   const [filter, setFilter] = useState<'all' | 'unread' | string>('all');
   const [busy, setBusy] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sentId, setSentId] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   const categories = useMemo(
     () => [...new Set(initial.map((n) => family(n.category)))],
@@ -54,6 +76,30 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
     await fetch(`/api/gateway/api/v1/notifications/${n.id}/read`, { method: 'POST' }).catch(
       () => undefined,
     );
+  }
+
+  async function sendReply(n: NotificationRow) {
+    const message = replyText.trim();
+    if (!message || sending) return;
+    setSending(true);
+    setReplyError(null);
+    const res = await fetch(`/api/gateway/api/v1/notifications/${n.id}/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+    }).catch(() => null);
+    setSending(false);
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => null) : null;
+      setReplyError(body?.detail ?? 'Could not send the reply - try again.');
+      return;
+    }
+    // The backend marks the original read on reply - mirror that here.
+    setItems((cur) => cur.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    setReplyingId(null);
+    setReplyText('');
+    setSentId(n.id);
+    setTimeout(() => setSentId(null), 4000);
   }
 
   // There is no bulk endpoint; the loop is honest about that and still gives
@@ -125,41 +171,106 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
             const isDimmed = hoveredId !== null && !isHovered;
             // A row that names an action links to where the action happens
             // ("needs a correction" -> that exact pending card); reading it
-            // is a side effect of going there. Rows with no destination stay
-            // plain mark-as-read buttons.
+            // is a side effect of going there. Messages stay put - their
+            // action (reply) happens right here.
             const href = notificationHref(n);
-            const cls = `bx-rise-i block w-full px-5 py-4 text-left transition-all duration-300 cursor-pointer ${
+            const code = senderCode(n);
+            const canReply = n.category === 'message' && Boolean(n.data?.from);
+            const cls = `bx-rise-i block w-full px-5 py-4 text-left transition-all duration-300 ${
               isHovered ? 'bg-surface-2/70' : 'hover:bg-surface-2/50'
-            } ${isDimmed ? 'opacity-40' : n.read ? 'opacity-60' : 'opacity-100'}`;
+            } ${isDimmed ? 'opacity-40' : n.read ? 'opacity-80' : 'opacity-100'}`;
             const style = { ['--bx-i' as string]: Math.min(i, 10) };
+            const title = code ? (
+              // Same face-on-hover as the Board and Directory: the sender's
+              // reference photo floats up beside the cursor.
+              <FacePeek code={code} name={senderName(n)}>{n.title}</FacePeek>
+            ) : n.title;
             const inner = (
               <>
                 <span className="flex items-baseline gap-2.5">
                   {!n.read && <span className="h-2 w-2 shrink-0 rounded-full bg-ink" aria-hidden />}
-                  <span className="min-w-0 flex-1 text-xs font-semibold text-ink transition-transform duration-300 group-hover:translate-x-1.5">{n.title}</span>
+                  <span className="min-w-0 flex-1 text-xs font-semibold text-ink">{title}</span>
                   <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[9px] font-mono uppercase tracking-wide text-ink-3">
                     {familyLabel(n.category)}
                   </span>
                   <span className="tnum shrink-0 text-[10px] font-mono text-ink-3">{timeAgo(n.created_at)}</span>
                 </span>
                 <span className="mt-1 block text-xs text-ink-2 font-mono">{n.body}</span>
-                {!n.read && <span className="sr-only">Unread. Activate to mark read.</span>}
               </>
             );
-            return href ? (
-              <Link
-                key={n.id} href={href} onClick={() => markRead(n)}
-                onMouseEnter={() => setHoveredId(n.id)} style={style} className={cls}
-              >
-                {inner}
-              </Link>
-            ) : (
-              <button
-                key={n.id} type="button" onClick={() => markRead(n)}
-                onMouseEnter={() => setHoveredId(n.id)} style={style} className={cls}
-              >
-                {inner}
-              </button>
+            return (
+              <div key={n.id} onMouseEnter={() => setHoveredId(n.id)} style={style} className={cls}>
+                {href ? (
+                  <Link href={href} onClick={() => markRead(n)} className="block cursor-pointer">
+                    {inner}
+                  </Link>
+                ) : (
+                  inner
+                )}
+
+                {/* The actions the row was missing: reading and replying are
+                    now buttons, not side effects someone has to guess at. */}
+                <span className="mt-2.5 flex items-center gap-2">
+                  {!n.read && (
+                    <button
+                      type="button" onClick={() => markRead(n)}
+                      className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[11px] font-mono font-semibold text-ink-2 hover:text-ink hover:bg-surface-2 transition-all cursor-pointer"
+                    >
+                      <Check className="size-3" aria-hidden /> Mark as read
+                    </button>
+                  )}
+                  {canReply && replyingId !== n.id && (
+                    <button
+                      type="button"
+                      onClick={() => { setReplyingId(n.id); setReplyText(''); setReplyError(null); }}
+                      className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[11px] font-mono font-semibold text-ink-2 hover:text-ink hover:bg-surface-2 transition-all cursor-pointer"
+                    >
+                      <Reply className="size-3" aria-hidden /> Reply
+                    </button>
+                  )}
+                  {sentId === n.id && (
+                    <span role="status" className="flex items-center gap-1 text-[11px] font-mono font-semibold text-ink">
+                      <Check className="size-3" aria-hidden /> Reply sent
+                    </span>
+                  )}
+                </span>
+
+                {replyingId === n.id && (
+                  <span className="mt-2 block">
+                    <textarea
+                      autoFocus
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(n); }
+                        if (e.key === 'Escape') setReplyingId(null);
+                      }}
+                      maxLength={1000}
+                      rows={2}
+                      placeholder={`Reply to ${senderName(n)}...`}
+                      className="w-full rounded-xl border border-line bg-surface-2/60 px-3 py-2 text-xs font-mono text-ink placeholder:text-ink-3 focus:outline-none focus:border-ink/40 focus:ring-1 focus:ring-ink/20"
+                    />
+                    {replyError && (
+                      <span role="alert" className="mt-1 block text-[11px] font-mono text-st-absent">{replyError}</span>
+                    )}
+                    <span className="mt-1.5 flex items-center gap-2">
+                      <button
+                        type="button" disabled={sending || !replyText.trim()}
+                        onClick={() => sendReply(n)}
+                        className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-[11px] font-mono font-bold text-ground hover:opacity-90 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Send className="size-3" aria-hidden /> {sending ? 'Sending…' : 'Send reply'}
+                      </button>
+                      <button
+                        type="button" onClick={() => setReplyingId(null)}
+                        className="rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-semibold text-ink-3 hover:text-ink transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  </span>
+                )}
+              </div>
             );
           })}
         </div>
