@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, LogOut, Menu, Search, X } from 'lucide-react
 import { MenuToggle } from '@/components/ui/menu-toggle';
 import { NotificationBell } from '@/components/NotificationBell';
 import { SidebarBrand, SidebarFooter, SidebarNav } from '@/components/Sidebar';
-import { AnimatedThemeToggle } from '@/components/ui/animated-theme-toggle';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SpotlightCursor } from '@/components/ui/spotlight-cursor';
 import { ParticleWave } from '@/components/ui/particle-wave';
 import type { Capabilities } from '@/lib/capabilities';
@@ -202,7 +202,7 @@ export function Shell({
 
           {/* User & Actions Hub */}
           <div className="flex items-center gap-2 sm:gap-3">
-            <AnimatedThemeToggle />
+            <ThemeToggle />
             <NotificationBell />
 
             <div className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-line/60">
