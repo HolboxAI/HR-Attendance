@@ -16,7 +16,7 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 
 import { authHeaders } from './session';
-import { API_BASE } from './config';
+import { apiBase } from './config';
 
 // A notification arriving while the app is OPEN still shows as a banner -
 // "you haven't punched out" is exactly as relevant with the app foregrounded.
@@ -67,7 +67,7 @@ export async function registerForPush(): Promise<void> {
 
     const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
 
-    const res = await fetch(`${API_BASE}/api/v1/mobile/push-token`, {
+    const res = await fetch(`${apiBase()}/api/v1/mobile/push-token`, {
       method: 'POST',
       headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
       body: JSON.stringify({ push_token: token }),

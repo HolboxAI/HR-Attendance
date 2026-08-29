@@ -13,6 +13,7 @@ import ProfileScreen from './src/ProfileScreen';
 import PunchScreen from './src/PunchScreen';
 import { getUnreadCount } from './src/api';
 import type { Identity } from './src/auth';
+import { loadApiBaseOverride } from './src/config';
 import { registerForPush } from './src/push';
 import { restore, signOut } from './src/session';
 import { flush } from './src/sync';
@@ -44,7 +45,10 @@ export default function App() {
   // session from the refresh token in the Keychain; it only lands on the login
   // screen if that token is gone, expired, or HR has unbound the phone.
   useEffect(() => {
-    restore()
+    // The saved server override must be in force before restore() makes the
+    // first request, or a phone on a new network signs in against a dead IP.
+    loadApiBaseOverride()
+      .then(restore)
       .then(setMe)
       .finally(() => setChecking(false));
   }, []);

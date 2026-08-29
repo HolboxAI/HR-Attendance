@@ -16,13 +16,11 @@
 import { Platform } from 'react-native';
 
 import { authHeaders, signOut } from './session';
-import { API_BASE } from './config';
+import { apiBase } from './config';
 import type {
   CorrectionItem, LeaveBalance, LeaveRequestItem, MonthData, MonthDay, NotificationItem,
   PunchDirection, PunchResult, TodayStatus,
 } from './types';
-
-export { API_BASE };
 
 export class PermanentPunchError extends Error {}
 
@@ -31,7 +29,7 @@ export class SessionExpiredError extends Error {
 }
 
 async function authed(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${apiBase()}${path}`, {
     ...init,
     headers: { ...(await authHeaders()), ...(init?.headers as Record<string, string>) },
   });

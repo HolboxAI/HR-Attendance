@@ -4,6 +4,7 @@
   "main": "index.ts",
   "dependencies": {
     "expo": "~57.0.16",
+    "expo-build-properties": "~57.0.15",
     "expo-camera": "~57.0.4",
     "expo-device": "~57.0.1",
     "expo-file-system": "~57.0.5",

@@ -59,6 +59,14 @@
           "color": "#141BC8",
           "defaultChannel": "attendance"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
     ],
     "extra": {

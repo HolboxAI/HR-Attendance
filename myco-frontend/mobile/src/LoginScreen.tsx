@@ -4,6 +4,7 @@ import {
   Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
+import { apiBase, setApiBaseOverride } from './config';
 import { signIn } from './session';
 import type { Identity } from './auth';
 
@@ -26,6 +27,9 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [serverOpen, setServerOpen] = useState(false);
+  const [serverDraft, setServerDraft] = useState('');
+  const [serverNow, setServerNow] = useState(apiBase());
 
   async function submit() {
     if (busy) return;
@@ -151,6 +155,39 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
               By continuing, you agree to Boxcode's Security Policy and Privacy
               Terms.
             </Text>
+
+            {/* The server row exists because the address baked into a build
+                is the laptop's LAN IP on the day it was built - the first
+                APK died the moment the laptop changed networks. Editable
+                here, saved on the device, no rebuild ever again. */}
+            <Pressable onPress={() => { setServerDraft(serverNow); setServerOpen((v) => !v); }}>
+              <Text style={s.serverRow}>Server · {serverNow.replace(/^https?:\/\//, '')}</Text>
+            </Pressable>
+            {serverOpen && (
+              <View style={s.serverEdit}>
+                <TextInput
+                  style={s.input}
+                  value={serverDraft}
+                  onChangeText={setServerDraft}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  placeholder="http://192.168.x.x:8000"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  accessibilityLabel="Server address"
+                />
+                <Pressable
+                  style={s.serverSave}
+                  onPress={async () => {
+                    const applied = await setApiBaseOverride(serverDraft);
+                    setServerNow(applied);
+                    setServerOpen(false);
+                    setError(null);
+                  }}
+                >
+                  <Text style={s.serverSaveText}>Save server address</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -518,4 +555,15 @@ const s = StyleSheet.create({
     marginTop: 16, fontSize: 11, lineHeight: 16, textAlign: 'center',
     color: 'rgba(255,255,255,0.4)',
   },
+
+  serverRow: {
+    marginTop: 14, fontSize: 11, textAlign: 'center',
+    color: 'rgba(255,255,255,0.3)', textDecorationLine: 'underline',
+  },
+  serverEdit: { marginTop: 10, gap: 8 },
+  serverSave: {
+    alignSelf: 'center', borderRadius: 999, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)', paddingVertical: 8, paddingHorizontal: 16,
+  },
+  serverSaveText: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' },
 });

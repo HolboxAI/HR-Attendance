@@ -6,7 +6,7 @@
  * accept being thrown back to a login screen mid-morning, and nobody should
  * accept a 30-day access token as the alternative.
  */
-import { API_BASE } from './config';
+import { apiBase } from './config';
 import {
   clearSession, installId, loadSession, platformName, saveSession,
   type Identity, type Session,
@@ -17,7 +17,7 @@ export type SignInResult =
   | { ok: false; message: string };
 
 async function post(path: string, body: unknown): Promise<Response> {
-  return fetch(`${API_BASE}${path}`, {
+  return fetch(`${apiBase()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
