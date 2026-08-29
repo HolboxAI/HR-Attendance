@@ -51,8 +51,30 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
     let glowOn = false;
     const GLOW_REACH = 420; // the CSS gradient is 400px; light neighbours too
 
+    // React 19 compares the server HTML against the live DOM while it
+    // hydrates, and inline vars written onto a card BEFORE its streamed
+    // Suspense boundary hydrated showed up as a wall of mismatch warnings.
+    // Hydration only happens on the initial load (soft navigations render
+    // client-side and diff nothing), so holding decoration until shortly
+    // after `load` removes the entire race. Nothing is lost: the glow is a
+    // hover effect, and the cursor keeps feeding it after the gate opens.
+    let hydrated = document.readyState === 'complete';
+    let hydrationTimer: ReturnType<typeof setTimeout> | undefined;
+    const onLoaded = () => {
+      hydrationTimer = setTimeout(() => { hydrated = true; }, 400);
+    };
+    if (!hydrated) window.addEventListener('load', onLoaded, { once: true });
+    else hydrated = false, onLoaded();
+
+    // Which elements currently carry a glow, tracked HERE rather than as a
+    // data- attribute on the element - a DOM attribute React never rendered
+    // is one more thing for hydration to trip over, and the only reader of
+    // this flag is this function.
+    const lit = new WeakSet<HTMLElement>();
+
     const updateBorderGlow = () => {
       borderRaf = 0;
+      if (!hydrated) return;
       const els = Array.from(
         document.querySelectorAll<HTMLElement>(
           '.glass-panel, .bx-card, [data-glow], aside, header',
@@ -67,11 +89,11 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
         if (near) {
           el.style.setProperty('--lx', `${targetX - r.left}px`);
           el.style.setProperty('--ly', `${targetY - r.top}px`);
-          el.dataset.glowNear = '1';
-        } else if (el.dataset.glowNear) {
+          lit.add(el);
+        } else if (lit.has(el)) {
           el.style.setProperty('--lx', '-1000px');
           el.style.setProperty('--ly', '-1000px');
-          delete el.dataset.glowNear;
+          lit.delete(el);
         }
       });
     };
@@ -195,6 +217,8 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
       window.removeEventListener('mouseleave', handleMouseLeave);
       cancelAnimationFrame(animationFrameId);
       if (borderRaf) cancelAnimationFrame(borderRaf);
+      window.removeEventListener('load', onLoaded);
+      if (hydrationTimer) clearTimeout(hydrationTimer);
     };
   }, [config.radius, config.brightness, config.color]);
 
