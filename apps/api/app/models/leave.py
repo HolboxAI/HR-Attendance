@@ -199,6 +199,9 @@ class LeaveRequest(Base, TimestampMixin):
     decided_note: Mapped[str | None] = mapped_column(Text)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    slack_message_ts: Mapped[str | None] = mapped_column(String(32))
+    slack_channel_id: Mapped[str | None] = mapped_column(String(32))
+
 
 class Holiday(Base, TimestampMixin):
     __tablename__ = "holidays"

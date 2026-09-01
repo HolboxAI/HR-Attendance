@@ -133,7 +133,41 @@ def notify(
     tokens = _push_tokens_for(db, user)
     if tokens and get_push_sender().send(tokens, title, body, data or {}):
         row.sent_at = datetime.now(timezone.utc)
+
+    # Email notifications for specific categories and specific admins
+    ALLOWED_EMAILS = {"krishraghavsharma@gmail.com", "krish@holbox.ai"}
+    if user.email and user.email in ALLOWED_EMAILS:
+        if category in ("attendance_late", "attendance.late_arrival", "attendance.absent_alert", "attendance.early_leave", "leave.pending"):
+            from threading import Thread
+            Thread(target=_send_email_task, args=(user.email, title, body), daemon=True).start()
+
     return row
+
+def _send_email_task(to_email: str, subject: str, body: str) -> None:
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    if not settings.smtp_host:
+        import logging
+        logging.getLogger("boxcode.email").info(f"MOCK EMAIL to {to_email}: {subject} - {body}")
+        return
+
+    msg = MIMEMultipart()
+    msg['From'] = settings.smtp_from
+    msg['To'] = to_email
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:
+            server.starttls()
+            if settings.smtp_user and settings.smtp_pass:
+                server.login(settings.smtp_user, settings.smtp_pass)
+            server.send_message(msg)
+    except Exception as e:
+        import logging
+        logging.getLogger("boxcode.email").error(f"Failed to send email to {to_email}: {e}")
 
 
 def notify_hr(
@@ -151,6 +185,25 @@ def notify_hr(
         select(User).where(
             User.org_id == org_id,
             User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
+            User.is_active.is_(True),
+        )
+    ).all()
+    return [
+        notify(db, org_id=org_id, user=u, category=category, title=title,
+              body=body, data=data)
+        for u in recipients
+        if u.id != exclude_user_id
+    ]
+
+
+def notify_org(
+    db: Session, *, org_id: uuid.UUID, category: str, title: str, body: str,
+    data: dict | None = None, exclude_user_id: uuid.UUID | None = None,
+) -> list[Notification]:
+    """Tell everyone in the org."""
+    recipients = db.scalars(
+        select(User).where(
+            User.org_id == org_id,
             User.is_active.is_(True),
         )
     ).all()

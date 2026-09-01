@@ -165,6 +165,47 @@ def apply(
         raise HTTPException(409, result.reason or "Could not apply")
 
     db.commit()
+    
+    from app.services import notifications
+    
+    # We need the User object corresponding to this employee to exclude them from HR notifications
+    # if they happen to be an HR Admin themselves.
+    from app.models.employee import User
+    emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
+    
+    from app.models.enums import UserRole
+    notifications.notify_hr(
+        db,
+        org_id=emp.org_id,
+        category="leave.pending",
+        title="Leave Request",
+        body=f"{emp.full_name} requested {lt.name} for the dates: {result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.",
+        exclude_user_id=emp_user.id if emp_user and emp_user.role != UserRole.HR_ADMIN else None,
+    )
+    db.commit()
+    from app.services.slack import post_leave_request
+    from fastapi import BackgroundTasks
+    
+    # We can inject BackgroundTasks into the route, or just run it synchronously. 
+    # Since we didn't inject it in the func signature, let's just call it synchronously for now, 
+    # or import threading to fire and forget. A 5-second timeout won't kill the UX.
+    try:
+        slack_resp = post_leave_request(
+            leave_request_id=str(result.request.id),
+            employee_name=emp.full_name,
+            leave_type=lt.name,
+            from_date=result.request.from_date,
+            to_date=result.request.to_date,
+            days=float(result.request.days_consumed),
+            reason=result.request.reason or "No reason provided",
+        )
+        if slack_resp:
+            result.request.slack_message_ts = slack_resp[0]
+            result.request.slack_channel_id = slack_resp[1]
+            db.commit()
+    except Exception:
+        pass
+        
     return to_request_out(db, result.request, emp)
 
 

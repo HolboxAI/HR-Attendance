@@ -270,6 +270,34 @@ async def punch(
     day = recompute_day(db, emp, shift_date)
     db.commit()
 
+    local_tz = ZoneInfo(str(OFFICE["timezone"]))
+    if day.punch_count == 1 and day.late_minutes > 0:
+        from app.services.notifications import notify_hr
+        arrive_time = day.first_in.astimezone(local_tz).strftime('%I:%M %p') if day.first_in else "unknown time"
+        # Notify HR about the late arrival
+        notify_hr(
+            db,
+            org_id=emp.org_id,
+            category="attendance.late_arrival",
+            title=f"Late Arrival: {emp.full_name}",
+            body=f"{emp.full_name} arrived late at {arrive_time} ({day.late_minutes} minutes late) for their shift on {shift_date.isoformat()}.",
+            data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
+        )
+        db.commit()
+
+    if direction == PunchDirection.OUT and day.early_out_minutes > 0:
+        from app.services.notifications import notify_hr
+        leave_time = day.last_out.astimezone(local_tz).strftime('%I:%M %p') if day.last_out else "unknown time"
+        notify_hr(
+            db,
+            org_id=emp.org_id,
+            category="attendance.early_leave",
+            title=f"Early Leave: {emp.full_name}",
+            body=f"{emp.full_name} left early at {leave_time} ({day.early_out_minutes} minutes early) for their shift on {shift_date.isoformat()}.",
+            data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
+        )
+        db.commit()
+
     if reason:
         return PunchResponse(
             accepted=False, direction=direction, punched_at=event_ts,
@@ -346,6 +374,16 @@ async def submit_enrolment_photo(
     if request is None:
         raise HTTPException(422, quality.reason or "That photo cannot be used")
     db.commit()
+    return my_enrolment(db=db, emp=emp)
+
+
+@router.delete("/enrolment", response_model=EnrolmentStatusResponse)
+def cancel_enrolment_request(
+    db: Session = Depends(get_db), emp: Employee = Depends(get_current_employee),
+) -> EnrolmentStatusResponse:
+    from app.services.enrolment import cancel_request
+    if cancel_request(db, emp):
+        db.commit()
     return my_enrolment(db=db, emp=emp)
 
 
@@ -462,3 +500,35 @@ def my_month(
     db.commit()
     return {"employee_code": emp.emp_code, "full_name": emp.full_name,
             "year": year, "month": month, "days": days, "totals": totals}
+
+
+class MobileHoliday(BaseModel):
+    id: uuid.UUID
+    day: date
+    name: str
+    is_optional: bool
+    is_confirmed: bool
+
+
+@router.get("/holidays", response_model=list[MobileHoliday])
+def my_holidays(
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+) -> list[MobileHoliday]:
+    """Upcoming holidays for the employee."""
+    from app.models.leave import Holiday
+    
+    rows = db.scalars(
+        select(Holiday).where(
+            Holiday.org_id == emp.org_id,
+            Holiday.day >= date.today(),
+            Holiday.deleted_at.is_(None),
+        ).order_by(Holiday.day)
+    ).all()
+    
+    return [
+        MobileHoliday(
+            id=r.id, day=r.day, name=r.name,
+            is_optional=r.is_optional, is_confirmed=r.is_confirmed
+        ) for r in rows
+    ]

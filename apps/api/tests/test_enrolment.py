@@ -312,6 +312,35 @@ r = client.get("/api/v1/admin/enrolments", headers=ADMIN).json()
 check("summary shows the gap", r["summary"]["missing"], 1)
 check("delete again is 404", client.delete("/api/v1/admin/enrolments/TX002", headers=ADMIN).status_code, 404)
 
+print("20. One face vouches for one employee - a duplicate photo is refused")
+# Alice's active reference is JPEG (from 14). Bob is unenrolled (19 deleted
+# his). Bob trying to enrol with Alice's exact photo is the Dhruv/Krish
+# loophole: the quality gate passes it, so the duplicate sweep must not.
+row_dup, res_dup = enrol(db, employee=bob, image=JPEG)
+check("refused", row_dup is None, True)
+check("reason names the owner", "Alice" in (res_dup.reason or ""), True)
+check("reason names the code", "TX001" in (res_dup.reason or ""), True)
+check("bob still unenrolled", active_enrolment(db, bob) is None, True)
+
+r = client.post(
+    "/api/v1/admin/enrolments",
+    files={"photo": ("ref.jpg", JPEG, "image/jpeg")},
+    data={"employee_code": "TX002"}, headers=ADMIN,
+)
+check("API refuses with 400, not 500", r.status_code, 400)
+check("API reason says already enrolled", "already enrolled" in r.json()["detail"], True)
+
+print("21. Your OWN photo is never a duplicate of yourself")
+row_self, _ = enrol(db, employee=alice, image=JPEG)
+db.commit()
+check("alice re-enrols her own photo fine", row_self is not None, True)
+
+print("22. A different photo still enrols normally after a refusal")
+row_ok, _ = enrol(db, employee=bob, image=PNG)
+db.commit()
+check("bob enrols with his own photo", row_ok is not None, True)
+check("bob's reference is his photo", reference_bytes(db, bob), PNG)
+
 db.close()
 print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
 sys.exit(0 if ok else 1)

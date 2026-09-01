@@ -41,6 +41,7 @@ from app.services.enrolment import active_enrolment            # noqa: E402
 PW = "a-test-only-passphrase"
 JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 512 + b"\xff\xd9"
 JPEG2 = b"\xff\xd8\xff\xe0" + b"\x11" * 512 + b"\xff\xd9"
+JPEG3 = b"\xff\xd8\xff\xe0" + b"\x22" * 512 + b"\xff\xd9"
 NOT_IMAGE = b"definitely a word document" * 20
 ok = True
 
@@ -158,8 +159,19 @@ check("employee notified", db.scalar(select(Notification).where(
 check("app status shows enrolled", client.get(
     "/api/v1/mobile/enrolment", headers=DAKSH).json()["enrolled"], True)
 
-print("6. Nobody vouches for their own face")
-submit(HIMESH, JPEG)
+print("6. Someone else's enrolled photo is refused AT SUBMISSION")
+# Daksh's reference photo is now JPEG. Himesh submitting the identical image
+# is the loophole this closes: it must bounce immediately with a reason, not
+# sit in the queue waiting for HR to spot that the face is Daksh's.
+r = submit(HIMESH, JPEG)
+check("refused", r.status_code, 422)
+check("says already registered", "already registered" in r.json()["detail"], True)
+check("does NOT name whose it is", "Daksh" in r.json()["detail"], False)
+check("nothing queued", len(client.get(
+    "/api/v1/admin/enrolments/requests", headers=HIMESH).json()), 0)
+
+print("7. Nobody vouches for their own face")
+submit(HIMESH, JPEG3)
 own = client.get("/api/v1/admin/enrolments/requests", headers=HIMESH).json()[0]["id"]
 r = client.post(f"/api/v1/admin/enrolments/requests/{own}/decide", headers=HIMESH,
                 json={"approve": True})
@@ -169,7 +181,7 @@ check("another admin can", client.post(
     f"/api/v1/admin/enrolments/requests/{own}/decide", headers=KRISH,
     json={"approve": True}).json()["status"], "approved")
 
-print("7. Unknowns are 404")
+print("8. Unknowns are 404")
 check("decide", client.post(
     f"/api/v1/admin/enrolments/requests/{uuid.uuid4()}/decide", headers=HIMESH,
     json={"approve": True}).status_code, 404)

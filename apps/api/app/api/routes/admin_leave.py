@@ -122,7 +122,7 @@ def pending(db: Session = Depends(get_db), user: User = approver):
     return [
         to_request_out(db, r, scope[r.employee_id])
         for r in rows
-        if r.employee_id in scope and r.employee_id != user.employee_id
+        if r.employee_id in scope and (r.employee_id != user.employee_id or user.role == UserRole.HR_ADMIN)
     ]
 
 
@@ -141,11 +141,32 @@ def decide(
 
     result = leave_service.decide(
         db, request=row, approver=user, approve=body.approve, note=body.note,
+        allow_self_approval=(user.role == UserRole.HR_ADMIN),
     )
     if not result.ok:
         db.rollback()
         raise HTTPException(409, result.reason or "Could not decide")
     db.commit()
+    
+    if row.slack_message_ts and row.slack_channel_id:
+        from app.services.slack import update_leave_request
+        from threading import Thread
+        emp = db.get(Employee, row.employee_id)
+        leave_type = db.get(LeaveType, row.leave_type_id)
+        
+        # We need to construct the original text the bot posted
+        orig_text = f"🌴 *Leave Request: {emp.full_name}*\nRequested *{float(row.days_consumed):g} days* of {leave_type.name} from {row.from_date} to {row.to_date}.\n> \"{row.reason or 'No reason provided'}\""
+        
+        # Fix: User doesn't have an 'employee' relationship, we must fetch the employee object
+        approver_emp = db.get(Employee, user.employee_id) if user.employee_id else None
+        approver_name = approver_emp.full_name if approver_emp else "admin"
+        
+        Thread(
+            target=update_leave_request, 
+            args=(row.slack_channel_id, row.slack_message_ts, orig_text, body.approve, approver_name),
+            daemon=True
+        ).start()
+        
     return to_request_out(db, row)
 
 
@@ -384,6 +405,15 @@ def add_holiday(body: HolidayIn, db: Session = Depends(get_db), user: User = hr_
     )
     if not row.is_optional:
         leave_service.recompute_org_dates(db, user.org_id, [row.day])
+        
+    from app.services.notifications import notify_org
+    notify_org(
+        db, org_id=user.org_id, category="holiday.added",
+        title="New Holiday Added",
+        body=f"Admin added a new leave on {body.day.strftime('%b %d, %Y')}",
+        data={"holiday_id": str(row.id)},
+    )
+    
     db.commit()
     return HolidayOut(id=row.id, day=row.day, name=row.name,
                       is_optional=row.is_optional, is_confirmed=row.is_confirmed,

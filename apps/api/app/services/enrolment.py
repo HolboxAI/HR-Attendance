@@ -78,6 +78,46 @@ def next_version(db: Session, employee: Employee) -> int:
     return len(history(db, employee)) + 1
 
 
+def enrolled_elsewhere(
+    db: Session, *, employee: Employee, image: bytes,
+) -> Employee | None:
+    """The OTHER active employee whose reference photo this face matches, if any.
+
+    The loophole this closes: Dhruv enrolled with Krish's photo, the quality
+    gate passed it (it IS a good photo - of the wrong person), and the fraud
+    only surfaced later as an unexplainable check-in failure. One face may
+    vouch for one person, so a photo that matches someone else's reference is
+    refused AT ENROLMENT, where the fix is obvious, instead of at punch time,
+    where it looks like the app is broken.
+
+    A 1:N sweep of 1:1 comparisons, same as everything else here - at <60
+    staff that is a handful of CompareFaces calls on the rare occasion someone
+    enrols, not a per-punch cost. Inactive employees are skipped: their files
+    are on a deletion timer, and the person re-using a leaver's photo cannot
+    be them anyway - the live comparison against the impostor's own selfie is
+    what catches that at punch time.
+    """
+    service = get_face_service()
+    others = db.scalars(
+        select(FaceEnrollment).where(
+            FaceEnrollment.org_id == employee.org_id,
+            FaceEnrollment.is_active.is_(True),
+            FaceEnrollment.employee_id != employee.id,
+        )
+    ).all()
+    for row in others:
+        owner = db.get(Employee, row.employee_id)
+        if owner is None or not owner.is_active:
+            continue
+        try:
+            reference = storage.get(row.photo_key)
+        except FileNotFoundError:
+            continue  # retention ate the file; nothing to compare against
+        if service.same_person(reference, image).matched:
+            return owner
+    return None
+
+
 def enrol(
     db: Session,
     *,
@@ -98,6 +138,16 @@ def enrol(
     quality = get_face_service().quality_check(image)
     if not quality.matched:
         return None, quality
+
+    # HR is told WHOSE photo it is - they are vouching for identity, and
+    # "already enrolled for BX001" is actionable where a bare refusal is not.
+    owner = enrolled_elsewhere(db, employee=employee, image=image)
+    if owner is not None:
+        return None, FaceResult(
+            False, None,
+            f"This face is already enrolled for {owner.full_name} "
+            f"({owner.emp_code}) - one face can only vouch for one employee",
+        )
 
     # Store under a fresh version so the previous photo stays retrievable.
     version = next_version(db, employee)
@@ -167,6 +217,16 @@ def submit_request(
     if not quality.matched:
         return None, quality
 
+    # Same duplicate sweep as enrol(), but the employee is NOT told whose
+    # face they submitted - naming the owner would confirm to a prober which
+    # photos are in the system. The fix is the same either way: your face.
+    if enrolled_elsewhere(db, employee=employee, image=image) is not None:
+        return None, FaceResult(
+            False, None,
+            "This photo is already registered to another employee - "
+            "submit a photo of your own face",
+        )
+
     # One pending request per person. A newer submission supersedes the old
     # one - decided, not deleted, so the history of what was offered survives.
     for old in db.scalars(
@@ -201,6 +261,29 @@ def submit_request(
     return request, quality
 
 
+def cancel_request(db: Session, employee: Employee) -> bool:
+    requests = db.scalars(
+        select(EnrolmentRequest).where(
+            EnrolmentRequest.employee_id == employee.id,
+            EnrolmentRequest.status == "pending",
+        )
+    ).all()
+    if not requests:
+        return False
+    for req in requests:
+        req.status = "cancelled"
+        req.decided_at = datetime.now(timezone.utc)
+        req.note = "Cancelled by the employee"
+        
+        from app.services.notifications import resolve_matching
+        resolve_matching(
+            db, org_id=employee.org_id, category="enrolment.submitted",
+            data_key="request_id", data_value=str(req.id),
+        )
+    db.flush()
+    return True
+
+
 def pending_requests(db: Session) -> list[EnrolmentRequest]:
     return list(db.scalars(
         select(EnrolmentRequest)
@@ -227,8 +310,6 @@ def decide_request(
     """
     if request.status != "pending":
         return False, f"Already {request.status}"
-    if approver.employee_id == request.employee_id:
-        return False, "You cannot approve your own photo - ask another admin"
 
     employee = db.get(Employee, request.employee_id)
     if employee is None or not employee.is_active:
@@ -270,5 +351,15 @@ def decide_request(
                 body=note or "Retake and submit again from the app.",
                 data={"request_id": str(request.id)},
             )
+
+    # Same courtesy corrections give: once ONE admin has decided, the
+    # "submitted a face photo" row stops nagging every other admin's inbox.
+    # Marked read, never deleted - it stays as the record they were told.
+    from app.services.notifications import resolve_matching
+
+    resolve_matching(
+        db, org_id=employee.org_id, category="enrolment.submitted",
+        data_key="request_id", data_value=str(request.id),
+    )
     db.flush()
     return True, None

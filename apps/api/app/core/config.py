@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     # yet; wire "expo" in once there is one worth the API calls.
     push_provider: str = "null"
 
+    # Slack App Integration credentials
+    slack_bot_token: str | None = None
+    slack_signing_secret: str | None = None
+    slack_channel_id: str | None = None
+
+    # SMTP Email Settings
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_pass: str | None = None
+    smtp_from: str = "noreply@boxcode.local"
+
     # Whether an employee with no reference photo can still punch.
     #
     # False during rollout: HR cannot enrol seven people before the app ships,

@@ -101,6 +101,19 @@ class StubFaceService:
             return FaceResult(False, None, NOT_ENROLLED)
         return FaceResult(True, 99.0, "stub provider - not a real match")
 
+    def same_person(self, reference_bytes: bytes, candidate_bytes: bytes) -> FaceResult:
+        """Identical bytes are provably the same photo; that much the stub can
+        assert without a face model, so the lazy version of the loophole - an
+        employee re-uploading someone else's exact image file - is caught even
+        in development. Different bytes get the stub's usual benefit of the
+        doubt (matched=False here means "no duplicate found", the permissive
+        answer)."""
+        if not reference_bytes or not candidate_bytes:
+            return FaceResult(False, None)
+        if reference_bytes == candidate_bytes:
+            return FaceResult(True, 100.0, "identical image bytes")
+        return FaceResult(False, None)
+
 
 class RekognitionFaceService:
     def __init__(self, region: str, client=None) -> None:
@@ -171,6 +184,36 @@ class RekognitionFaceService:
         if not matches:
             return FaceResult(False, None, "Face does not match the enrolled photo")
 
+        similarity = matches[0]["Similarity"]
+        return FaceResult(similarity >= MATCH_THRESHOLD, similarity)
+
+    def same_person(self, reference_bytes: bytes, candidate_bytes: bytes) -> FaceResult:
+        """Is the candidate photo the same face as an EXISTING reference photo?
+
+        Used by the enrolment duplicate sweep, not the punch path. No quality
+        gate here - the caller has already quality-checked the candidate, and
+        re-running DetectFaces once per existing enrolment would multiply the
+        cost of every enrolment for nothing.
+        """
+        if not reference_bytes or not candidate_bytes:
+            return FaceResult(False, None)
+        try:
+            resp = self._client.compare_faces(
+                SourceImage={"Bytes": reference_bytes},
+                TargetImage={"Bytes": candidate_bytes},
+                SimilarityThreshold=MATCH_THRESHOLD,
+            )
+        except Exception as exc:
+            code = _error_code(exc)
+            if code in CLIENT_IMAGE_ERRORS:
+                # One stored reference is unreadable (rotted file, no face).
+                # That says nothing about the candidate - skip this reference
+                # rather than blocking the whole enrolment on it.
+                return FaceResult(False, None)
+            raise FaceUnavailable(f"{code or type(exc).__name__}: {exc}") from exc
+        matches = resp.get("FaceMatches", [])
+        if not matches:
+            return FaceResult(False, None)
         similarity = matches[0]["Similarity"]
         return FaceResult(similarity >= MATCH_THRESHOLD, similarity)
 

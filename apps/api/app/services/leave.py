@@ -490,6 +490,7 @@ def _recompute_range(db: Session, employee: Employee, start: date, end: date) ->
 def decide(
     db: Session, *, request: LeaveRequest, approver: User,
     approve: bool, note: str | None = None,
+    allow_self_approval: bool = False,
 ) -> LeaveOutcome:
     """Approve or reject, then immediately fix the days it covers."""
     if request.status != LeaveStatus.PENDING:
@@ -497,7 +498,7 @@ def decide(
 
     # Nobody signs off their own leave, whatever their role. An hr_admin who
     # could approve themselves is not an approval process, it is a formality.
-    if approver.employee_id is not None and approver.employee_id == request.employee_id:
+    if not allow_self_approval and approver.employee_id is not None and approver.employee_id == request.employee_id:
         return LeaveOutcome(False, reason="You cannot decide your own leave request")
 
     employee = db.get(Employee, request.employee_id)

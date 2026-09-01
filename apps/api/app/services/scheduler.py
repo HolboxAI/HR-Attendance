@@ -204,6 +204,20 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
                         data={"employee": emp.emp_code,
                               "shift_date": shift_date.isoformat()},
                     )
+            
+            # Notify HR as well that someone hasn't checked in yet
+            notify_hr(
+                db, org_id=org.id, category="attendance.absent_alert",
+                title=f"Missing: {emp.full_name}",
+                body=f"{emp.full_name} has not checked in for their shift on {shift_date:%d %b} (started at {local_start}).",
+                data={"employee": emp.emp_code, "shift_date": shift_date.isoformat()}
+            )
+            
+            # Fire the Slack absence alert
+            from app.services.slack import post_absence_alert
+            from threading import Thread
+            Thread(target=post_absence_alert, args=(emp.full_name, local_start), daemon=True).start()
+            
             nudged.append(key)
     return nudged
 
