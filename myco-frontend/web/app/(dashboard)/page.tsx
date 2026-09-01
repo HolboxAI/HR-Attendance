@@ -6,13 +6,14 @@ import {
 
 import { AttendancePulse } from '@/components/AttendancePulse';
 import { ErrorState } from '@/components/ErrorState';
+import { FacePeek } from '@/components/FacePeek';
 import { MetricTile } from '@/components/MetricTile';
 import { MyMonth } from '@/components/MyMonth';
 import { KineticTicker } from '@/components/ui/kinetic-ticker';
 import { GlowCard } from '@/components/ui/spotlight-card';
 import {
-  getBoard, getCorrectionsPending, getEnrolments, getHolidays, getMyMonth,
-  getPending, getRejected, hhmm,
+  getBoard, getCorrectionsPending, getEnrolmentRequests, getEnrolments,
+  getHolidays, getMyMonth, getPending, getRejected, hhmm,
 } from '@/lib/api';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { istYearMonth, proxy } from '@/lib/format';
@@ -80,11 +81,12 @@ export default async function DashboardPage({
 
   const board = result.data;
   const year = new Date().getUTCFullYear();
-  const [pendingLeave, pendingCorrections, enrolments, rejected, holidays] =
+  const [pendingLeave, pendingCorrections, enrolments, enrolmentRequests, rejected, holidays] =
     await Promise.all([
       getPending(),
       caps.canDecideCorrections ? getCorrectionsPending() : Promise.resolve(null),
       caps.canManageEnrolment ? getEnrolments() : Promise.resolve(null),
+      caps.canManageEnrolment ? getEnrolmentRequests() : Promise.resolve(null),
       getRejected(),
       getHolidays(year),
     ]);
@@ -191,6 +193,16 @@ export default async function DashboardPage({
               value={pendingCorrections?.ok ? pendingCorrections.data.length : '—'} sub="pending decision" tone="neutral"
             />
           )}
+          {/* Self-submitted face photos waiting for a vouch. The notification
+              fan-out is the nudge; this tile is the net for anyone who
+              missed it - the count sits on the landing page until zero. */}
+          {caps.canManageEnrolment && (
+            <MetricTile
+              index={2} label="Photo approvals" icon="scanFace" href="/enrolment"
+              value={enrolmentRequests ? enrolmentRequests.length : '—'}
+              sub="face photos to vouch" tone="neutral"
+            />
+          )}
           <MetricTile
             index={2} label="Exceptions" icon="alert" href="/board?f=exceptions#register"
             value={board.summary.exceptions} sub="unpaired or flagged" tone="neutral"
@@ -218,9 +230,11 @@ export default async function DashboardPage({
                 <ul className="mt-3 space-y-2 text-sm divide-y divide-line/30">
                   {exceptions.slice(0, 5).map((r) => (
                     <li key={r.employee_code} className="pt-2 first:pt-0 flex flex-wrap items-baseline justify-between gap-x-2">
-                      <Link href={`/people/${r.employee_code}`} className="font-medium text-ink hover:underline transition-colors">
-                        {r.full_name} ({r.employee_code})
-                      </Link>
+                      <FacePeek code={r.employee_code} name={r.full_name} className="inline-block">
+                        <Link href={`/people/${r.employee_code}`} className="font-medium text-ink hover:underline transition-colors">
+                          {r.full_name} ({r.employee_code})
+                        </Link>
+                      </FacePeek>
                       <div className="flex items-center gap-2 text-xs font-mono">
                         <span className="text-ink-3">in at {hhmm(r.first_in)}</span>
                         <span className="text-ink-2">{r.exception_note}</span>

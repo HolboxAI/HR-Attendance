@@ -2,8 +2,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView,
-  StyleSheet, Text, View,
+  ActivityIndicator, Animated, AppState, Easing, Linking, Platform, Pressable,
+  ScrollView, StyleSheet, Text, View,
 } from 'react-native';
 
 import { getToday, submitPunch } from './api';
@@ -20,6 +20,53 @@ function hhmmLocal(d: Date): string {
 }
 
 type Phase = 'idle' | 'camera' | 'working' | 'result';
+
+/**
+ * How long the verification ring takes to sweep to full - and the MINIMUM
+ * time before any verdict is shown. Rekognition often answers in a couple
+ * hundred milliseconds, and an instant "you are too far" reads as the app
+ * not having looked at all. 0.7s is long enough to feel like a check
+ * happened, short enough to never feel like waiting.
+ */
+const RING_MS = 700;
+
+/**
+ * The "circle completing" animation shown while a punch verifies: a ring of
+ * dots lighting up clockwise from 12 o'clock. Pure Animated views - no SVG
+ * dependency - each dot's opacity keyed to its slice of the shared progress
+ * value, so one native-driven timing animation sweeps the whole ring.
+ */
+const RING_DOTS = 28;
+const RING_SIZE = 132;
+const RING_RADIUS = 54;
+const RING_DOT = 9;
+
+function VerifyRing({ progress }: { progress: Animated.Value }) {
+  return (
+    <View style={{ width: RING_SIZE, height: RING_SIZE }} accessibilityLabel="Verifying">
+      {Array.from({ length: RING_DOTS }, (_, i) => {
+        const angle = (i / RING_DOTS) * 2 * Math.PI - Math.PI / 2;
+        const x = RING_SIZE / 2 + Math.cos(angle) * RING_RADIUS - RING_DOT / 2;
+        const y = RING_SIZE / 2 + Math.sin(angle) * RING_RADIUS - RING_DOT / 2;
+        const opacity = progress.interpolate({
+          inputRange: [i / RING_DOTS, Math.min(1, (i + 1) / RING_DOTS)],
+          outputRange: [0.18, 1],
+          extrapolate: 'clamp',
+        });
+        return (
+          <Animated.View
+            key={i}
+            style={{
+              position: 'absolute', left: x, top: y,
+              width: RING_DOT, height: RING_DOT, borderRadius: RING_DOT / 2,
+              backgroundColor: '#FFFFFF', opacity,
+            }}
+          />
+        );
+      })}
+    </View>
+  );
+}
 
 /**
  * The most important screen in the product. One dominant action - Check In or
@@ -42,6 +89,7 @@ export default function PunchScreen() {
   const [camPerm, requestCam] = useCameraPermissions();
   const [locPerm, setLocPerm] = useState<Location.PermissionStatus | null>(null);
   const cameraRef = useRef<CameraView>(null);
+  const ringProgress = useRef(new Animated.Value(0)).current;
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -86,6 +134,19 @@ export default function PunchScreen() {
   const capture = useCallback(async () => {
     if (!today) return;
     setPhase('working');
+    // Start the ring the moment they tap, and refuse to show ANY verdict
+    // before it completes. The server usually answers faster than RING_MS,
+    // and an instant rejection feels like the app never looked.
+    ringProgress.setValue(0);
+    Animated.timing(ringProgress, {
+      toValue: 1, duration: RING_MS,
+      easing: Easing.out(Easing.quad), useNativeDriver: true,
+    }).start();
+    const revealAt = Date.now() + RING_MS;
+    const holdForRing = async () => {
+      const wait = revealAt - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    };
     // The moment the person actually tapped. If this ends up queued, this is
     // the time that travels with it - not the time it eventually syncs.
     const capturedAt = new Date();
@@ -126,6 +187,7 @@ export default function PunchScreen() {
         direction: today.direction,
       });
 
+      await holdForRing();
       setResult(res);
       setPhase('result');
       if (res.accepted) {
@@ -148,6 +210,7 @@ export default function PunchScreen() {
           })
         : null;
 
+      await holdForRing();
       setQueued(saved !== null);
       setPending(pendingCount());
       setPhase('result');
@@ -166,7 +229,7 @@ export default function PunchScreen() {
               + 'when you have signal.',
       });
     }
-  }, [today]);
+  }, [today, ringProgress]);
 
   if (loadError) {
     return (
@@ -203,7 +266,7 @@ export default function PunchScreen() {
             {phase === 'working' ? 'Verifying attendance…' : 'Look at the camera'}
           </Text>
           {phase === 'working' ? (
-            <ActivityIndicator color="#FFFFFF" size="large" />
+            <VerifyRing progress={ringProgress} />
           ) : (
             <>
               <Pressable
@@ -373,16 +436,26 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   greeting: { color: c.ink, fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
   shift: { color: c.ink3, fontSize: 14, marginTop: -10 },
 
+  // A circle, not a bar: the one action of the whole product gets the shape
+  // of a button you press, centred where a thumb naturally rests.
   punch: {
-    borderRadius: theme.radius.lg, paddingVertical: 34, alignItems: 'center', gap: 4,
-    marginTop: 8,
+    width: 208, height: 208, borderRadius: 104,
+    alignItems: 'center', justifyContent: 'center', gap: 4,
+    alignSelf: 'center', marginTop: 16, marginBottom: 8,
+    boxShadow: '0px 8px 18px rgba(0,0,0,0.25)', elevation: 10,
   },
   punchIn: { backgroundColor: c.accent },
-  punchOut: { backgroundColor: c.surface2, borderWidth: 1, borderColor: c.accent },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
-  punchLabel: { fontSize: 26, fontWeight: '800', color: c.accentInk, letterSpacing: -0.3 },
+  punchOut: { backgroundColor: c.surface2, borderWidth: 2, borderColor: c.accent },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
+  punchLabel: {
+    fontSize: 25, fontWeight: '800', color: c.accentInk,
+    letterSpacing: -0.3, textAlign: 'center',
+  },
   punchLabelOut: { color: c.accent },
-  punchSub: { fontSize: 13, color: c.accentInk, opacity: 0.7 },
+  punchSub: {
+    fontSize: 12, color: c.accentInk, opacity: 0.7,
+    textAlign: 'center', paddingHorizontal: 24,
+  },
 
   banner: {
     borderRadius: theme.radius.md, padding: 16, borderWidth: 1,

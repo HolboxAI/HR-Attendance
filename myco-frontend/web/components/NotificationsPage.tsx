@@ -1,13 +1,13 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BellOff, Check, CheckCheck, Reply, Send } from 'lucide-react';
+import { BellOff, Check, CheckCheck, Reply, ScanFace, Send, X } from 'lucide-react';
 
 import Link from 'next/link';
 
 import { EmptyState } from '@/components/EmptyState';
 import { FacePeek } from '@/components/FacePeek';
-import { notificationHref, timeAgo, type NotificationRow } from '@/lib/format';
+import { notificationHref, proxy, timeAgo, type NotificationRow } from '@/lib/format';
 
 const CATEGORY_LABEL: Record<string, string> = {
   leave: 'Leave',
@@ -30,6 +30,22 @@ function senderCode(n: NotificationRow): string | null {
 
 function senderName(n: NotificationRow): string {
   return n.title.replace(/^(Message|Reply) from /, '');
+}
+
+/**
+ * A "submitted a face photo" row is actionable RIGHT HERE for the admins it
+ * reaches (only hr/super admins ever receive it): the photo and the decision
+ * buttons unfold in place, the same endpoints the enrolment page uses. The
+ * enrolment page stays the catch-all for anything missed.
+ */
+function enrolmentRequestId(n: NotificationRow): string | null {
+  if (n.category !== 'enrolment.submitted') return null;
+  const id = n.data?.request_id;
+  return typeof id === 'string' ? id : null;
+}
+
+function submitterName(n: NotificationRow): string {
+  return n.title.replace(/ submitted a face photo$/, '');
 }
 
 /** Categories arrive dotted ("correction.submitted"); filter on the family. */
@@ -59,6 +75,10 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
   const [sending, setSending] = useState(false);
   const [sentId, setSentId] = useState<string | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [deciding, setDeciding] = useState(false);
+  const [decided, setDecided] = useState<Record<string, string>>({});
+  const [decideError, setDecideError] = useState<string | null>(null);
 
   const categories = useMemo(
     () => [...new Set(initial.map((n) => family(n.category)))],
@@ -100,6 +120,38 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
     setReplyText('');
     setSentId(n.id);
     setTimeout(() => setSentId(null), 4000);
+  }
+
+  async function decideEnrolment(n: NotificationRow, approve: boolean) {
+    const id = enrolmentRequestId(n);
+    if (!id || deciding) return;
+    let note: string | null = null;
+    if (!approve) {
+      note = window.prompt(
+        'Why is it rejected? The person sees this note in the app.',
+        'Too blurry - retake in better light',
+      );
+      if (note === null) return; // cancelled
+    }
+    setDeciding(true);
+    setDecideError(null);
+    const res = await fetch(proxy(`/api/v1/admin/enrolments/requests/${id}/decide`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approve, note }),
+    }).catch(() => null);
+    setDeciding(false);
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => null) : null;
+      // A 409 means another admin got there first (or a newer photo
+      // superseded this one) - that is an answer, not an error.
+      setDecideError(body?.detail ?? 'Could not decide - try again.');
+      return;
+    }
+    setDecided((cur) => ({ ...cur, [n.id]: approve ? 'approved' : 'rejected' }));
+    setReviewingId(null);
+    // The backend marks every admin's copy read on decision; mirror it here.
+    setItems((cur) => cur.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
   }
 
   // There is no bulk endpoint; the loop is honest about that and still gives
@@ -176,6 +228,8 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
             const href = notificationHref(n);
             const code = senderCode(n);
             const canReply = n.category === 'message' && Boolean(n.data?.from);
+            const requestId = enrolmentRequestId(n);
+            const decision = decided[n.id];
             const cls = `bx-rise-i block w-full px-5 py-4 text-left transition-all duration-300 ${
               isHovered ? 'bg-surface-2/70' : 'hover:bg-surface-2/50'
             } ${isDimmed ? 'opacity-40' : n.read ? 'opacity-80' : 'opacity-100'}`;
@@ -228,12 +282,70 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
                       <Reply className="size-3" aria-hidden /> Reply
                     </button>
                   )}
+                  {requestId && !decision && reviewingId !== n.id && (
+                    <button
+                      type="button"
+                      onClick={() => { setReviewingId(n.id); setDecideError(null); }}
+                      className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[11px] font-mono font-semibold text-ink-2 hover:text-ink hover:bg-surface-2 transition-all cursor-pointer"
+                    >
+                      <ScanFace className="size-3" aria-hidden /> Review photo
+                    </button>
+                  )}
+                  {decision && (
+                    <span role="status" className="flex items-center gap-1 text-[11px] font-mono font-semibold text-ink">
+                      <Check className="size-3" aria-hidden />
+                      {decision === 'approved' ? 'Approved - their reference photo is live' : 'Rejected'}
+                    </span>
+                  )}
                   {sentId === n.id && (
                     <span role="status" className="flex items-center gap-1 text-[11px] font-mono font-semibold text-ink">
                       <Check className="size-3" aria-hidden /> Reply sent
                     </span>
                   )}
                 </span>
+
+                {requestId && reviewingId === n.id && (
+                  <span className="mt-3 block max-w-xs">
+                    {/* The same photo endpoint the enrolment page reviews from,
+                        so what gets approved here IS what was submitted. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={proxy(`/api/v1/admin/enrolments/requests/${requestId}/photo`)}
+                      alt={`Photo submitted by ${submitterName(n)}`}
+                      className="aspect-square w-full rounded-xl border border-line object-cover bg-surface-2"
+                    />
+                    <span className="mt-1.5 block text-[11px] font-mono text-ink-3">
+                      Approving vouches that this face is {submitterName(n).split(' ')[0]}&apos;s -
+                      every future check-in verifies against it.
+                    </span>
+                    {decideError && (
+                      <span role="alert" className="mt-1 block text-[11px] font-mono text-st-absent">{decideError}</span>
+                    )}
+                    <span className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button" disabled={deciding}
+                        onClick={() => decideEnrolment(n, true)}
+                        className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-[11px] font-mono font-bold text-ground hover:opacity-90 transition-all cursor-pointer disabled:opacity-40"
+                      >
+                        <Check className="size-3" aria-hidden />
+                        {deciding ? 'Saving…' : `This is ${submitterName(n).split(' ')[0]}`}
+                      </button>
+                      <button
+                        type="button" disabled={deciding}
+                        onClick={() => decideEnrolment(n, false)}
+                        className="flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-[11px] font-mono font-semibold text-ink-2 hover:text-st-absent hover:border-st-absent/50 transition-all cursor-pointer disabled:opacity-40"
+                      >
+                        <X className="size-3" aria-hidden /> Reject
+                      </button>
+                      <button
+                        type="button" onClick={() => setReviewingId(null)}
+                        className="rounded-lg px-2 py-1.5 text-[11px] font-mono font-semibold text-ink-3 hover:text-ink transition-all cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </span>
+                  </span>
+                )}
 
                 {replyingId === n.id && (
                   <span className="mt-2 block">

@@ -185,7 +185,7 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   metricLabel: { color: c.ink3, fontSize: 12 },
   metricValue: { fontSize: 22, fontWeight: '700', fontVariant: ['tabular-nums'] },
 
-  buttons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  buttons: { flexDirection: 'column', gap: 8 },
   recBtn: {
     flexGrow: 1, backgroundColor: c.surface2, borderWidth: 1, borderColor: c.accent,
     borderRadius: theme.radius.sm, paddingVertical: 13, alignItems: 'center',

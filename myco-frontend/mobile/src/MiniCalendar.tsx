@@ -22,11 +22,13 @@ function iso(y: number, m: number, d: number): string {
 }
 
 export default function MiniCalendar({
-  value, onPick,
+  value, onPick, readOnly, highlights,
 }: {
   /** The field's current text - used to open on the month being talked about. */
   value: string;
-  onPick: (date: string) => void;
+  onPick?: (date: string) => void;
+  readOnly?: boolean;
+  highlights?: Set<string>;
 }) {
   const { c } = useTheme();
   const s = useMemo(() => makeStyles(c), [c]);
@@ -82,16 +84,28 @@ export default function MiniCalendar({
             const dateStr = iso(year, month, d);
             const picked = dateStr === value;
             const isToday = dateStr === today;
+            const highlighted = highlights?.has(dateStr);
             return (
               <Pressable
                 key={i}
-                style={[s.cell, picked && s.cellOn, !picked && isToday && s.cellToday]}
-                onPress={() => onPick(dateStr)}
-                accessibilityRole="button"
+                style={[
+                  s.cell,
+                  picked && !readOnly && s.cellOn,
+                  !picked && isToday && s.cellToday,
+                  highlighted && s.cellHighlighted,
+                ]}
+                onPress={() => {
+                  if (!readOnly && onPick) onPick(dateStr);
+                }}
+                accessibilityRole={readOnly ? 'text' : 'button'}
                 accessibilityLabel={dateStr}
-                accessibilityState={{ selected: picked }}
+                accessibilityState={readOnly ? undefined : { selected: picked }}
               >
-                <Text style={[s.cellText, picked && s.cellTextOn]}>{d}</Text>
+                <Text style={[
+                  s.cellText,
+                  picked && !readOnly && s.cellTextOn,
+                  highlighted && s.cellTextHighlighted,
+                ]}>{d}</Text>
               </Pressable>
             );
           })}
@@ -105,6 +119,7 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   box: {
     backgroundColor: c.surface2, borderColor: c.line, borderWidth: 1,
     borderRadius: 10, padding: 10, marginTop: 8, gap: 2,
+    maxWidth: 320, alignSelf: 'center', width: '100%',
   },
   nav: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -125,4 +140,6 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   cellToday: { borderWidth: 1, borderColor: c.ink3 },
   cellText: { color: c.ink2, fontSize: 13, fontVariant: ['tabular-nums'] },
   cellTextOn: { color: c.accentInk, fontWeight: '800' },
+  cellHighlighted: { backgroundColor: c.accent, opacity: 0.8 },
+  cellTextHighlighted: { color: c.accentInk, fontWeight: '800' },
 });

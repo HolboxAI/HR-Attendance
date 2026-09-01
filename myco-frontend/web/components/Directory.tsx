@@ -103,8 +103,11 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                       }`}
                     >
                       <td className="px-5 py-3.5">
+                        {/* The peek covers the name too, not just the avatar -
+                            hovering anywhere on the person shows their face. */}
+                        <FacePeek code={r.code} name={r.name} className="block">
                         <Link href={`/people/${r.code}`} className="flex items-center gap-3">
-                          <FacePeek code={r.code} name={r.name} className="relative shrink-0">
+                          <span className="relative shrink-0">
                             <Avatar name={r.name} />
                             <span
                               className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
@@ -112,7 +115,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                               }`}
                               aria-hidden
                             />
-                          </FacePeek>
+                          </span>
                           <span className="inline-block transition-transform duration-300 group-hover:translate-x-3">
                             <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
                               {r.name}
@@ -124,6 +127,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                             </span>
                           </span>
                         </Link>
+                        </FacePeek>
                       </td>
                       <td className="tnum px-5 py-3.5 font-mono text-xs text-ink-3">{r.shift}</td>
                       <td className="px-5 py-3.5"><Status value={r.status} /></td>
@@ -169,21 +173,23 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                     isDimmed ? 'scale-[0.98]' : 'scale-100 hover:bg-surface-2/60'
                   }`}
                 >
-                  <FacePeek code={r.code} name={r.name} className="relative shrink-0">
-                    <Avatar name={r.name} />
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
-                        r.currentlyIn ? 'bg-accent' : 'bg-line'
-                      }`}
-                      aria-hidden
-                    />
-                  </FacePeek>
-                  <div className="min-w-0 flex-1 transition-transform duration-300 group-hover:translate-x-2.5">
-                    <span className="block truncate text-sm font-semibold text-ink">{r.name}</span>
-                    <span className="block text-xs font-mono text-ink-3">
-                      {r.code}{r.department ? ` · ${r.department}` : ''}
+                  <FacePeek code={r.code} name={r.name} className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="relative shrink-0">
+                      <Avatar name={r.name} />
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
+                          r.currentlyIn ? 'bg-accent' : 'bg-line'
+                        }`}
+                        aria-hidden
+                      />
                     </span>
-                  </div>
+                    <span className="min-w-0 flex-1 transition-transform duration-300 group-hover:translate-x-2.5">
+                      <span className="block truncate text-sm font-semibold text-ink">{r.name}</span>
+                      <span className="block text-xs font-mono text-ink-3">
+                        {r.code}{r.department ? ` · ${r.department}` : ''}
+                      </span>
+                    </span>
+                  </FacePeek>
                   <Status value={r.status} size="xs" />
                 </Link>
               );

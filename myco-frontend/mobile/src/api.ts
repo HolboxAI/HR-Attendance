@@ -18,7 +18,7 @@ import { Platform } from 'react-native';
 import { authHeaders, signOut } from './session';
 import { apiBase } from './config';
 import type {
-  CorrectionItem, LeaveBalance, LeaveRequestItem, MonthData, MonthDay, NotificationItem,
+  CorrectionItem, Holiday, LeaveBalance, LeaveRequestItem, MonthData, MonthDay, NotificationItem,
   PunchDirection, PunchResult, TodayStatus,
 } from './types';
 
@@ -312,6 +312,12 @@ export async function submitEnrolmentPhoto(photoUri: string): Promise<EnrolmentS
   return toEnrolmentStatus(await res.json());
 }
 
+export async function cancelEnrolmentPhoto(): Promise<EnrolmentStatus> {
+  const res = await authed('/api/v1/mobile/enrolment', { method: 'DELETE' });
+  if (!res.ok) throw new Error(await detail(res, `Could not cancel (${res.status})`));
+  return toEnrolmentStatus(await res.json());
+}
+
 /* ---------------------------------------------------------- notifications */
 
 export async function getNotifications(): Promise<NotificationItem[]> {
@@ -330,6 +336,16 @@ export async function getNotifications(): Promise<NotificationItem[]> {
     throw new Error(await detail(res, `Could not load notifications (${res.status})`));
   } catch (err) {
     throw err instanceof Error ? err : new Error('Could not reach the server');
+  }
+}
+
+export async function getHolidays(): Promise<Holiday[]> {
+  try {
+    const res = await authed('/api/v1/mobile/holidays');
+    if (res.ok) return (await res.json()) as Holiday[];
+    return [];
+  } catch {
+    return [];
   }
 }
 

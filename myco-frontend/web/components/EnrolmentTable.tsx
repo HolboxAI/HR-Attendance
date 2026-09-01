@@ -99,7 +99,7 @@ export function EnrolmentTable({ rows }: { rows: EnrolmentRow[] }) {
                     {r.enrolled ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img
-                        src={enrolmentPhotoUrl(r.employee_code, version)}
+                        src={enrolmentPhotoUrl(r.employee_code, r.photo_count)}
                         alt={`Reference photo for ${r.full_name}`}
                         className="size-12 rounded-xl object-cover border border-line shadow-sm ring-1 ring-white/10"
                       />
@@ -234,6 +234,11 @@ export function EnrolmentTable({ rows }: { rows: EnrolmentRow[] }) {
           employeeCode={cameraModal.code}
           employeeName={cameraModal.name}
           busy={busy?.code === cameraModal.code && busy?.what === 'upload'}
+          // The refusal must land in the modal the person is looking at.
+          // It used to render only in the table row - behind the dialog
+          // backdrop - so a duplicate face just looked like a button that
+          // did nothing, and the obvious response was to keep trying.
+          error={error?.code === cameraModal.code ? error.message : null}
           onClose={() => setCameraModal(null)}
           onCapture={(file) => upload(cameraModal.code, file)}
         />

@@ -2,12 +2,19 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { CalendarDays, ChevronDown } from 'lucide-react';
 
 import { plainDate, proxy, type HolidayRow } from '@/lib/format';
 
 /**
  * Adding or removing a holiday recomputes the affected dates on the server
  * before it returns, so the board never disagrees with this calendar.
+ *
+ * The list reads like a person plans: what is COMING, from today forward.
+ * January's holidays in September are trivia, not information, so past dates
+ * leave the table and live in the year-at-a-glance calendar below it -
+ * collapsed behind a labelled control, expanded on tap, dismissed by simply
+ * moving the cursor away.
  */
 export function HolidayCalendar({
   rows, canEdit, year,
@@ -22,7 +29,17 @@ export function HolidayCalendar({
   const [optional, setOptional] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
+  // "Today" in the org's timezone, as the same YYYY-MM-DD shape the rows
+  // use, so string comparison is date comparison. UTC would call it
+  // yesterday between midnight and 05:30 IST - the board's old bug.
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+  const sorted = [...rows].sort((a, b) => a.day.localeCompare(b.day));
+  const upcoming = sorted.filter((r) => r.day >= today);
+  const past = sorted.filter((r) => r.day < today);
 
   async function add(e: React.FormEvent) {
     e.preventDefault();
@@ -39,9 +56,13 @@ export function HolidayCalendar({
       setError(body?.detail ?? 'Could not add that holiday');
       return;
     }
+    const addedDay = day;
+    const addedName = name;
     setDay('');
     setName('');
     setOptional(false);
+    setSuccess(`Successfully added holiday on ${addedDay} reason: ${addedName}`);
+    setTimeout(() => setSuccess(null), 2000);
     router.refresh();
   }
 
@@ -99,6 +120,11 @@ export function HolidayCalendar({
               {error}
             </p>
           )}
+          {success && (
+            <p role="status" className="w-full text-xs text-accent font-mono font-medium">
+              {success}
+            </p>
+          )}
         </form>
       )}
 
@@ -116,14 +142,16 @@ export function HolidayCalendar({
           <tbody
             onMouseLeave={() => setHoveredId(null)}
           >
-            {rows.length === 0 && (
+            {upcoming.length === 0 && (
               <tr>
                 <td colSpan={canEdit ? 5 : 4} className="px-4 py-6 text-ink-3 font-mono">
-                  No holidays recorded for {year}.
+                  {rows.length === 0
+                    ? `No holidays recorded for ${year}.`
+                    : `No holidays left this year - all ${rows.length} have passed. They are in the calendar below.`}
                 </td>
               </tr>
             )}
-            {rows.map((r) => {
+            {upcoming.map((r) => {
               const isHovered = hoveredId === r.id;
               const isDimmed = hoveredId !== null && !isHovered;
               return (
@@ -164,6 +192,138 @@ export function HolidayCalendar({
           </tbody>
         </table>
       </div>
+
+      {/* The year at a glance. Collapsed by default behind a labelled
+          control; tap expands it, and moving the cursor off the box closes
+          it again - a reference you glance at, not a panel you manage. */}
+      <div onMouseLeave={() => setCalendarOpen(false)}>
+        <button
+          type="button"
+          onClick={() => setCalendarOpen((o) => !o)}
+          aria-expanded={calendarOpen}
+          className="flex w-full items-center justify-between gap-3 rounded-2xl glass-panel border border-line px-5 py-4 text-left hover:bg-surface-2/60 transition-all cursor-pointer"
+        >
+          <span className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-xl bg-surface-2 border border-line text-ink-2">
+              <CalendarDays className="size-4" aria-hidden />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold text-ink">
+                {year} at a glance
+              </span>
+              <span className="block text-xs text-ink-3 font-mono">
+                {past.length > 0
+                  ? `The list above starts from today - the ${past.length} holiday${past.length === 1 ? ' that has' : 's that have'} already passed ${past.length === 1 ? 'is' : 'are'} in here, month by month.`
+                  : 'Every holiday of the year, month by month.'}
+              </span>
+            </span>
+          </span>
+          <ChevronDown
+            className={`size-4 shrink-0 text-ink-3 transition-transform duration-300 ${calendarOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+
+        {calendarOpen && (
+          <div className="mt-3 rounded-2xl glass-panel border border-line p-5 fade-in-up">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 12 }, (_, m) => (
+                <MonthGrid key={m} year={year} month={m} rows={sorted} today={today} />
+              ))}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line/60 pt-3 text-[10px] font-mono text-ink-3">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-flex size-4 items-center justify-center rounded bg-ink text-ground font-bold">1</span>
+                Office closed
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-flex size-4 items-center justify-center rounded border border-ink font-bold text-ink">1</span>
+                Optional
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-flex size-4 items-center justify-center rounded ring-1 ring-accent text-ink">1</span>
+                Today
+              </span>
+              <span>* date awaiting confirmation</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * One month of the year-at-a-glance: a real weekday-aligned grid with
+ * holiday dates emphasised, and each holiday named right under its month -
+ * a bold date with no word saying why would just be a puzzle.
+ */
+function MonthGrid({
+  year, month, rows, today,
+}: {
+  year: number;
+  month: number; // 0-11
+  rows: HolidayRow[];
+  today: string;
+}) {
+  const prefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+  const holidays = rows.filter((r) => r.day.startsWith(prefix));
+  const byDay = new Map(holidays.map((r) => [r.day, r]));
+
+  // UTC on purpose: these are calendar dates, not instants, and building
+  // them in the browser's local zone would shift the weekday for anyone
+  // whose machine is not on IST.
+  const firstDow = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
+        {MONTH_NAMES[month]}
+      </div>
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+          <span key={`${d}-${i}`} className="text-[9px] font-mono text-ink-3/70">{d}</span>
+        ))}
+        {Array.from({ length: firstDow }, (_, i) => <span key={`pad-${i}`} />)}
+        {Array.from({ length: daysInMonth }, (_, i) => {
+          const date = `${prefix}${String(i + 1).padStart(2, '0')}`;
+          const holiday = byDay.get(date);
+          const isToday = date === today;
+          return (
+            <span
+              key={date}
+              title={holiday ? holiday.name : undefined}
+              className={`inline-flex size-5 items-center justify-center rounded text-[10px] font-mono ${
+                holiday
+                  ? holiday.is_optional
+                    ? 'border border-ink font-bold text-ink'
+                    : 'bg-ink font-bold text-ground'
+                  : 'text-ink-3'
+              } ${isToday ? 'ring-1 ring-accent' : ''}`}
+            >
+              {i + 1}
+            </span>
+          );
+        })}
+      </div>
+      {holidays.length > 0 && (
+        <ul className="space-y-0.5">
+          {holidays.map((r) => (
+            <li key={r.id} className="text-[10px] font-mono text-ink-2 leading-snug">
+              <span className="tnum font-semibold text-ink">{Number(r.day.slice(8, 10))}</span>
+              {' · '}{r.name}
+              {!r.is_confirmed && <span title="Date awaiting confirmation"> *</span>}
+              {r.is_optional && <span className="text-ink-3"> (optional)</span>}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

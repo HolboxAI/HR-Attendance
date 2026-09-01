@@ -74,6 +74,14 @@ export type CorrectionItem = {
   decidedNote: string | null;
 };
 
+export type Holiday = {
+  id: string;
+  day: string;
+  name: string;
+  is_optional: boolean;
+  is_confirmed: boolean;
+};
+
 export type NotificationItem = {
   id: string;
   category: string;

@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
 import { setPassword } from './api';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
+import * as ImagePicker from 'expo-image-picker';
+
 import SurveyScreen from './SurveyScreen';
 import {
-  getEnrolmentStatus, submitEnrolmentPhoto, type EnrolmentStatus,
+  cancelEnrolmentPhoto, getEnrolmentStatus, submitEnrolmentPhoto, type EnrolmentStatus,
 } from './api';
 import { useTheme, type ThemeMode } from './ThemeContext';
 import { theme, type ThemeColors } from './theme';
@@ -29,6 +31,26 @@ export default function ProfileScreen({
   const { c } = useTheme();
   const s = useMemo(() => makeStyles(c), [c]);
   const [survey, setSurvey] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [enrolStatus, setEnrolStatus] = useState<EnrolmentStatus | null>(null);
+  const [enrolError, setEnrolError] = useState<string | null>(null);
+
+  const loadEnrol = useCallback(async () => {
+    setEnrolError(null);
+    try {
+      setEnrolStatus(await getEnrolmentStatus());
+    } catch (err) {
+      setEnrolError(err instanceof Error ? err.message : 'Could not load enrolment');
+    }
+  }, []);
+
+  useEffect(() => { void loadEnrol(); }, [loadEnrol]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadEnrol();
+    setRefreshing(false);
+  }, [loadEnrol]);
 
   if (survey) {
     return (
@@ -42,7 +64,11 @@ export default function ProfileScreen({
   }
 
   return (
-    <ScrollView style={s.screen} contentContainerStyle={s.content}>
+    <ScrollView 
+      style={s.screen} 
+      contentContainerStyle={s.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.accent} />}
+    >
       <Text style={s.title}>Profile</Text>
 
       <View style={s.card}>
@@ -53,7 +79,7 @@ export default function ProfileScreen({
         <Text style={s.meta}>Role: {me.role.replace('_', ' ')}</Text>
       </View>
 
-      <FaceEnrolmentCard />
+      <FaceEnrolmentCard status={enrolStatus} error={enrolError} onUpdateStatus={setEnrolStatus} />
 
       <PasswordCard />
 
@@ -118,33 +144,29 @@ function AppearanceCard() {
   );
 }
 
-function FaceEnrolmentCard() {
+function FaceEnrolmentCard({ 
+  status, error, onUpdateStatus 
+}: { 
+  status: EnrolmentStatus | null; 
+  error: string | null; 
+  onUpdateStatus: (s: EnrolmentStatus) => void; 
+}) {
   const { c } = useTheme();
   const s = useMemo(() => makeStyles(c), [c]);
-  const [status, setStatus] = useState<EnrolmentStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [camera, setCamera] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [camPerm, requestCam] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      setStatus(await getEnrolmentStatus());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load enrolment');
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  const displayError = localError || error;
 
   async function openCamera() {
-    setError(null);
+    setLocalError(null);
     if (!camPerm?.granted) {
       const r = await requestCam();
       if (!r.granted) {
-        setError('Camera permission is needed to take your reference photo.');
+        setLocalError('Camera permission is needed to take your reference photo.');
         return;
       }
     }
@@ -154,20 +176,53 @@ function FaceEnrolmentCard() {
   async function capture() {
     if (busy) return;
     setBusy(true);
-    setError(null);
+    setLocalError(null);
     try {
       const shot = await cameraRef.current?.takePictureAsync({
-        // Full quality: this photo is compared against for YEARS. Bytes are
-        // the cheapest part of a reference photo.
-        quality: 0.95,
+        quality: 0.7,
         skipProcessing: true,
       });
       if (!shot?.uri) throw new Error('Could not capture a photo');
       const next = await submitEnrolmentPhoto(shot.uri);
-      setStatus(next);
+      onUpdateStatus(next);
       setCamera(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not submit the photo');
+      setLocalError(err instanceof Error ? err.message : 'Could not submit the photo');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pickImage() {
+    setLocalError(null);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [3, 4],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setBusy(true);
+        const next = await submitEnrolmentPhoto(result.assets[0].uri);
+        onUpdateStatus(next);
+      }
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Could not upload the photo');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelSubmission() {
+    if (busy) return;
+    setBusy(true);
+    setLocalError(null);
+    try {
+      const next = await cancelEnrolmentPhoto();
+      onUpdateStatus(next);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Could not cancel the submission');
     } finally {
       setBusy(false);
     }
@@ -190,36 +245,47 @@ function FaceEnrolmentCard() {
       <Text style={s.cardTitle}>FACE ENROLMENT</Text>
       <Text style={s.body}>{line}</Text>
 
-      {camera ? (
-        <>
-          <CameraView ref={cameraRef} style={s.enrolCamera} facing="front" />
-          <Pressable
-            style={s.secondaryBtn}
-            onPress={capture}
-            disabled={busy}
-            accessibilityRole="button"
-          >
-            <Text style={s.secondaryText}>
-              {busy ? 'Submitting…' : 'Capture & submit for approval'}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={s.secondaryBtn}
-            onPress={() => setCamera(false)}
-            accessibilityRole="button"
-          >
-            <Text style={s.secondaryText}>Cancel</Text>
-          </Pressable>
-        </>
-      ) : (
-        <Pressable style={s.secondaryBtn} onPress={openCamera} accessibilityRole="button">
-          <Text style={s.secondaryText}>
-            {status?.enrolled || status?.pending ? 'Submit a new photo' : 'Take my reference photo'}
-          </Text>
+      <Modal visible={camera} animationType="slide" onRequestClose={() => setCamera(false)}>
+        <View style={s.modalScreen}>
+          <CameraView ref={cameraRef} style={s.modalCamera} facing="front" />
+          <View style={s.modalOverlay}>
+            <Text style={s.modalHint}>Look at the camera</Text>
+            <Pressable
+              style={s.modalShutter} onPress={capture}
+              accessibilityRole="button" accessibilityLabel="Take the photo"
+              disabled={busy}
+            >
+              <View style={s.modalShutterInner} />
+            </Pressable>
+            <Pressable onPress={() => setCamera(false)} hitSlop={12} accessibilityRole="button">
+              <Text style={s.modalCancel}>Cancel</Text>
+            </Pressable>
+            {busy && (
+              <View style={[StyleSheet.absoluteFill, s.modalBusy]}>
+                <ActivityIndicator color={c.accent} size="large" />
+                <Text style={s.modalHint}>Submitting…</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {status?.pending ? (
+        <Pressable style={s.secondaryBtn} onPress={cancelSubmission} disabled={busy} accessibilityRole="button">
+          <Text style={s.secondaryText}>{busy ? 'Cancelling...' : 'Take that image back'}</Text>
         </Pressable>
+      ) : (
+        <View style={s.actionRow}>
+          <Pressable style={[s.secondaryBtn, { flex: 1 }]} onPress={openCamera} accessibilityRole="button">
+            <Text style={s.secondaryText}>{status?.enrolled ? 'New (Camera)' : 'Camera'}</Text>
+          </Pressable>
+          <Pressable style={[s.secondaryBtn, { flex: 1 }]} onPress={pickImage} disabled={busy} accessibilityRole="button">
+            <Text style={s.secondaryText}>{busy ? '...' : (status?.enrolled ? 'New (Files)' : 'Upload File')}</Text>
+          </Pressable>
+        </View>
       )}
 
-      {error && <Text style={s.enrolError}>○ {error}</Text>}
+      {displayError && <Text style={s.enrolError}>○ {displayError}</Text>}
       <Text style={s.note}>
         Straight at the camera, good light, nobody else in frame. An admin
         approves it before it goes live - it never activates itself.
@@ -316,6 +382,7 @@ function PasswordCard() {
 }
 
 const makeStyles = (c: ThemeColors) => StyleSheet.create({
+  actionRow: { flexDirection: 'row', gap: 10 },
   modeRow: { flexDirection: 'row', gap: 8, marginTop: 6 },
   modeBtn: {
     flex: 1, borderWidth: 1, borderColor: c.line, borderRadius: 8,
@@ -324,9 +391,22 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   modeBtnOn: { borderColor: c.accent, backgroundColor: c.hiBg },
   modeText: { color: c.ink3, fontSize: 14, fontWeight: '600' },
   modeTextOn: { color: c.accent },
-  enrolCamera: {
-    height: 300, borderRadius: 12, overflow: 'hidden', marginTop: 10,
+  
+  modalScreen: { flex: 1, backgroundColor: '#000' },
+  modalCamera: { flex: 1 },
+  modalOverlay: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    paddingBottom: 60, paddingTop: 40, alignItems: 'center',
   },
+  modalHint: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 30, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  modalShutter: {
+    width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(255,255,255,0.3)',
+    alignItems: 'center', justifyContent: 'center', marginBottom: 30,
+  },
+  modalShutterInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff' },
+  modalCancel: { color: '#fff', fontSize: 16, fontWeight: '600', textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  modalBusy: { backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+
   enrolError: { color: c.crit, marginTop: 8, fontSize: 13 },
   screen: { flex: 1, backgroundColor: c.ground },
   content: { padding: 20, paddingTop: 24, gap: 14 },

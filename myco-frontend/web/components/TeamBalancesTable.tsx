@@ -27,6 +27,10 @@ export function TeamBalancesTable({
                 <span className="block font-normal normal-case tracking-normal text-ink-3/70">available</span>
               </th>
             ))}
+            <th className="px-4 py-3 text-right">
+              Exceeded
+              <span className="block font-normal normal-case tracking-normal text-ink-3/70">leaves</span>
+            </th>
           </tr>
         </thead>
         <tbody
@@ -35,6 +39,10 @@ export function TeamBalancesTable({
           {entries.map(([code, e]) => {
             const isHovered = hoveredCode === code;
             const isDimmed = hoveredCode !== null && !isHovered;
+            const exceeded = types.filter(t => {
+              const cell = e.cells[t];
+              return cell && cell.available < 0;
+            });
             return (
               <tr
                 key={code}
@@ -68,6 +76,15 @@ export function TeamBalancesTable({
                     </td>
                   );
                 })}
+                <td className="tnum px-4 py-3 text-right font-mono">
+                  {exceeded.length > 0 ? (
+                    <span className="text-st-absent font-bold">
+                      {exceeded.join(', ')}
+                    </span>
+                  ) : (
+                    <span className="text-ink-3">—</span>
+                  )}
+                </td>
               </tr>
             );
           })}

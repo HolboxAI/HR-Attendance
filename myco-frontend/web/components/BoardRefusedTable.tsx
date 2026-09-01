@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { hhmm, type Rejected } from '@/lib/format';
+import { FacePeek } from './FacePeek';
 
 export function BoardRefusedTable({ rejected }: { rejected: Rejected[] }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -32,8 +33,12 @@ export function BoardRefusedTable({ rejected }: { rejected: Rejected[] }) {
                 } ${isDimmed ? 'opacity-30' : 'opacity-100'}`}
               >
                 <td className="px-5 py-3">
-                  <span className="font-medium text-ink transition-transform duration-300 inline-block group-hover:translate-x-2">{r.full_name}</span>
-                  <span className="ml-2 text-xs font-mono text-ink-3">{r.employee_code}</span>
+                  {/* Refused punches are exactly where HR wants to see the
+                      face - the refusal may BE about the face. */}
+                  <FacePeek code={r.employee_code} name={r.full_name} className="inline-block">
+                    <span className="font-medium text-ink transition-transform duration-300 inline-block group-hover:translate-x-2">{r.full_name}</span>
+                    <span className="ml-2 text-xs font-mono text-ink-3">{r.employee_code}</span>
+                  </FacePeek>
                 </td>
                 <td className="tnum px-5 py-3 font-mono text-xs text-ink-3">{hhmm(r.at)}</td>
                 <td className="px-5 py-3 text-xs font-mono text-st-absent">{r.reason}</td>

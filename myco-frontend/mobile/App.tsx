@@ -21,6 +21,7 @@ import { loadApiBaseOverride } from './src/config';
 import { registerForPush } from './src/push';
 import { restore, signOut } from './src/session';
 import { flush } from './src/sync';
+import { TubelightTabBar } from './src/TubelightTabBar';
 import { ThemeProvider, useTheme } from './src/ThemeContext';
 import type { ThemeColors } from './src/theme';
 import type { MonthDay } from './src/types';
@@ -165,45 +166,23 @@ function AppInner() {
           : tab === 'inbox' ? <InboxScreen onUnreadChange={setUnread} />
           : <ProfileScreen me={me} onSignOut={out} />}
 
-        {/* insets.bottom keeps the row clear of Android's gesture/nav bar
-            and the iPhone home indicator; phones with hardware keys get 0
-            and the small base padding still applies. */}
-        <View style={[s.tabs, { paddingBottom: Math.max(insets.bottom, 6) }]}>
-          <TabButton label="Leave" active={tab === 'leave'} onPress={() => setTab('leave')} styles={s} />
-          <TabButton label="Month" active={tab === 'attendance'} onPress={() => setTab('attendance')} styles={s} />
-          <TabButton label="Check in" active={tab === 'home'} onPress={() => setTab('home')} styles={s} />
-          <TabButton
-            label="Inbox" active={tab === 'inbox'} badge={unread}
-            onPress={() => setTab('inbox')} styles={s}
-          />
-          <TabButton label="Profile" active={tab === 'profile'} onPress={() => setTab('profile')} styles={s} />
-        </View>
+        {/* bottomInset keeps the pill clear of Android's gesture/nav bar
+            and the iPhone home indicator; phones with hardware keys get the
+            small base padding. Check in keeps the centre - thumbs live there. */}
+        <TubelightTabBar
+          items={[
+            { key: 'leave', label: 'Leave' },
+            { key: 'attendance', label: 'Month' },
+            { key: 'home', label: 'Check in' },
+            { key: 'inbox', label: 'Inbox', badge: unread },
+            { key: 'profile', label: 'Profile' },
+          ]}
+          activeKey={tab}
+          onPress={(key) => setTab(key as Tab)}
+          bottomInset={insets.bottom}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
-}
-
-function TabButton({
-  label, active, badge = 0, onPress, styles: s,
-}: {
-  label: string; active: boolean; badge?: number; onPress: () => void;
-  styles: ReturnType<typeof makeStyles>;
-}) {
-  return (
-    <Pressable
-      style={s.tab} onPress={onPress}
-      accessibilityRole="tab" accessibilityState={{ selected: active }}
-      accessibilityLabel={badge > 0 ? `${label}, ${badge} unread` : label}
-    >
-      <View>
-        <Text style={[s.tabText, active && s.tabTextOn]}>{label}</Text>
-        {badge > 0 && (
-          <View style={s.badge}>
-            <Text style={s.badgeText}>{badge > 9 ? '9+' : badge}</Text>
-          </View>
-        )}
-      </View>
-    </Pressable>
   );
 }
 
@@ -211,19 +190,6 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: c.ground },
   loginRoot: { flex: 1, backgroundColor: '#000000' },
   centre: { alignItems: 'center', justifyContent: 'center' },
-  tabs: {
-    flexDirection: 'row', borderTopWidth: 1, borderTopColor: c.line,
-    backgroundColor: c.surface,
-  },
-  tab: { flex: 1, paddingVertical: 14, alignItems: 'center' },
-  tabText: { color: c.ink3, fontSize: 13, fontWeight: '600' },
-  tabTextOn: { color: c.accent },
-  badge: {
-    position: 'absolute', top: -6, right: -16, minWidth: 16, height: 16,
-    borderRadius: 8, backgroundColor: c.accent,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
-  },
-  badgeText: { color: c.accentInk, fontSize: 10, fontWeight: '800' },
 
   segmented: {
     flexDirection: 'row', gap: 8, paddingHorizontal: 20, paddingTop: 12,

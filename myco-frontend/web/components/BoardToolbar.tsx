@@ -5,6 +5,7 @@ import { Search } from 'lucide-react';
 
 import type { BoardRow } from '@/lib/format';
 import { BoardTable } from './BoardTable';
+import { PlaceholdersAndVanishInput } from '@/components/ui/placeholders-and-vanish-input';
 
 import { FILTERS, matchesFilter, type FilterKey } from '@/lib/boardFilters';
 
@@ -50,13 +51,16 @@ export function BoardToolbar({ rows, initial = 'all' }: { rows: BoardRow[]; init
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden />
-          <input
-            type="text"
-            value={query}
+          <PlaceholdersAndVanishInput
+            placeholders={[
+              'Search name, code or department...',
+              'Try a name — Himesh, Krish...',
+              'Filter by department — Engineering...',
+              'Search by code — BX007...',
+            ]}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name, code or department..."
-            className="w-full rounded-xl border border-line/70 glass-panel py-2.5 pl-10 pr-4 text-xs font-mono text-ink placeholder:text-ink-3 focus:outline-none focus:border-accent/60 focus:ring-1 focus:ring-accent/40 shadow-sm"
+            onSubmit={() => {}}
+            className="h-11"
           />
         </div>
         <span className="text-xs font-mono text-ink-3">

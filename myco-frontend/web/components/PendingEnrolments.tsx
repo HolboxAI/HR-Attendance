@@ -23,17 +23,11 @@ export function PendingEnrolments({ rows }: { rows: EnrolmentRequestRow[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectNote, setRejectNote] = useState<string>('Too blurry - retake in better light');
 
-  async function decide(id: string, approve: boolean) {
+  async function decide(id: string, approve: boolean, note: string | null = null) {
     setError(null);
-    let note: string | null = null;
-    if (!approve) {
-      note = window.prompt(
-        'Why is it rejected? The person sees this note in the app.',
-        'Too blurry - retake in better light',
-      );
-      if (note === null) return; // cancelled
-    }
     setBusy(id);
     const res = await fetch(proxy(`/api/v1/admin/enrolments/requests/${id}/decide`), {
       method: 'POST',
@@ -46,6 +40,7 @@ export function PendingEnrolments({ rows }: { rows: EnrolmentRequestRow[] }) {
       setError(body?.detail ?? 'Could not decide - try again');
       return;
     }
+    setRejectingId(null);
     router.refresh();
   }
 
@@ -82,24 +77,57 @@ export function PendingEnrolments({ rows }: { rows: EnrolmentRequestRow[] }) {
                   {r.already_enrolled && ' · replaces their current photo'}
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => decide(r.id, true)}
-                  disabled={busy === r.id}
-                  className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 px-3 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <Check className="size-3.5" /> This is {r.full_name.split(' ')[0]}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => decide(r.id, false)}
-                  disabled={busy === r.id}
-                  className="flex items-center justify-center gap-1.5 rounded-lg border border-line text-ink-2 hover:text-st-absent hover:border-st-absent/50 text-xs font-semibold py-2 px-3 transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  <X className="size-3.5" /> Reject
-                </button>
-              </div>
+              {rejectingId === r.id ? (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={rejectNote}
+                    onChange={(e) => setRejectNote(e.target.value)}
+                    placeholder="Reason for rejection"
+                    className="w-full text-xs rounded-lg border border-line bg-surface-2 px-3 py-2 text-ink outline-none focus:border-accent"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => decide(r.id, false, rejectNote)}
+                      disabled={busy === r.id}
+                      className="flex-1 flex items-center justify-center gap-1.5 rounded-lg border border-st-absent/50 bg-st-absent/15 text-st-absent hover:bg-st-absent/25 text-xs font-semibold py-2 px-3 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Confirm Rejection
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRejectingId(null)}
+                      disabled={busy === r.id}
+                      className="flex items-center justify-center rounded-lg border border-line text-ink-2 hover:text-ink text-xs font-semibold py-2 px-3 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => decide(r.id, true)}
+                    disabled={busy === r.id}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 px-3 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Check className="size-3.5" /> This is {r.full_name.split(' ')[0]}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRejectNote('Too blurry - retake in better light');
+                      setRejectingId(r.id);
+                    }}
+                    disabled={busy === r.id}
+                    className="flex items-center justify-center gap-1.5 rounded-lg border border-line text-ink-2 hover:text-st-absent hover:border-st-absent/50 text-xs font-semibold py-2 px-3 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <X className="size-3.5" /> Reject
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         ))}

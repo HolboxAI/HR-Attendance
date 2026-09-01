@@ -46,7 +46,9 @@ function initials(name: string): string {
 export function FacePeek({
   code, name, className, children,
 }: {
-  code: string;
+  /** Null renders the children plainly - some queue rows arrive without a
+      code, and a peek with nothing to fetch by would 404 on every hover. */
+  code: string | null;
   name: string;
   className?: string;
   children: React.ReactNode;
@@ -85,6 +87,8 @@ export function FacePeek({
     mx.set(px);
     my.set(py);
   }
+
+  if (!code) return <span className={className}>{children}</span>;
 
   const noPhoto = photoState.get(code) === 'none';
 

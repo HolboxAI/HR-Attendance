@@ -48,8 +48,12 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                 }`}
               >
                 <td className="px-5 py-3.5">
+                  {/* FacePeek wraps the WHOLE link, not just the avatar - the
+                      photo preview should appear whether the cursor lands on
+                      the face or the name. */}
+                  <FacePeek code={r.employee_code} name={r.full_name} className="block">
                   <Link href={`/people/${r.employee_code}`} className="flex items-center gap-3">
-                    <FacePeek code={r.employee_code} name={r.full_name} className="relative shrink-0">
+                    <span className="relative shrink-0">
                       <Avatar name={r.full_name} />
                       <span
                         className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
@@ -57,7 +61,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                         }`}
                         aria-hidden
                       />
-                    </FacePeek>
+                    </span>
                     <span className="inline-block transition-transform duration-300 group-hover:translate-x-3">
                       <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
                         {r.full_name}
@@ -69,6 +73,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                       </span>
                     </span>
                   </Link>
+                  </FacePeek>
                 </td>
                 <td className="tnum px-5 py-3.5 font-mono text-xs text-ink-3">{r.shift_label}</td>
                 <td className="px-5 py-3.5"><Status value={r.status} /></td>

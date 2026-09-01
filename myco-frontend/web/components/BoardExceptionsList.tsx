@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 
 import { hhmm, type BoardRow } from '@/lib/format';
+import { FacePeek } from './FacePeek';
 
 export function BoardExceptionsList({ exceptions }: { exceptions: BoardRow[] }) {
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
@@ -24,12 +25,16 @@ export function BoardExceptionsList({ exceptions }: { exceptions: BoardRow[] }) 
               isHovered ? 'bg-surface-2/70' : 'hover:bg-surface-2/30'
             } ${isDimmed ? 'opacity-30' : 'opacity-100'}`}
           >
-            <Link
-              href={`/people/${r.employee_code}`}
-              className="font-semibold text-ink transition-transform duration-300 group-hover:translate-x-2 inline-flex items-center gap-1.5"
-            >
-              {r.full_name} <span className="text-xs font-mono text-ink-3 font-normal">({r.employee_code})</span>
-            </Link>
+            {/* This list has no avatar, so the name IS the hover target for
+                the photo peek - same treatment as the register below it. */}
+            <FacePeek code={r.employee_code} name={r.full_name} className="inline-block">
+              <Link
+                href={`/people/${r.employee_code}`}
+                className="font-semibold text-ink transition-transform duration-300 group-hover:translate-x-2 inline-flex items-center gap-1.5"
+              >
+                {r.full_name} <span className="text-xs font-mono text-ink-3 font-normal">({r.employee_code})</span>
+              </Link>
+            </FacePeek>
             <div className="flex items-center gap-3 text-xs font-mono">
               <span className="text-ink-3">in at {hhmm(r.first_in)}</span>
               <span className="text-ink-2 font-medium">{r.exception_note}</span>

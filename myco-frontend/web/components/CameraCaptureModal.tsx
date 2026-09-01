@@ -17,6 +17,10 @@ interface CameraCaptureModalProps {
   subject?: string;
   confirmLabel?: string;
   busyLabel?: string;
+  /** A server-side refusal (duplicate face, bad quality). Shown INSIDE the
+      modal: the row-level error behind the dialog backdrop is invisible
+      while this is open, and a silent failure reads as "try again". */
+  error?: string | null;
 }
 
 export function CameraCaptureModal({
@@ -30,6 +34,7 @@ export function CameraCaptureModal({
   subject = 'Taking reference photo for',
   confirmLabel = 'Enrol Face Photo',
   busyLabel = 'Enrolling photo\u2026',
+  error = null,
 }: CameraCaptureModalProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -303,9 +308,18 @@ export function CameraCaptureModal({
         {/* Hidden off-screen canvas for frame capture */}
         <canvas ref={canvasRef} className="hidden" />
 
-        <p className="mt-3 text-center text-xs text-ink-3 max-w-xs font-mono">
-          Ensure clean lighting, neutral expression, and direct front-facing alignment.
-        </p>
+        {error ? (
+          <p
+            role="alert"
+            className="mt-3 w-full max-w-[360px] rounded-xl border border-st-absent/50 bg-st-absent/10 px-3.5 py-2.5 text-center text-xs font-medium text-st-absent"
+          >
+            <span aria-hidden>⚠️ </span>{error}
+          </p>
+        ) : (
+          <p className="mt-3 text-center text-xs text-ink-3 max-w-xs font-mono">
+            Ensure clean lighting, neutral expression, and direct front-facing alignment.
+          </p>
+        )}
       </div>
 
       {/* Actions Footer */}

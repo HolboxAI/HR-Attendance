@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
+  ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
   TextInput, View,
 } from 'react-native';
 
-import { applyForLeave, cancelLeave, getLeaveBalance, getMyLeave } from './api';
+import { applyForLeave, cancelLeave, getLeaveBalance, getMyLeave, getHolidays } from './api';
 import MiniCalendar from './MiniCalendar';
 import { useTheme } from './ThemeContext';
 import type { ThemeColors } from './theme';
-import type { LeaveBalance, LeaveRequestItem } from './types';
+import type { LeaveBalance, LeaveRequestItem, Holiday } from './types';
 
 /** Dates are YYYY-MM-DD - typed, or picked from the calendar beside the field. */
 const DATE_HINT = 'YYYY-MM-DD';
 const looksLikeDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+function formatDateLong(isoDate: string): string {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
 
 export default function LeaveScreen() {
   const { c } = useTheme();
@@ -36,11 +41,23 @@ export default function LeaveScreen() {
   // Which field the calendar is filling; only one grid open at a time.
   const [picking, setPicking] = useState<'from' | 'to' | null>(null);
 
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [showAllHolidays, setShowAllHolidays] = useState(false);
+  const [calendarModalVisible, setCalendarModalVisible] = useState(false);
+
+  const upcomingHolidays = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return holidays.filter(h => h.day >= todayStr).sort((a, b) => a.day.localeCompare(b.day));
+  }, [holidays]);
+
+  const holidayDates = useMemo(() => new Set(holidays.map(h => h.day)), [holidays]);
+
   const load = useCallback(async () => {
     try {
-      const [b, r] = await Promise.all([getLeaveBalance(), getMyLeave()]);
+      const [b, r, h] = await Promise.all([getLeaveBalance(), getMyLeave(), getHolidays()]);
       setBalances(b);
       setRequests(r);
+      setHolidays(h);
       if (b.length && !b.some((x) => x.code === code)) setCode(b[0].code);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load your leave');
@@ -222,6 +239,93 @@ export default function LeaveScreen() {
           );
         })
       )}
+
+      <View style={s.holidayHeader}>
+        <Text style={s.label}>Upcoming Holidays</Text>
+        <Pressable onPress={() => setCalendarModalVisible(true)} accessibilityRole="button" style={s.calendarBtn}>
+          <Text style={s.calendarBtnText}>▦</Text>
+        </Pressable>
+      </View>
+
+      {upcomingHolidays.length === 0 ? (
+        <Text style={s.empty}>No upcoming holidays.</Text>
+      ) : (
+        <View style={s.holidayList}>
+          {(showAllHolidays ? upcomingHolidays : upcomingHolidays.slice(0, 10)).map(h => {
+            const d = new Date(h.day + 'T00:00:00');
+            const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
+            const dayNum = d.getDate();
+            const monthStr = d.toLocaleDateString('en-US', { month: 'short' });
+            const yearStr = d.getFullYear();
+            return (
+              <View key={h.id} style={s.holidayItem}>
+                <View style={s.holidayDateBadge}>
+                  <Text style={s.holidayDay}>{dayNum}</Text>
+                  <Text style={s.holidayMonth}>{monthStr}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.holidayName}>{h.name}</Text>
+                  <Text style={s.holidayMeta}>
+                    {weekday}, {monthStr} {dayNum}, {yearStr}
+                    {h.is_optional ? '  ·  Optional' : ''}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+          {!showAllHolidays && upcomingHolidays.length > 10 && (
+            <Pressable onPress={() => setShowAllHolidays(true)} style={s.readMore} accessibilityRole="button">
+              <Text style={s.readMoreText}>Read more ›</Text>
+            </Pressable>
+          )}
+          {showAllHolidays && upcomingHolidays.length > 10 && (
+            <Pressable onPress={() => setShowAllHolidays(false)} style={s.readMore} accessibilityRole="button">
+              <Text style={s.readMoreText}>Show less ‹</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      <Modal visible={calendarModalVisible} transparent animationType="fade" onRequestClose={() => setCalendarModalVisible(false)}>
+        <View style={s.modalOverlay}>
+          <ScrollView style={s.modalScroll} contentContainerStyle={{ padding: 0 }}>
+            <View style={s.modalContent}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={s.modalTitle}>Holiday Calendar</Text>
+                <Pressable onPress={() => setCalendarModalVisible(false)} hitSlop={12} accessibilityRole="button">
+                  <Text style={s.modalClose}>✕</Text>
+                </Pressable>
+              </View>
+              <MiniCalendar
+                value={new Date().toISOString().slice(0, 10)}
+                readOnly
+                highlights={holidayDates}
+              />
+              <View style={s.legendRow}>
+                <View style={[s.legendDot, { backgroundColor: c.accent }]} />
+                <Text style={s.legendText}>Highlighted dates are holidays</Text>
+              </View>
+              {holidays.length > 0 && (
+                <View style={{ marginTop: 8, gap: 6 }}>
+                  <Text style={s.modalSubhead}>All Holidays</Text>
+                  {holidays.sort((a, b) => a.day.localeCompare(b.day)).map(h => {
+                    const d = new Date(h.day + 'T00:00:00');
+                    return (
+                      <View key={h.id} style={s.modalHolidayRow}>
+                        <Text style={s.modalHolidayName}>{h.name}</Text>
+                        <Text style={s.modalHolidayDate}>
+                          {d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                          {h.is_optional ? '  ·  Optional' : ''}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -233,7 +337,7 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   h1: { color: c.ink, fontSize: 24, fontWeight: '800', marginBottom: 4 },
   label: {
     color: c.ink3, fontSize: 11, letterSpacing: 1.4,
-    textTransform: 'uppercase', marginTop: 16,
+    textTransform: 'uppercase', fontWeight: '700',
   },
   cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   card: {
@@ -292,4 +396,65 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 6,
   },
   cancelText: { color: c.ink2, fontSize: 12 },
+
+  /* ---- Holidays section ---- */
+  holidayHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 28, marginBottom: 8,
+  },
+  calendarBtn: {
+    borderColor: c.accent, borderWidth: 1, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 6,
+  },
+  calendarBtnText: { color: c.accent, fontSize: 16, fontWeight: '700' },
+  holidayList: {
+    backgroundColor: c.surface, borderColor: c.line, borderWidth: 1,
+    borderRadius: 12, overflow: 'hidden',
+  },
+  holidayItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, paddingHorizontal: 14,
+    borderBottomWidth: 1, borderBottomColor: c.line,
+  },
+  holidayDateBadge: {
+    width: 46, height: 46, borderRadius: 10,
+    backgroundColor: c.surface2, alignItems: 'center', justifyContent: 'center',
+  },
+  holidayDay: { color: c.ink, fontSize: 18, fontWeight: '800', lineHeight: 22 },
+  holidayMonth: { color: c.accent, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  holidayName: { color: c.ink, fontSize: 14, fontWeight: '700' },
+  holidayMeta: { color: c.ink3, fontSize: 12, marginTop: 2 },
+  readMore: {
+    paddingVertical: 14, alignItems: 'center',
+    borderTopWidth: 1, borderTopColor: c.line,
+  },
+  readMoreText: { color: c.accent, fontSize: 13, fontWeight: '700' },
+
+  /* ---- Holiday calendar modal ---- */
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  modalScroll: {
+    flex: 1, width: '100%',
+    marginTop: 60, marginBottom: 40,
+  },
+  modalContent: {
+    backgroundColor: c.surface, borderRadius: 16, padding: 20,
+    width: '100%', maxWidth: 340, gap: 12,
+    borderWidth: 1, borderColor: c.line,
+    alignSelf: 'center',
+  },
+  modalTitle: { color: c.ink, fontSize: 18, fontWeight: '800' },
+  modalClose: { color: c.ink3, fontSize: 18, fontWeight: '700' },
+  modalSubhead: { color: c.ink3, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.2 },
+  modalHolidayRow: {
+    paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: c.line,
+  },
+  modalHolidayName: { color: c.ink, fontSize: 13, fontWeight: '700' },
+  modalHolidayDate: { color: c.ink3, fontSize: 11, marginTop: 2 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { color: c.ink3, fontSize: 12 },
 });
+
