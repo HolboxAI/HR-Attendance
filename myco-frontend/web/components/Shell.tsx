@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, LogOut, Menu, X } from 'lucide-react';
-
-import { HolboxSearch } from '@/components/HolboxSearch';
+import { ChevronLeft, ChevronRight, LogOut, Menu, X, Search } from 'lucide-react';
 import { MenuToggle } from '@/components/ui/menu-toggle';
 import { NotificationBell } from '@/components/NotificationBell';
 import { SidebarBrand, SidebarFooter, SidebarNav } from '@/components/Sidebar';
@@ -192,22 +190,14 @@ export function Shell({
               search on every dashboard page. Except the Directory, which
               has its own search box right below the header - offering the
               same field twice on one screen is clutter, not convenience. */}
-          <div className={`${pathname === '/people' ? 'hidden' : 'hidden md:flex'} items-center relative max-w-sm w-full mx-4`}>
-            <HolboxSearch
-              // Remount per route: arriving somewhere clears whatever query
-              // got you there, so the box is ready for the next search.
-              key={pathname}
-              variant="global"
-              caps={caps}
-              placeholders={[
-                'Search people — try Himesh...',
-                'Jump to a page — Devices, Board...',
-                'Find someone by code — BX007...',
-                'Open Team balances...',
-                'Who is on leave? Try the Board...',
-              ]}
-            />
-          </div>
+            <div className="relative flex-1 max-w-xl mx-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-3" />
+              <input
+                type="text"
+                placeholder="Search people, records..."
+                className="w-full bg-surface-2 text-ink rounded-lg pl-10 pr-4 py-2 text-sm border border-line focus:outline-none focus:border-accent/50 focus:bg-surface transition-colors"
+              />
+            </div>
 
           {/* User & Actions Hub */}
           <div className="flex items-center gap-2 sm:gap-3">

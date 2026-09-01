@@ -6,7 +6,6 @@ import { ArrowUpRight } from 'lucide-react';
 
 import { hhmm, hours, type BoardRow } from '@/lib/format';
 import { Avatar } from './Avatar';
-import { FacePeek } from './FacePeek';
 import { Status } from './Status';
 
 export function BoardTable({ rows }: { rows: BoardRow[] }) {
@@ -51,7 +50,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                   {/* FacePeek wraps the WHOLE link, not just the avatar - the
                       photo preview should appear whether the cursor lands on
                       the face or the name. */}
-                  <FacePeek code={r.employee_code} name={r.full_name} className="block">
+                  
                   <Link href={`/people/${r.employee_code}`} className="flex items-center gap-3">
                     <span className="relative shrink-0">
                       <Avatar name={r.full_name} />
@@ -73,7 +72,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                       </span>
                     </span>
                   </Link>
-                  </FacePeek>
+                  
                 </td>
                 <td className="tnum px-5 py-3.5 font-mono text-xs text-ink-3">{r.shift_label}</td>
                 <td className="px-5 py-3.5"><Status value={r.status} /></td>

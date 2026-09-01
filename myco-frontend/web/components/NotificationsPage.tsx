@@ -6,7 +6,6 @@ import { BellOff, Check, CheckCheck, Reply, ScanFace, Send, X } from 'lucide-rea
 import Link from 'next/link';
 
 import { EmptyState } from '@/components/EmptyState';
-import { FacePeek } from '@/components/FacePeek';
 import { notificationHref, proxy, timeAgo, type NotificationRow } from '@/lib/format';
 
 const CATEGORY_LABEL: Record<string, string> = {
@@ -237,7 +236,7 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
             const title = code ? (
               // Same face-on-hover as the Board and Directory: the sender's
               // reference photo floats up beside the cursor.
-              <FacePeek code={code} name={senderName(n)}>{n.title}</FacePeek>
+              {n.title}
             ) : n.title;
             const inner = (
               <>

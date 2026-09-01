@@ -6,7 +6,6 @@ import { Smartphone } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
-import { FacePeek } from '@/components/FacePeek';
 import { dayMonth, hhmm, proxy, type DeviceRow } from '@/lib/format';
 
 /**
@@ -98,9 +97,9 @@ export function DeviceList({ rows }: { rows: DeviceRow[] }) {
                   } ${isDimmed ? 'opacity-40' : 'opacity-100'}`}
                 >
                   <td className="px-4 py-3">
-                    <FacePeek code={r.employee_code} name={r.full_name} className="font-semibold text-ink transition-transform duration-300 inline-block group-hover:translate-x-1.5">
+                    
                       {r.full_name}
-                    </FacePeek>
+                    
                     <span className="ml-2 text-xs font-mono text-ink-3">{r.employee_code}</span>
                   </td>
                   <td className="px-4 py-3 font-mono">

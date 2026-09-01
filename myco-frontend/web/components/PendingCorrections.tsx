@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { proxy, type CorrectionRow } from '@/lib/format';
-import { FacePeek } from './FacePeek';
 
 const DIRECTION_LABEL: Record<string, string> = { in: 'Check-in', out: 'Check-out' };
 
@@ -80,10 +79,10 @@ export function PendingCorrections({
             } ${isDimmed ? 'opacity-40 scale-[0.99]' : 'opacity-100'}`}
           >
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <FacePeek code={r.employee_code} name={r.employee_name ?? ''} className="inline-block">
+              
                 <span className="font-semibold text-ink transition-transform duration-300 inline-block group-hover:translate-x-1">{r.employee_name}</span>
                 <span className="ml-3 text-xs font-mono text-ink-3">{r.employee_code}</span>
-              </FacePeek>
+              
               <span className="text-xs font-mono text-ink-2">
                 {DIRECTION_LABEL[r.direction] ?? r.direction} ·{' '}
                 {new Date(`${r.shift_date}T00:00:00Z`).toLocaleDateString('en-IN', {

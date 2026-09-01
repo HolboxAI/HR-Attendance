@@ -6,7 +6,6 @@ import {
 
 import { AttendancePulse } from '@/components/AttendancePulse';
 import { ErrorState } from '@/components/ErrorState';
-import { FacePeek } from '@/components/FacePeek';
 import { MetricTile } from '@/components/MetricTile';
 import { MyMonth } from '@/components/MyMonth';
 import { KineticTicker } from '@/components/ui/kinetic-ticker';
@@ -230,11 +229,11 @@ export default async function DashboardPage({
                 <ul className="mt-3 space-y-2 text-sm divide-y divide-line/30">
                   {exceptions.slice(0, 5).map((r) => (
                     <li key={r.employee_code} className="pt-2 first:pt-0 flex flex-wrap items-baseline justify-between gap-x-2">
-                      <FacePeek code={r.employee_code} name={r.full_name} className="inline-block">
+                      
                         <Link href={`/people/${r.employee_code}`} className="font-medium text-ink hover:underline transition-colors">
                           {r.full_name} ({r.employee_code})
                         </Link>
-                      </FacePeek>
+                      
                       <div className="flex items-center gap-2 text-xs font-mono">
                         <span className="text-ink-3">in at {hhmm(r.first_in)}</span>
                         <span className="text-ink-2">{r.exception_note}</span>

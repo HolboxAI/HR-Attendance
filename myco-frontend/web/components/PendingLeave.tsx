@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { dateRange, proxy, type LeaveRequestRow } from '@/lib/format';
-import { FacePeek } from './FacePeek';
 
 /**
  * The approver's queue.
@@ -64,10 +63,10 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
             } ${isDimmed ? 'opacity-40 scale-[0.99]' : 'opacity-100'}`}
           >
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <FacePeek code={r.employee_code} name={r.employee_name ?? ''} className="inline-block">
+              
                 <span className="font-semibold text-ink transition-transform duration-300 inline-block group-hover:translate-x-1">{r.employee_name}</span>
                 <span className="ml-3 text-xs font-mono text-ink-3">{r.employee_code}</span>
-              </FacePeek>
+              
               <span className="text-xs font-mono text-ink-2">
                 {r.leave_type_code} · {dateRange(r.from_date, r.to_date)}
               </span>
