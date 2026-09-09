@@ -247,7 +247,7 @@ async def apply(
         category="leave.pending",
         title="Leave Request",
         body=f"{emp.full_name} requested {lt.name} for the dates: {result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.",
-        exclude_user_id=emp_user.id if emp_user and emp_user.role != UserRole.HR_ADMIN else None,
+        exclude_user_id=emp_user.id if emp_user and emp_user.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN) else None,
         data={"leave_request_id": str(result.request.id)},
     )
     db.commit()

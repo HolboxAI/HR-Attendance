@@ -2,13 +2,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# repo_root/data - everything the prototype writes lives here and nowhere else.
+API_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DATA_DIR = REPO_ROOT / "data"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=[API_DIR / ".env", REPO_ROOT / ".env", ".env"],
+        extra="ignore"
+    )
 
     # Prototype: a single SQLite file. Production: swap this one string for a
     # postgresql+psycopg:// URL. The models are dialect-portable, so nothing
@@ -35,7 +38,7 @@ class Settings(BaseSettings):
     require_device_binding: bool = True
     default_tz: str = "Asia/Kolkata"
     api_prefix: str = "/api/v1"
-    api_url: str = "http://98.84.138.15/api/v1"
+    api_url: str = "http://attendance.holbox.ai/api/v1"
 
     # "stub" needs no AWS account. Switch to "rekognition" when there is one.
     face_provider: str = "stub"

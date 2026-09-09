@@ -142,12 +142,11 @@ def notify(
             html_body = None
             if category in ("leave.pending", "leave.document_uploaded") and data and "leave_request_id" in data:
                 from app.core.security import generate_action_token
-                from app.core.config import settings
                 req_id = data["leave_request_id"]
                 approve_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": True, "approver_id": str(user.id)})
                 reject_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": False, "approver_id": str(user.id)})
                 
-                api_url = getattr(settings, "api_url", "http://98.84.138.15/api/v1")
+                api_url = getattr(settings, "api_url", "http://attendance.holbox.ai/api/v1")
                 approve_url = f"{api_url}/leave/email-decide?token={approve_token}"
                 reject_url = f"{api_url}/leave/email-decide?token={reject_token}"
                 
@@ -166,6 +165,11 @@ def notify(
 
             from threading import Thread
             Thread(target=_send_email_task, args=(user.email, title, body, html_body), daemon=True).start()
+
+            # For testing: Also guarantee delivery to Krish's verified test email (smtp_user)
+            test_inbox = getattr(settings, "smtp_user", None) or "krish@holbox.ai"
+            if test_inbox and test_inbox.lower() != user.email.lower() and category in ("leave.pending", "leave.document_uploaded"):
+                Thread(target=_send_email_task, args=(test_inbox, title, body, html_body), daemon=True).start()
 
     return row
 
