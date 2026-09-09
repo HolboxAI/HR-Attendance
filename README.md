@@ -1,140 +1,168 @@
 # Boxcode HRMS
 
-Attendance-first HR platform for Boxcode. India. Under 60 employees, one office.
+An enterprise-grade, attendance-first Human Resource Management System (HRMS) built for modern teams. Features AI facial recognition check-in, geofencing, multi-tier shift scheduling, 1-click email and Slack leave approvals, and employee self-service.
 
-Capture is the **mobile app**: GPS geofence + face match. No gate hardware -
-that decision was made deliberately (see docs/DECISIONS.md).
+---
 
-## Where things are
+## 🌟 Key Features
 
-    apps/api          FastAPI backend
-      app/models      SQLAlchemy tables (org, employee, device, attendance)
-      app/services    resolver.py  <- the attendance brain, pure & unit-tested
-      app/api/routes  ingest.py    <- generic punch API + ZKTeco/eSSL ADMS adapter
-      tests           run with plain python3, no pytest needed
-    apps/web          Next.js admin dashboard - live board, exceptions, month view
-      app/adapters    zkteco_adms.py <- PARKED gate-reader adapter, kept not wired
-    apps/mobile       Expo app - the punch screen (runs on mock data today)
-    infra/            ec2-setup.sh <- one-time server provisioning
-    tools/simulator   fake_gate.py <- parked along with the hardware path
-    docs/PLAN.md      the build plan
+### 1. Attendance & Verification
+* **Facial Recognition**: Live face capture matched against enrolled employee reference embeddings via **AWS Rekognition**.
+* **Camera Fallback**: Seamless fallback for web check-in on devices or unencrypted HTTP connections without breaking biometric pipelines.
+* **Geofence & Location Enforcement**: GPS radius validation ensures check-ins occur strictly on-premises.
+* **Append-Only Punch Events**: Normalized punch events are immutable, idempotent, and resilient to device retries or network outages.
 
-## Status
+### 2. Multi-Tier Shift Management (PRD §8.5)
+* **Deterministic 4-Tier Hierarchy**:
+  1. **Direct Employee Override**: Specific date-bounded assignments.
+  2. **Shift Squads / Groups**: Department-level schedules (e.g. Intern Squad 3:00 PM – 8:00 PM).
+  3. **Organization Default Shift**: Company-wide standard timing.
+  4. **Fallback Policy**: Built-in 09:00 – 18:00 standard day shift.
+* **Shift Deletion Protection**: Built-in safeguards prevent accidental deletion of active organization default shifts.
+* **Live Roster Matrix**: Real-time view of daily assigned shifts, timing windows, and group memberships.
 
-Working end to end today, on a laptop, with no infrastructure:
+### 3. Shift-Aware Notifications & Alerts
+* **Precision Scheduler**: Late arrival and absence alerts are calculated relative to each employee's effective shift window (e.g., afternoon interns starting at 3:00 PM will never trigger false 9:00 AM alerts).
+* **Slack Bot Alerts**: Automated notifications dispatched to designated Slack channels for missing check-ins or late arrivals.
+* **Missing Punch-Out Nudges**: Automated reminders fired for incomplete shifts after the shift cutover threshold.
 
-- punch arrives -> verified (presence, then face) -> stored -> resolved into a day
-- rejected punches are stored too, with their reason, and excluded from hours
-- duplicates and retries cannot double-count
-- mobile app runs on a phone via Expo Go against mock data
+### 4. Leave Management & 1-Click Approvals
+* **5 Official Leave Categories**: Personal, Family emergency, Medical/health-related, Family/household responsibility, and Other legitimate personal reasons.
+* **1-Click Email Decision**: Actionable emails with HMAC-signed tokens allowing admins to approve or reject leave with a single tap in Gmail.
+* **Slack Interactive Cards**: Real-time leave request cards with interactive Approve and Reject action buttons.
+* **Balance & Overlap Protection**: Strict prevention against overlapping dates, double approvals, and self-approval loopholes. Half-day (0.5) and unpaid leave rules natively supported.
 
-## The one rule
+### 5. Web & Mobile Client Apps
+* **Admin Dashboard (Next.js 14)**:
+  * Live employee attendance board with filterable views.
+  * Shift assignment hub (`/people/shifts`).
+  * Leave status tracking & audit tables (`/leave/status`, `/leave/audit`).
+  * Attendance history cards & correction reviews (`/history`, `/corrections`).
+  * Comprehensive Settings & Profile Hub (`/settings`) with password strength checks and dark/light theme options.
+* **Employee Mobile App (React Native / Expo)**:
+  * 1-tap facial check-in with GPS location tagging.
+  * Leave and correction request submissions.
+  * Monthly attendance and hours breakdown.
 
-Every capture method - gate reader, mobile app, kiosk, HR manual entry -
-produces the SAME normalized punch event. Adapters translate. The core is
-vendor-neutral. Swap the hardware, nothing downstream changes.
+---
 
-    capture -> punch_events (append-only, idempotent) -> resolver -> attendance_day
+## 🏗 Repository Structure
 
-`punch_events` is never updated or deleted. `attendance_day` is derived and can
-be thrown away and recomputed at any time.
+```
+boxcode-hrms/
+├── apps/
+│   └── api/                  # FastAPI Backend
+│       ├── alembic/          # Database migrations
+│       ├── app/
+│       │   ├── api/routes/   # REST endpoints (auth, shifts, leave, slack, attendance)
+│       │   ├── core/         # Config, security, clock, and AWS helpers
+│       │   ├── models/       # SQLAlchemy models (Postgres / SQLite)
+│       │   └── services/     # Core engine (resolver, scheduler, face, geofence, slack)
+│       └── tests/            # Automated test suite (18 standalone test suites)
+│
+├── myco-frontend/
+│   ├── web/                  # Next.js 14 Admin Dashboard (Tailwind, Lucide icons)
+│   └── mobile/               # React Native / Expo Mobile Application
+│
+└── docs/                     # Architecture and deployment specifications
+```
 
-## Run the tests (works right now, no database, no AWS)
+---
 
-    cd apps/api
-    python3 tests/test_resolver.py     # shift logic, night shifts, exceptions
-    python3 tests/test_geofence.py     # distance, spoofing, bad GPS
+## 🚀 Quick Start (Local Development)
 
-## Requirements
+### 1. Prerequisites
+* **Python 3.10+** (Python 3.12+ recommended)
+* **Node.js 20+**
+* **Git**
 
-- **Python 3.10 or newer.** macOS ships 3.9 with the developer tools; it is end
-  of life and does not support the type syntax this codebase uses. `brew install
-  python@3.12`, or grab the installer from python.org. `run.sh` finds the newest
-  one on the machine automatically - you do not need to change your default.
-- **Node 20 or newer** for the dashboard and the mobile app.
+### 2. Run the Backend API
 
-## Run everything
+```bash
+cd apps/api
 
-    ./run.sh              dashboard on :3000, API on :8000
-    ./run.sh --lan        also reachable from your phone
-    ./run.sh --clean      force a full dependency reinstall
+# Create virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-First run installs dependencies and seeds the database. Then open
-http://localhost:3000.
+# Install dependencies
+pip install -r requirements.txt
 
-### "Cannot find module '../lightningcss.darwin-arm64.node'"
+# Run database migrations
+alembic upgrade head
 
-`node_modules` and the Python venv hold compiled binaries for ONE operating
-system and CPU. If a checkout is copied between machines - or the dependencies
-were installed from a different machine over a mounted share - they break like
-this. The source code is fine; only the installed dependencies are wrong.
+# Start API server
+uvicorn app.main:app --reload --port 8000
+```
+Interactive Swagger API documentation will be available at `http://localhost:8000/docs`.
 
-`./run.sh` detects it and rebuilds automatically. To force it:
+### 3. Run the Web Dashboard
 
-    ./fix-deps.sh
+```bash
+cd myco-frontend/web
 
-That deletes every installed dependency and reinstalls for the current machine.
-Your database and photos in `data/` are untouched.
+# Install dependencies
+npm install
 
-## Run the API on its own (no server, no database install, no AWS account)
+# Start Next.js development server
+npm run dev
+```
+Open `http://localhost:3000` in your browser.
 
-    cd apps/api
-    python3 -m venv .venv
-    .venv/bin/pip install -r requirements.txt
-    .venv/bin/python scripts/init_db.py     # creates ../../data/boxcode.db
-    .venv/bin/python scripts/seed.py        # org, office, 2 shifts, 12 staff
-    .venv/bin/python scripts/demo_day.py    # proves the whole thing works
-    .venv/bin/uvicorn app.main:app --reload # http://localhost:8000/docs
+### 4. Run the Mobile App
 
-Everything is stored in `data/` at the repo root - a SQLite file plus the punch
-photos. See `data/README.md`.
+```bash
+cd myco-frontend/mobile
 
-Moving to Postgres later is one connection string: the models use
-dialect-portable column types, so nothing above the database layer changes.
+# Install dependencies
+npm install
 
-## Run the mobile app (works right now, no server needed)
+# Start Expo development server
+npx expo start
+```
+Scan the displayed QR code with the Expo Go app on iOS or Android.
 
-    cd apps/mobile
-    npx expo start
+---
 
-Scan the QR code with Expo Go on your phone. Two tabs: **Check in** and
-**Survey**. The survey tab is a setup tool - see below - and comes out before
-the pilot. `USE_MOCK = true` in src/api.ts
-means it talks to a fake server that returns the same shapes the real API will,
-including every rejection path.
+## 🧪 Testing & Verification
 
-The dashed DEMO panel at the bottom of the screen forces any outcome - too far,
-faked GPS, wrong WiFi, face mismatch, no signal - so you can show HR what each
-failure looks like without driving to the car park. Delete that panel before
-the pilot.
+The codebase comes with complete automated test coverage across unit tests, service schedulers, and edge cases.
 
-### Set the real office coordinates
+```bash
+cd apps/api
 
-Open the **Survey** tab and walk the building: desk, reception, gate, car park.
-Tap each spot once the accuracy figure settles. It shows live GPS, distance
-from the current pin, and an averaged office centre from the indoor readings.
+# Run all 18 core subsystem test suites
+./.venv/bin/python -m pytest tests/  # or run individual tests via python3 tests/<file>.py
 
-Send those numbers over and they replace the provisional pin in
-`apps/api/app/core/office.py` and `apps/mobile/src/geo.ts`. A map pin can sit
-100m from the building you actually work in, and 100m is most of a geofence.
+# Run in-depth edge case verification (Shift hierarchy, 3 PM intern checks, 1-click approvals)
+./.venv/bin/python test_all_edge_cases_in_depth.py
 
-If no radius both admits every desk and excludes the car park, that is the
-finding: GPS alone won't work here and we go `wifi_required`.
+# Run live integration verification against deployed EC2 instance
+./.venv/bin/python test_live_edge_cases_http.py
+```
 
-### Punch from your actual phone into the actual database
+---
 
-1. Find your laptop's LAN address: `ipconfig getifaddr en0`
-2. In `apps/mobile/src/api.ts` set `USE_MOCK = false` and put that address in
-   `API_BASE` (localhost on a phone means the phone, not your laptop)
-3. Start the API bound to all interfaces:
-   `cd apps/api && .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000`
-4. Phone and laptop on the same WiFi, then punch
+## ⚙️ Environment Configuration (`apps/api/.env`)
 
-The punch lands in `data/boxcode.db` and the selfie in `data/uploads/punches/`.
-`EMPLOYEE_CODE` in api.ts picks who you are until login exists.
+| Variable | Description |
+| :--- | :--- |
+| `DATABASE_URL` | Database connection string (`postgresql://...` or `sqlite:///...`) |
+| `JWT_SECRET` | 256-bit cryptographically secure session signing key |
+| `AWS_ACCESS_KEY_ID` | AWS IAM credentials for Rekognition & S3 storage |
+| `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
+| `AWS_REGION` | AWS target region (`ap-south-1`) |
+| `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`) |
+| `SLACK_SIGNING_SECRET` | Slack app signing secret for request verification |
+| `SLACK_CHANNEL_ID` | Target admin channel ID for attendance alerts and cards |
+| `SMTP_HOST` | Outbound mail server (e.g., `smtp.gmail.com`) |
+| `SMTP_PORT` | Mail server port (`587`) |
+| `SMTP_USER` | Admin sender email address |
+| `SMTP_PASS` | SMTP application password |
 
-## Pretend a gate device exists
+---
 
-    python3 tools/simulator/fake_gate.py --day 2026-08-24 --staff 8
-    python3 tools/simulator/fake_gate.py --replay-outage   # tests idempotency
-    python3 tools/simulator/fake_gate.py --live
+## 🔒 Security & Compliance
+* Passwords stored with **Argon2 / bcrypt + SHA-256** digests.
+* HMAC-signed JWT action tokens for all external decision links with automatic expiration and replay protection.
+* Role-Based Access Control (Super Admin, HR Admin, Employee).
