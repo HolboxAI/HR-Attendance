@@ -174,6 +174,10 @@ def _send_email_task(to_email: str, subject: str, body: str, html_body: str | No
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     
+    # Never attempt real SMTP delivery to dummy or test domains
+    if not to_email or any(to_email.lower().endswith(s) for s in (".local", ".test", ".example", "test.local")):
+        return
+
     if not settings.smtp_host:
         import logging
         logging.getLogger("boxcode.email").info(f"MOCK EMAIL to {to_email}: {subject} - {body}")
