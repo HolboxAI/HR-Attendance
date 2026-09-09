@@ -44,8 +44,6 @@ function toLogin(request: NextRequest) {
   }
 
   const url = new URL('/login', request.url);
-  const from = request.nextUrl.pathname + request.nextUrl.search;
-  if (from && from !== '/') url.searchParams.set('next', from);
   const res = NextResponse.redirect(url);
   res.cookies.delete(ACCESS_COOKIE);
   res.cookies.delete(REFRESH_COOKIE);

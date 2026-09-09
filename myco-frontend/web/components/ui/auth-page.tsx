@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { AtSignIcon, LockIcon, EyeIcon, EyeOffIcon, ArrowRightIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -15,10 +14,6 @@ import { SparklesCore } from './sparkles';
 import Link from 'next/link';
 
 export function AuthPage() {
-  const router = useRouter();
-  const params = useSearchParams();
-  const next = params.get('next') || '/';
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -40,7 +35,8 @@ export function AuthPage() {
         setError(body?.detail ?? 'Sign in failed');
         return;
       }
-      window.location.href = next;
+      // Always open the main dashboard page (/) by default for everyone
+      window.location.href = '/';
     } catch {
       setError('Could not reach the server');
     } finally {
