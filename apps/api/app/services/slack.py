@@ -193,3 +193,46 @@ def post_reply(channel_id: str, message: str, thread_ts: str | None = None) -> N
             logger.error(f"Slack API error in post_reply: {res_data.get('error')}")
     except Exception as e:
         logger.error(f"Failed to post reply to Slack: {e}")
+
+def post_late_arrival_alert(employee_name: str, arrive_time: str, late_minutes: int, shift_date: str) -> None:
+    """Post a late arrival alert to Slack."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": f"⏳ *Late Arrival:* {employee_name} arrived late at {arrive_time} ({late_minutes} minutes late) for their shift on {shift_date}.",
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error(f"Slack API error: {res_data.get('error')}")
+    except Exception as e:
+        logger.error(f"Failed to post late arrival alert to Slack: {e}")
+
+
+def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: int, shift_date: str) -> None:
+    """Post an early leave alert to Slack."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": f"🏃 *Early Leave:* {employee_name} left early at {leave_time} ({early_minutes} minutes early) for their shift on {shift_date}.",
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error(f"Slack API error: {res_data.get('error')}")
+    except Exception as e:
+        logger.error(f"Failed to post early leave alert to Slack: {e}")

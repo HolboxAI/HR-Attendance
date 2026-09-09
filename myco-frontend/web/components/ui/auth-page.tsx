@@ -40,8 +40,7 @@ export function AuthPage() {
         setError(body?.detail ?? 'Sign in failed');
         return;
       }
-      router.replace(next);
-      router.refresh();
+      window.location.href = next;
     } catch {
       setError('Could not reach the server');
     } finally {
@@ -53,7 +52,21 @@ export function AuthPage() {
     <main className="relative min-h-screen w-full bg-black text-white overflow-hidden lg:grid lg:grid-cols-2">
       <SpotlightCursor config={{ radius: 120 }} />
 
-
+      {/* Global Background Dot Matrix Canvas Animation from sign-in-flow-1 */}
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <CanvasRevealEffect
+          animationSpeed={3}
+          containerClassName="bg-black"
+          colors={[
+            [255, 255, 255],
+            [255, 255, 255],
+          ]}
+          dotSize={4}
+          showGradient={true}
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0.85)_0%,_transparent_100%)]" />
+        <div className="absolute top-0 left-0 right-0 h-1/3 bg-gradient-to-b from-black to-transparent" />
+      </div>
 
       {/* Left Brand Showcase Column (Desktop only) */}
       <div className="relative isolate hidden h-full flex-col justify-between border-r border-white/10 p-10 lg:flex z-10">
@@ -79,7 +92,30 @@ export function AuthPage() {
           />
           <HeroText text="HOLBOX" />
 
+          {/* Sparks falling off the name: the demo strip, sized to the
+              column. -mt pulls it up so the glow lines sit right under the
+              letters; pointer-events-none because it is decoration over a
+              page someone is trying to sign in to. */}
+          <div className="pointer-events-none relative -mt-4 h-40 w-full max-w-[34rem]">
+            {/* Gradients */}
+            <div className="absolute inset-x-20 top-0 h-[2px] w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent blur-sm" />
+            <div className="absolute inset-x-20 top-0 h-px w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
+            <div className="absolute inset-x-60 top-0 h-[5px] w-1/4 bg-gradient-to-r from-transparent via-sky-500 to-transparent blur-sm" />
+            <div className="absolute inset-x-60 top-0 h-px w-1/4 bg-gradient-to-r from-transparent via-sky-500 to-transparent" />
 
+            {/* Core component */}
+            <SparklesCore
+              background="transparent"
+              minSize={0.4}
+              maxSize={1}
+              particleDensity={1200}
+              className="h-full w-full"
+              particleColor="#FFFFFF"
+            />
+
+            {/* Radial Gradient to prevent sharp edges */}
+            <div className="absolute inset-0 h-full w-full bg-black [mask-image:radial-gradient(350px_200px_at_top,transparent_20%,white)]" />
+          </div>
 
           <HolboxMark className="size-16 -mt-6" />
         </div>

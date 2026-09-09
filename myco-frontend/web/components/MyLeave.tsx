@@ -8,6 +8,14 @@ import {
   type BalanceRow, type LeaveRequestRow, type LeaveTypeRow,
 } from '@/lib/format';
 
+const LEAVE_CATEGORIES = [
+  'Personal',
+  'Family emergency',
+  'Medical/health-related',
+  'Family/household responsibility',
+  'Other legitimate personal reason',
+];
+
 export function MyLeave({
   balances, requests, types,
 }: {
@@ -20,26 +28,46 @@ export function MyLeave({
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [halfStart, setHalfStart] = useState(false);
+  const [category, setCategory] = useState<string>('Personal');
   const [reason, setReason] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+
+  const selectedType = types.find(t => t.code === code);
+  const requiresProof = selectedType?.requires_proof;
 
   const [hoveredReqId, setHoveredReqId] = useState<string | null>(null);
   const [hoveredCardCode, setHoveredCardCode] = useState<string | null>(null);
 
   async function apply(e: React.FormEvent) {
     e.preventDefault();
+    if (requiresProof && !file) {
+      setError('A medical document is required for this leave type.');
+      return;
+    }
     setBusy(true);
     setError(null);
     setDone(false);
+
+    if (!category) {
+      setError('Please select a leave reason category.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('leave_type_code', code);
+    formData.append('from_date', from);
+    formData.append('to_date', to || from);
+    formData.append('half_day_start', String(halfStart));
+    formData.append('category', category);
+    if (reason) formData.append('reason', reason);
+    if (file) formData.append('file', file);
+
     const res = await fetch(proxy('/api/v1/leave/request'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        leave_type_code: code, from_date: from, to_date: to || from,
-        half_day_start: halfStart, reason: reason || null,
-      }),
+      body: formData,
     }).catch(() => null);
     setBusy(false);
     if (!res || !res.ok) {
@@ -47,7 +75,7 @@ export function MyLeave({
       setError(body?.detail ?? 'Could not submit that request');
       return;
     }
-    setFrom(''); setTo(''); setReason(''); setHalfStart(false);
+    setFrom(''); setTo(''); setReason(''); setCategory('Personal'); setHalfStart(false); setFile(null);
     setDone(true);
     router.refresh();
   }
@@ -127,11 +155,44 @@ export function MyLeave({
                    onChange={(e) => setHalfStart(e.target.checked)} className="size-4 rounded border-line" />
             Half day
           </label>
-          <label className="min-w-[14rem] flex-1 space-y-1.5">
-            <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">Reason</span>
-            <input value={reason} onChange={(e) => setReason(e.target.value)}
-                   placeholder="Brief note on reason..."
-                   className={`${field} w-full`} />
+          <label className="min-w-[12rem] space-y-1.5">
+            <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
+              Category *
+            </span>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className={`${field} w-full`}
+            >
+              {LEAVE_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="min-w-[14rem] flex-1 space-y-1.5 relative">
+            <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
+              Reason {requiresProof && <span className="text-st-absent">* Requires Document</span>}
+            </span>
+            <div className="relative flex items-center">
+              <input value={reason} onChange={(e) => setReason(e.target.value)}
+                     placeholder="Brief note on reason..."
+                     className={`${field} w-full pr-12`} />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                <label className="cursor-pointer p-1.5 rounded-full hover:bg-surface-3 transition-colors text-ink-2 hover:text-ink relative group" aria-label="Attach Document">
+                  <input 
+                    type="file" 
+                    className="sr-only" 
+                    accept=".jpg,.jpeg,.png,.pdf" 
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                  {file && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-st-approved rounded-full border border-surface"></span>}
+                </label>
+              </div>
+            </div>
+            {file && <span className="text-[10px] text-ink-3 block mt-1 line-clamp-1">{file.name}</span>}
           </label>
           <button type="submit" disabled={busy}
                   className="rounded-xl bg-ink text-ground px-5 py-2.5 text-xs font-black uppercase tracking-wider disabled:opacity-50 hover:opacity-90 active:scale-95 transition-all cursor-pointer">
@@ -192,7 +253,14 @@ export function MyLeave({
                       <td className={`px-4 py-3 ${s.tone}`}>
                         <span aria-hidden>{s.glyph} </span>{s.label}
                       </td>
-                      <td className="px-4 py-3 text-ink-3">{r.decided_note ?? r.reason ?? ''}</td>
+                      <td className="px-4 py-3 text-ink-3">
+                        {r.category && (
+                          <span className="inline-block px-1.5 py-0.5 mr-2 rounded text-[10px] font-mono font-medium bg-surface-3 text-ink border border-line">
+                            {r.category}
+                          </span>
+                        )}
+                        {r.decided_note ?? r.reason ?? ''}
+                      </td>
                       <td className="px-4 py-3">
                         {live && (
                           <button

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AlertTriangle, CalendarOff, CheckCircle2, Clock3, DoorOpen } from 'lucide-react';
+import { AlertTriangle, CalendarOff, CheckCircle2, Clock3, DoorOpen, MonitorPlay } from 'lucide-react';
 
 import type { Board } from '@/lib/format';
 
@@ -31,13 +31,17 @@ export function Tiles({ summary }: { summary: Board['summary'] }) {
       icon: CalendarOff, filter: 'absent',
     },
     {
+      label: 'WFH', value: summary.wfh || 0, sub: 'remote working',
+      icon: MonitorPlay, filter: 'wfh',
+    },
+    {
       label: 'Needs attention', value: summary.exceptions, sub: 'exceptions to review',
       icon: AlertTriangle, filter: 'exceptions',
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
       {tiles.map((t) => {
         const Icon = t.icon;
         return (

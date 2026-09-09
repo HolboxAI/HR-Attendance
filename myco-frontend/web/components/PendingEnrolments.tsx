@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Check, X } from 'lucide-react';
 
 import { proxy } from '@/lib/format';
+import { HoverProfile } from '@/components/HoverProfile';
 
 export type EnrolmentRequestRow = {
   id: string;
@@ -71,7 +72,9 @@ export function PendingEnrolments({ rows }: { rows: EnrolmentRequestRow[] }) {
             />
             <div className="space-y-3 p-4">
               <div>
-                <p className="font-semibold text-ink text-sm">{r.full_name}</p>
+                <HoverProfile data={{ name: r.full_name, code: r.employee_code }}>
+                  <p className="font-semibold text-ink text-sm inline-block">{r.full_name}</p>
+                </HoverProfile>
                 <p className="text-xs text-ink-3 font-mono">
                   {r.employee_code}
                   {r.already_enrolled && ' · replaces their current photo'}

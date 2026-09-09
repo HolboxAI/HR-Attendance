@@ -23,8 +23,9 @@ from app.db.session import get_db
 from app.models.attendance import PunchEvent
 from app.models.auth import RefreshSession
 from app.models.employee import Employee, User
-from app.models.enums import UserRole
-from app.models.enums import PunchDirection, PunchSource
+from app.models.enums import UserRole, PunchDirection, PunchSource, CorrectionStatus, LeaveStatus
+from app.models.leave import LeaveRequest, LeaveType
+from app.models.wfh_request import WFHRequest
 from app.models.org import Department, Organization
 from app.services.attendance import (
     next_direction, policy_for, recompute_day, record_punch,
@@ -76,6 +77,8 @@ class BoardRow(BaseModel):
     punch_count: int
     has_exception: bool
     exception_note: str | None
+    is_regularized: bool = False
+    is_wfh_enabled: bool = False
 
 
 class BoardSummary(BaseModel):
@@ -87,6 +90,7 @@ class BoardSummary(BaseModel):
     exceptions: int
     currently_in: int
     headcount: int
+    wfh: int = 0
 
 
 class BoardResponse(BaseModel):
@@ -127,7 +131,7 @@ def board(
     day = on or org_today()
     rows: list[BoardRow] = []
     counts = {"present": 0, "late": 0, "absent": 0, "on_leave": 0,
-              "weekly_off": 0, "exceptions": 0, "currently_in": 0}
+              "weekly_off": 0, "exceptions": 0, "currently_in": 0, "wfh": 0}
 
     employees = visible_employees(db, user)
 
@@ -137,10 +141,26 @@ def board(
         in_now = next_direction(db, emp, day) == PunchDirection.OUT
         dept = db.get(Department, emp.department_id) if emp.department_id else None
 
+        is_wfh = emp.is_wfh_enabled
+        if not is_wfh:
+            from app.models.wfh_request import WFHRequest
+            wfh_req = db.scalar(
+                select(WFHRequest).where(
+                    and_(
+                        WFHRequest.employee_id == emp.id,
+                        WFHRequest.shift_date == day,
+                        WFHRequest.status == CorrectionStatus.APPROVED,
+                    )
+                )
+            )
+            if wfh_req:
+                is_wfh = True
+
         rows.append(BoardRow(
             employee_code=emp.emp_code,
             full_name=emp.full_name,
             department=dept.name if dept else None,
+            is_wfh_enabled=is_wfh,
             shift_label=f"{policy.start_time:%H:%M}-{policy.end_time:%H:%M}",
             status=record.status.value,
             currently_in=in_now,
@@ -152,10 +172,13 @@ def board(
             punch_count=record.punch_count,
             has_exception=record.has_exception,
             exception_note=record.exception_note,
+            is_regularized=record.is_regularized,
         ))
 
         if record.status.value in counts:
             counts[record.status.value] += 1
+        if is_wfh:
+            counts["wfh"] += 1
         if record.late_minutes > 0:
             counts["late"] += 1
         if record.has_exception:
@@ -168,6 +191,64 @@ def board(
         shift_date=day,
         summary=BoardSummary(headcount=len(employees), **counts),
         rows=rows,
+    )
+
+
+class WFHLocationResponse(BaseModel):
+    lat: float | None
+    lng: float | None
+    captured_at: datetime | None
+
+@router.get("/board/wfh-location", response_model=WFHLocationResponse)
+def get_wfh_location(
+    employee_code: str,
+    shift_date: date,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
+):
+    emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code.upper()))
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+        
+    from app.models.attendance import PunchEvent
+    from sqlalchemy import and_
+    
+    # Actually, we should use the shift_date logic but since they are asking for a specific day, 
+    # we can just query the punches around that date.
+    from datetime import datetime, time, timedelta, timezone
+    window_start = datetime.combine(shift_date - timedelta(days=1), time(0, 0), tzinfo=timezone.utc)
+    window_end = datetime.combine(shift_date + timedelta(days=2), time(0, 0), tzinfo=timezone.utc)
+    
+    punches = db.scalars(
+        select(PunchEvent)
+        .where(
+            and_(
+                PunchEvent.employee_id == emp.id,
+                PunchEvent.event_ts_utc >= window_start,
+                PunchEvent.event_ts_utc < window_end,
+                PunchEvent.rejection_reason.is_(None),
+            )
+        )
+        .order_by(PunchEvent.event_ts_utc.asc())
+    ).all()
+    
+    from app.services.attendance import shift_date_for, policy_for
+    from app.core.clock import _aware
+    policy, _ = policy_for(db, emp, shift_date)
+    
+    day_punches = [
+        p for p in punches 
+        if shift_date_for(_aware(p.event_ts_utc), policy) == shift_date
+    ]
+    
+    if not day_punches:
+        return WFHLocationResponse(lat=None, lng=None, captured_at=None)
+        
+    first = day_punches[0]
+    return WFHLocationResponse(
+        lat=first.lat,
+        lng=first.lng,
+        captured_at=first.event_ts_utc,
     )
 
 
@@ -204,52 +285,199 @@ def rejected(
     return out
 
 
-@router.get("/month")
-def month(
-    employee_code: str,
-    year: int,
-    month: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(require_role(UserRole.MANAGER)),
-) -> dict:
-    emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
-    if emp is None:
-        raise HTTPException(404, f"No employee with code {employee_code}")
-    # 404 rather than 403 for someone outside your scope: a manager should not
-    # be able to enumerate the company by watching which codes come back
-    # "forbidden" and which come back "not found".
-    if emp.id not in {e.id for e in visible_employees(db, user)}:
-        raise HTTPException(404, f"No employee with code {employee_code}")
+def _employee_attendance_days(
+    db: Session, emp: Employee, start_date: date, end_date: date
+) -> tuple[list[dict], dict]:
+    leave_requests = db.scalars(
+        select(LeaveRequest).where(
+            and_(
+                LeaveRequest.employee_id == emp.id,
+                LeaveRequest.status == LeaveStatus.APPROVED,
+                LeaveRequest.from_date <= end_date,
+                LeaveRequest.to_date >= start_date,
+                LeaveRequest.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    leave_types = {lt.id: lt for lt in db.scalars(select(LeaveType).where(LeaveType.org_id == emp.org_id)).all()}
+    
+    wfh_dates = set(
+        db.scalars(
+            select(WFHRequest.shift_date).where(
+                and_(
+                    WFHRequest.employee_id == emp.id,
+                    WFHRequest.status == CorrectionStatus.APPROVED,
+                    WFHRequest.shift_date >= start_date,
+                    WFHRequest.shift_date <= end_date,
+                )
+            )
+        ).all()
+    )
 
-    _, last = calendar.monthrange(year, month)
+    curr = start_date
     days = []
-    totals = {"worked_minutes": 0, "present": 0, "half_day": 0, "absent": 0,
-              "late_minutes": 0, "overtime_minutes": 0}
+    totals = {
+        "worked_minutes": 0,
+        "present": 0,
+        "half_day": 0,
+        "absent": 0,
+        "on_leave": 0,
+        "wfh": 0,
+        "weekly_off": 0,
+        "holiday": 0,
+        "late_minutes": 0,
+        "overtime_minutes": 0,
+        "regularized": 0,
+        "leaves_by_type": {},
+    }
 
-    for d in range(1, last + 1):
-        on = date(year, month, d)
-        rec = recompute_day(db, emp, on)
+    while curr <= end_date:
+        rec = recompute_day(db, emp, curr)
+        
+        matching_lr = next((lr for lr in leave_requests if lr.from_date <= curr <= lr.to_date), None)
+        lt = leave_types.get(matching_lr.leave_type_id) if matching_lr else None
+        leave_code = lt.code if lt else None
+        leave_name = lt.name if lt else None
+
+        is_wfh = (curr in wfh_dates) or bool(emp.is_wfh_enabled)
+        st = rec.status.value
+
+        note = rec.exception_note or ""
+        if rec.is_regularized:
+            totals["regularized"] += 1
+            if not note:
+                note = "Regularized"
+
         days.append({
-            "date": on.isoformat(),
-            "weekday": on.strftime("%a"),
-            "status": rec.status.value,
+            "date": curr.isoformat(),
+            "weekday": curr.strftime("%a"),
+            "status": st,
             "first_in": rec.first_in.isoformat() if rec.first_in else None,
             "last_out": rec.last_out.isoformat() if rec.last_out else None,
             "worked_minutes": rec.worked_minutes,
             "late_minutes": rec.late_minutes,
             "overtime_minutes": rec.overtime_minutes,
             "has_exception": rec.has_exception,
-            "exception_note": rec.exception_note,
+            "exception_note": note if note else None,
+            "is_regularized": rec.is_regularized,
+            "is_wfh": is_wfh,
+            "leave_code": leave_code,
+            "leave_name": leave_name,
         })
+
         totals["worked_minutes"] += rec.worked_minutes
         totals["late_minutes"] += rec.late_minutes
         totals["overtime_minutes"] += rec.overtime_minutes
-        if rec.status.value in totals:
-            totals[rec.status.value] += 1
+
+        if st in totals:
+            totals[st] += 1
+        if is_wfh and (st == "wfh" or (emp.is_wfh_enabled and st == "present")):
+            totals["wfh"] += 1
+        if leave_code and st in ("on_leave", "half_day"):
+            consumed = 0.5 if st == "half_day" else 1.0
+            totals["leaves_by_type"][leave_code] = totals["leaves_by_type"].get(leave_code, 0.0) + consumed
+
+        curr = date.fromordinal(curr.toordinal() + 1)
+
+    return days, totals
+
+
+@router.get("/month")
+def month(
+    employee_code: str,
+    year: int | None = None,
+    month: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
+) -> dict:
+    emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
+    if emp is None:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+    if emp.id not in {e.id for e in visible_employees(db, user)}:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+
+    if start_date and end_date:
+        s_date = min(start_date, end_date)
+        e_date = max(start_date, end_date)
+    else:
+        now = datetime.now()
+        y = year or now.year
+        m = month or now.month
+        _, last = calendar.monthrange(y, m)
+        s_date = date(y, m, 1)
+        e_date = date(y, m, last)
+
+    days, totals = _employee_attendance_days(db, emp, s_date, e_date)
+    dept = db.get(Department, emp.department_id) if emp.department_id else None
 
     db.commit()
-    return {"employee_code": emp.emp_code, "full_name": emp.full_name,
-            "year": year, "month": month, "days": days, "totals": totals}
+    return {
+        "employee_code": emp.emp_code,
+        "full_name": emp.full_name,
+        "department": dept.name if dept else None,
+        "correction_limit": emp.correction_limit if emp.correction_limit is not None else 5,
+        "start_date": s_date.isoformat(),
+        "end_date": e_date.isoformat(),
+        "year": year or s_date.year,
+        "month": month or s_date.month,
+        "days": days,
+        "totals": totals,
+    }
+
+
+@router.get("/export/employee.pdf")
+def export_employee_pdf(
+    employee_code: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    year: int | None = None,
+    month: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
+) -> Response:
+    emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
+    if emp is None:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+    if emp.id not in {e.id for e in visible_employees(db, user)}:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+
+    if start_date and end_date:
+        s_date = min(start_date, end_date)
+        e_date = max(start_date, end_date)
+    else:
+        now = datetime.now()
+        y = year or now.year
+        m = month or now.month
+        _, last = calendar.monthrange(y, m)
+        s_date = date(y, m, 1)
+        e_date = date(y, m, last)
+
+    days, totals = _employee_attendance_days(db, emp, s_date, e_date)
+    dept = db.get(Department, emp.department_id) if emp.department_id else None
+    org = db.get(Organization, user.org_id)
+
+    body = export.employee_to_pdf(
+        employee=emp,
+        department=dept.name if dept else None,
+        days=days,
+        totals=totals,
+        start_date=s_date,
+        end_date=e_date,
+        org_name=org.name if org else "Boxcode",
+    )
+    db.commit()
+
+    name = f"{emp.emp_code}_attendance_{s_date.isoformat()}_{e_date.isoformat()}.pdf"
+    return Response(
+        content=body,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/correct")

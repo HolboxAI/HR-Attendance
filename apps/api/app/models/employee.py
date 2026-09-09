@@ -37,7 +37,8 @@ class Employee(Base, TimestampMixin):
     date_of_joining: Mapped[date | None] = mapped_column(Date)
     date_of_exit: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
-
+    is_wfh_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
+    correction_limit: Mapped[int | None] = mapped_column(default=None)
 
 class User(Base, TimestampMixin):
     """Login identity. Not every employee gets one (factory staff often don't)."""

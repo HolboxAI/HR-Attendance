@@ -24,6 +24,7 @@ export type Identity = {
   full_name: string | null;
   can_punch: boolean;
   is_admin: boolean;
+  correction_limit: number;
 };
 
 export async function accessToken(): Promise<string | null> {

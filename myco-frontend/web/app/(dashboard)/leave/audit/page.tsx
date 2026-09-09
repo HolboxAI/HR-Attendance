@@ -2,6 +2,7 @@ import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { getLeaveAudit, getLeavePolicy } from '@/lib/api';
 import { dayMonth, hhmm } from '@/lib/format';
+import { HoverProfile } from '@/components/HoverProfile';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,9 @@ export default async function LeaveAuditPage() {
           {rows.map((r, i) => (
             <div key={i} className="px-5 py-3.5 hover:bg-surface-2/30 transition-colors">
               <div className="flex flex-wrap items-baseline gap-x-3 text-xs">
-                <span className="font-semibold text-ink">{r.actor}</span>
+                <HoverProfile data={{ name: r.actor, code: r.actor }}>
+                  <span className="font-semibold text-ink inline-block transition-transform duration-300 hover:translate-x-1 cursor-default">{r.actor}</span>
+                </HoverProfile>
                 <span className="text-ink-2 font-mono">{r.action} · {r.entity.replace(/_/g, ' ')}</span>
                 <span className="tnum ml-auto text-[11px] font-mono text-ink-3">
                   {dayMonth(r.at)} · {hhmm(r.at)}

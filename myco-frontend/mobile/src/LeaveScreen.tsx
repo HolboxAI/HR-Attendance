@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
-  TextInput, View,
+  TextInput, View, ActionSheetIOS, Platform, Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 import { applyForLeave, cancelLeave, getLeaveBalance, getMyLeave, getHolidays } from './api';
 import MiniCalendar from './MiniCalendar';
@@ -13,6 +14,14 @@ import type { LeaveBalance, LeaveRequestItem, Holiday } from './types';
 /** Dates are YYYY-MM-DD - typed, or picked from the calendar beside the field. */
 const DATE_HINT = 'YYYY-MM-DD';
 const looksLikeDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+const LEAVE_CATEGORIES = [
+  'Personal',
+  'Family emergency',
+  'Medical/health-related',
+  'Family/household responsibility',
+  'Other legitimate personal reason',
+];
 
 function formatDateLong(isoDate: string): string {
   const d = new Date(isoDate);
@@ -25,6 +34,7 @@ export default function LeaveScreen() {
   const STATUS: Record<LeaveRequestItem['status'], { label: string; glyph: string; tone: string }> = {
     pending: { label: 'Pending', glyph: '◌', tone: c.warn },
     approved: { label: 'Approved', glyph: '●', tone: c.ok },
+    partially_approved: { label: 'Partial', glyph: '◐', tone: c.warn },
     rejected: { label: 'Rejected', glyph: '○', tone: c.crit },
     cancelled: { label: 'Cancelled', glyph: '–', tone: c.ink3 },
   };
@@ -34,12 +44,17 @@ export default function LeaveScreen() {
   const [code, setCode] = useState('CL');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [category, setCategory] = useState('Personal');
   const [reason, setReason] = useState('');
+  const [file, setFile] = useState<{ uri: string; type: string; name: string; webFile?: any } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   // Which field the calendar is filling; only one grid open at a time.
   const [picking, setPicking] = useState<'from' | 'to' | null>(null);
+
+  const selectedBalance = balances?.find((b) => b.code === code);
+  const requiresProof = selectedBalance?.requiresProof;
 
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [showAllHolidays, setShowAllHolidays] = useState(false);
@@ -66,6 +81,46 @@ export default function LeaveScreen() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function pickImage() {
+    const options = ['Take Photo', 'Choose from Library', 'Cancel'];
+    const pick = async (index: number) => {
+      let result;
+      if (index === 0) {
+        const p = await ImagePicker.requestCameraPermissionsAsync();
+        if (!p.granted) { Alert.alert('Camera permission required'); return; }
+        result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+      } else if (index === 1) {
+        result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
+      }
+      if (result && !result.canceled) {
+        const asset = result.assets?.[0];
+        if (!asset) return;
+        if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+          setError('File too large. Maximum 5MB.');
+          return;
+        }
+        const uri = asset.uri;
+        const ext = uri.split('.').pop() || 'jpg';
+        setFile({ uri, type: asset.file?.type || `image/${ext}`, name: asset.file?.name || `doc.${ext}`, webFile: asset.file });
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      pick(1);
+    } else if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: 2 },
+        (btnIndex) => { if (btnIndex !== 2) pick(btnIndex); }
+      );
+    } else {
+      Alert.alert('Upload Document', 'Choose an option', [
+        { text: 'Take Photo', onPress: () => pick(0) },
+        { text: 'Choose from Library', onPress: () => pick(1) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
+
   async function submit() {
     setError(null);
     setSent(false);
@@ -77,14 +132,25 @@ export default function LeaveScreen() {
       setError(`End date must look like ${DATE_HINT}`);
       return;
     }
+    if (requiresProof && !file) {
+      setError('A medical document is required for this leave type.');
+      return;
+    }
+    if (!category) {
+      setError('Please select a leave reason category.');
+      return;
+    }
     setBusy(true);
-    const problem = await applyForLeave({ code, from, to, halfDay: false, reason });
+    const problem = await applyForLeave({ 
+      code, from, to, halfDay: false, category, reason, 
+      fileUri: file?.uri, fileType: file?.type, fileName: file?.name, webFile: file?.webFile 
+    });
     setBusy(false);
     if (problem) {
       setError(problem);
       return;
     }
-    setFrom(''); setTo(''); setReason('');
+    setFrom(''); setTo(''); setReason(''); setCategory('Personal'); setFile(null);
     setPicking(null);
     setSent(true);
     load();
@@ -179,10 +245,40 @@ export default function LeaveScreen() {
           />
         )}
 
-        <TextInput
-          style={s.input} value={reason} onChangeText={setReason}
-          placeholder="Reason" placeholderTextColor={c.ink3} editable={!busy}
-        />
+        <Text style={[s.label, { marginTop: 4, marginBottom: 4 }]}>Reason Category</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+          <View style={{ flexDirection: 'row', gap: 6 }}>
+            {LEAVE_CATEGORIES.map((cat) => {
+              const on = category === cat;
+              return (
+                <Pressable
+                  key={cat}
+                  style={[s.chip, on && s.chipOn]}
+                  onPress={() => setCategory(cat)}
+                  accessibilityRole="button"
+                >
+                  <Text style={[s.chipText, on && s.chipTextOn]}>{cat}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <View style={s.reasonRow}>
+          <TextInput
+            style={[s.input, { flex: 1 }]} value={reason} onChangeText={setReason}
+            placeholder={requiresProof ? "Reason (Document Required)" : "Reason"} 
+            placeholderTextColor={requiresProof ? c.crit : c.ink3} editable={!busy}
+          />
+          <Pressable
+            style={[s.pickBtn, file && s.pickBtnOn]}
+            onPress={pickImage}
+            accessibilityRole="button"
+          >
+            <Text style={[s.pickText, file && s.pickTextOn]}>📎</Text>
+          </Pressable>
+        </View>
+        {file && <Text style={{ fontSize: 11, color: c.ink3, marginLeft: 4 }}>Attachment selected</Text>}
 
         {error && (
           <View style={s.msg} accessibilityLiveRegion="polite">
@@ -214,7 +310,7 @@ export default function LeaveScreen() {
         <Text style={s.empty}>You haven&apos;t applied for anything yet.</Text>
       ) : (
         requests.map((r) => {
-          const st = STATUS[r.status];
+          const st = STATUS[r.status] || { label: String(r.status), glyph: '?', tone: c.ink3 };
           const live = r.status === 'pending' || r.status === 'approved';
           return (
             <View key={r.id} style={s.row}>
@@ -225,6 +321,7 @@ export default function LeaveScreen() {
                 <Text style={[s.rowStatus, { color: st.tone }]}>
                   {st.glyph} {st.label} · {r.days} day{r.days === 1 ? '' : 's'}
                 </Text>
+                {r.category ? <Text style={[s.rowNote, { fontWeight: '600', color: c.ink }]}>Category: {r.category}</Text> : null}
                 {r.note ? <Text style={s.rowNote}>{r.note}</Text> : null}
               </View>
               {live && (
@@ -366,6 +463,7 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
     color: c.ink, fontSize: 15,
   },
   dateRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  reasonRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   pickBtn: {
     borderColor: c.line, borderWidth: 1, borderRadius: 8,
     paddingHorizontal: 13, paddingVertical: 10,

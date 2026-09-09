@@ -94,7 +94,8 @@ export async function proxy(request: NextRequest) {
   reqHeaders.set('cookie', kept.join('; '));
 
   const res = NextResponse.next({ request: { headers: reqHeaders } });
-  const secure = process.env.NODE_ENV === 'production';
+  const isHttps = request.headers.get('x-forwarded-proto') === 'https' || request.url.startsWith('https://');
+  const secure = isHttps;
   res.cookies.set(ACCESS_COOKIE, body.access_token, {
     httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: body.expires_in,
   });

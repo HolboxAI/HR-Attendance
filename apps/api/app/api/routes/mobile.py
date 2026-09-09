@@ -177,12 +177,37 @@ async def punch(
     key = punch_key(shift_date, punch_id)
     storage.put(key, image)
 
-    geo = check_presence(
-        lat=lat, lng=lng, office_lat=office_lat, office_lng=office_lng,
-        radius_m=radius, accuracy_m=accuracy_m, fix_age_seconds=fix_age_seconds,
-        is_mocked=is_mocked, wifi_bssid=wifi_bssid,
-        allowed_bssids=allowed_bssids, policy=policy,
-    )
+    is_wfh = emp.is_wfh_enabled
+    if not is_wfh:
+        from sqlalchemy import and_
+        from app.models.wfh_request import WFHRequest
+        from app.models.enums import CorrectionStatus
+        wfh_req = db.scalar(
+            select(WFHRequest).where(
+                and_(
+                    WFHRequest.employee_id == emp.id,
+                    WFHRequest.shift_date == shift_date,
+                    WFHRequest.status == CorrectionStatus.APPROVED,
+                )
+            )
+        )
+        if wfh_req:
+            is_wfh = True
+
+    if is_wfh:
+        if lat is None or lng is None:
+            from app.services.geofence import GeoCheck
+            geo = GeoCheck(ok=False, distance_m=None, reason="GPS location is required for WFH", matched_wifi=False)
+        else:
+            from app.services.geofence import GeoCheck
+            geo = GeoCheck(ok=True, distance_m=None, reason=None, matched_wifi=False)
+    else:
+        geo = check_presence(
+            lat=lat, lng=lng, office_lat=office_lat, office_lng=office_lng,
+            radius_m=radius, accuracy_m=accuracy_m, fix_age_seconds=fix_age_seconds,
+            is_mocked=is_mocked, wifi_bssid=wifi_bssid,
+            allowed_bssids=allowed_bssids, policy=policy,
+        )
 
     face = None
     face_ok: bool | None = None
@@ -283,6 +308,11 @@ async def punch(
             body=f"{emp.full_name} arrived late at {arrive_time} ({day.late_minutes} minutes late) for their shift on {shift_date.isoformat()}.",
             data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
         )
+        # Notify Slack
+        from app.services.slack import post_late_arrival_alert
+        from threading import Thread
+        Thread(target=post_late_arrival_alert, args=(emp.full_name, arrive_time, day.late_minutes, shift_date.isoformat()), daemon=True).start()
+        
         db.commit()
 
     if direction == PunchDirection.OUT and day.early_out_minutes > 0:
@@ -296,6 +326,11 @@ async def punch(
             body=f"{emp.full_name} left early at {leave_time} ({day.early_out_minutes} minutes early) for their shift on {shift_date.isoformat()}.",
             data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
         )
+        # Notify Slack
+        from app.services.slack import post_early_leave_alert
+        from threading import Thread
+        Thread(target=post_early_leave_alert, args=(emp.full_name, leave_time, day.early_out_minutes, shift_date.isoformat()), daemon=True).start()
+        
         db.commit()
 
     if reason:
@@ -487,9 +522,9 @@ def my_month(
             "last_out": rec.last_out.isoformat() if rec.last_out else None,
             "worked_minutes": rec.worked_minutes,
             "late_minutes": rec.late_minutes,
-            "overtime_minutes": rec.overtime_minutes,
             "has_exception": rec.has_exception,
             "exception_note": rec.exception_note,
+            "is_regularized": rec.is_regularized,
         })
         totals["worked_minutes"] += rec.worked_minutes
         totals["late_minutes"] += rec.late_minutes

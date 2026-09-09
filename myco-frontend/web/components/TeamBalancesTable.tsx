@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-
 import type { TeamBalanceRow } from '@/lib/format';
+import { HoverProfile } from '@/components/HoverProfile';
 
 export function TeamBalancesTable({
   types,
@@ -51,11 +51,11 @@ export function TeamBalancesTable({
                 } ${isDimmed ? 'opacity-40' : 'opacity-100'}`}
               >
                 <td className="px-4 py-3">
-                  <Link href={`/people/${code}`} className="font-semibold text-ink group inline-flex items-center gap-1.5">
-                    
+                  <HoverProfile data={{ name: e.name, code: code }}>
+                    <Link href={`/people/${code}`} className="font-semibold text-ink group inline-flex items-center gap-1.5 transition-transform duration-300 hover:translate-x-1">
                       {e.name}
-                    
-                  </Link>
+                    </Link>
+                  </HoverProfile>
                   <span className="ml-2 text-xs font-mono text-ink-3">{code}</span>
                 </td>
                 {types.map((t) => {

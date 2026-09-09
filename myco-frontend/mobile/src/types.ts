@@ -26,6 +26,7 @@ export type LeaveBalance = {
   available: number;
   accrued: number;
   used: number;
+  requiresProof: boolean;
 };
 
 export type LeaveRequestItem = {
@@ -34,7 +35,8 @@ export type LeaveRequestItem = {
   fromDate: string;
   toDate: string;
   days: number;
-  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'partially_approved';
+  category?: string | null;
   note: string | null;
 };
 
@@ -89,4 +91,13 @@ export type NotificationItem = {
   body: string;
   read: boolean;
   createdAt: string;
+  data?: Record<string, unknown>;
+};
+
+export type WFHRequestItem = {
+  id: string;
+  shift_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  created_at: string;
 };

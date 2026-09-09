@@ -15,6 +15,7 @@ import LoginScreen from './src/LoginScreen';
 import MonthScreen from './src/MonthScreen';
 import ProfileScreen from './src/ProfileScreen';
 import PunchScreen from './src/PunchScreen';
+import WFHRequestScreen from './src/WFHRequestScreen';
 import { getUnreadCount } from './src/api';
 import type { Identity } from './src/auth';
 import { loadApiBaseOverride } from './src/config';
@@ -27,7 +28,7 @@ import type { ThemeColors } from './src/theme';
 import type { MonthDay } from './src/types';
 
 type Tab = 'home' | 'attendance' | 'leave' | 'inbox' | 'profile';
-type AttendanceView = 'month' | 'corrections';
+type AttendanceView = 'month' | 'corrections' | 'wfh';
 
 export default function App() {
   return (
@@ -140,7 +141,7 @@ function AppInner() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
         {tab === 'attendance' && (
           <View style={s.segmented}>
-            {(['month', 'corrections'] as AttendanceView[]).map((v) => (
+            {(['month', 'corrections', 'wfh'] as AttendanceView[]).map((v) => (
               <Pressable
                 key={v}
                 onPress={() => { setAttendanceView(v); if (v === 'month') setCorrectionPrefill(null); }}
@@ -149,7 +150,7 @@ function AppInner() {
                 accessibilityState={{ selected: attendanceView === v }}
               >
                 <Text style={[s.segmentText, attendanceView === v && s.segmentTextOn]}>
-                  {v === 'month' ? 'Month' : 'Corrections'}
+                  {v === 'month' ? 'Month' : v === 'corrections' ? 'Corrections' : 'WFH'}
                 </Text>
               </Pressable>
             ))}
@@ -160,7 +161,9 @@ function AppInner() {
           : tab === 'attendance' ? (
             attendanceView === 'month'
               ? <MonthScreen onRequestCorrection={openCorrection} />
-              : <CorrectionsScreen prefill={correctionPrefill} />
+              : attendanceView === 'corrections'
+                ? <CorrectionsScreen prefill={correctionPrefill} />
+                : <WFHRequestScreen prefill={null} />
           )
           : tab === 'leave' ? <LeaveScreen />
           : tab === 'inbox' ? <InboxScreen onUnreadChange={setUnread} />

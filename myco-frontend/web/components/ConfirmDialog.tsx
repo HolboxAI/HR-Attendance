@@ -38,7 +38,7 @@ export function ConfirmDialog({
       ref={ref}
       onClose={onClose}
       onCancel={onClose}
-      className="bx-pop m-auto w-full max-w-md rounded-3xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-md overflow-hidden"
+      className="bx-pop m-auto w-full max-w-md rounded-2xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/10 backdrop:backdrop-blur-xl overflow-hidden"
     >
       <div className="p-6">
         <h2 className="font-display text-base font-bold text-ink">{title}</h2>

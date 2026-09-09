@@ -34,7 +34,8 @@ export async function POST(request: Request) {
   }
 
   const res = NextResponse.json({ identity: body.identity });
-  const secure = process.env.NODE_ENV === 'production';
+  const isHttps = request.headers.get('x-forwarded-proto') === 'https' || request.url.startsWith('https://');
+  const secure = isHttps;
   res.cookies.set(ACCESS_COOKIE, body.access_token, {
     httpOnly: true, sameSite: 'lax', secure, path: '/', maxAge: body.expires_in,
   });

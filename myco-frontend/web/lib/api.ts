@@ -23,10 +23,21 @@ export const getBoard = (on?: string) =>
 export const getRejected = (days = 7) =>
   apiGet<Rejected[]>(`/api/v1/admin/rejected?days=${days}`);
 
-export const getMonth = (code: string, year: number, month: number) =>
-  apiGet<MonthResponse>(
-    `/api/v1/admin/month?employee_code=${encodeURIComponent(code)}&year=${year}&month=${month}`,
-  );
+export const getMonth = (
+  code: string,
+  year?: number,
+  month?: number,
+  start_date?: string,
+  end_date?: string,
+) => {
+  let url = `/api/v1/admin/month?employee_code=${encodeURIComponent(code)}`;
+  if (start_date && end_date) {
+    url += `&start_date=${encodeURIComponent(start_date)}&end_date=${encodeURIComponent(end_date)}`;
+  } else if (year && month) {
+    url += `&year=${year}&month=${month}`;
+  }
+  return apiGet<MonthResponse>(url);
+};
 
 /** Your own month - not an admin route, so every employee can reach it. */
 export const getMyMonth = (year: number, month: number) =>
@@ -48,6 +59,7 @@ export const getLeaveTypes = () => apiFetch<LeaveTypeRow[]>('/api/v1/admin/leave
 export const getLeaveAudit = (limit = 80) =>
   apiGet<AuditRow[]>(`/api/v1/admin/leave/audit?limit=${limit}`);
 export const getPending = () => apiFetch<LeaveRequestRow[]>('/api/v1/admin/leave/pending');
+export const getAllStatus = () => apiFetch<LeaveRequestRow[]>('/api/v1/admin/leave/status');
 export const getTeamBalances = () =>
   apiFetch<TeamBalanceRow[]>('/api/v1/admin/leave/balances');
 export const getHolidays = (year: number) =>
@@ -63,8 +75,12 @@ export const getMyLeaveTypes = () => apiGet<LeaveTypeRow[]>('/api/v1/leave/types
 export const getCorrectionsPending = () =>
   apiFetch<CorrectionRow[]>('/api/v1/admin/corrections/pending');
 
+export const getCorrectionsSummary = () =>
+  apiFetch<any[]>('/api/v1/admin/corrections/summary');
+
 export const getMyCorrections = () =>
   apiGet<CorrectionRow[]>('/api/v1/corrections/my-requests');
+
 
 /* ---------------------------------------------------------------- devices */
 

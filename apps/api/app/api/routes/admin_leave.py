@@ -37,6 +37,8 @@ hr_only = Depends(require_role(UserRole.HR_ADMIN))
 
 class DecideRequest(BaseModel):
     approve: bool
+    partial_approve: bool = False
+    medical_document_deadline: datetime | None = None
     note: str | None = None
 
 
@@ -113,7 +115,7 @@ def pending(db: Session = Depends(get_db), user: User = approver):
     scope = {e.id: e for e in visible_employees(db, user)}
     rows = db.scalars(
         select(LeaveRequest)
-        .where(LeaveRequest.status == LeaveStatus.PENDING,
+        .where(LeaveRequest.status.in_([LeaveStatus.PENDING, LeaveStatus.PARTIALLY_APPROVED]),
                LeaveRequest.deleted_at.is_(None))
         .order_by(LeaveRequest.from_date)
     ).all()
@@ -122,7 +124,24 @@ def pending(db: Session = Depends(get_db), user: User = approver):
     return [
         to_request_out(db, r, scope[r.employee_id])
         for r in rows
-        if r.employee_id in scope and (r.employee_id != user.employee_id or user.role == UserRole.HR_ADMIN)
+        if r.employee_id in scope and r.employee_id != user.employee_id
+    ]
+
+
+@router.get("/leave/status", response_model=list[RequestOut])
+def all_status(db: Session = Depends(get_db), user: User = approver):
+    """View all leave requests for the leave status page."""
+    scope = {e.id: e for e in visible_employees(db, user)}
+    rows = db.scalars(
+        select(LeaveRequest)
+        .where(LeaveRequest.deleted_at.is_(None))
+        .order_by(LeaveRequest.from_date.desc())
+    ).all()
+    
+    return [
+        to_request_out(db, r, scope[r.employee_id])
+        for r in rows
+        if r.employee_id in scope
     ]
 
 
@@ -140,18 +159,20 @@ def decide(
         raise HTTPException(404, "No such request")
 
     result = leave_service.decide(
-        db, request=row, approver=user, approve=body.approve, note=body.note,
-        allow_self_approval=(user.role == UserRole.HR_ADMIN),
+        db, request=row, approver=user, approve=body.approve, 
+        partial_approve=body.partial_approve, 
+        medical_document_deadline=body.medical_document_deadline,
+        note=body.note,
     )
     if not result.ok:
         db.rollback()
         raise HTTPException(409, result.reason or "Could not decide")
     db.commit()
     
+    emp = db.get(Employee, row.employee_id)
     if row.slack_message_ts and row.slack_channel_id:
         from app.services.slack import update_leave_request
         from threading import Thread
-        emp = db.get(Employee, row.employee_id)
         leave_type = db.get(LeaveType, row.leave_type_id)
         
         # We need to construct the original text the bot posted
@@ -167,7 +188,7 @@ def decide(
             daemon=True
         ).start()
         
-    return to_request_out(db, row)
+    return to_request_out(db, row, emp)
 
 
 @router.get("/leave/balances", response_model=list[BalanceRow])

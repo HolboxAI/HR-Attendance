@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { ErrorState } from '@/components/ErrorState';
 import { MonthCalendar } from '@/components/MonthCalendar';
-import { ResetPasswordButton, SendMessageButton } from '@/components/PeopleAdmin';
+import { ResetPasswordButton, SendMessageButton, EditCorrectionLimitButton } from '@/components/PeopleAdmin';
 import { Status } from '@/components/Status';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity } from '@/lib/session';
@@ -138,7 +138,10 @@ export default async function EmployeeDetailPage({
         <div className="flex w-full flex-wrap items-start gap-3 border-t border-line/60 pt-3">
           <SendMessageButton code={code} name={monthData.full_name} />
           {caps.canManagePeople && (
-            <ResetPasswordButton code={code} name={monthData.full_name} />
+            <>
+              <ResetPasswordButton code={code} name={monthData.full_name} />
+              <EditCorrectionLimitButton code={code} currentLimit={monthData.correction_limit} />
+            </>
           )}
         </div>
       </div>

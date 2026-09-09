@@ -47,12 +47,18 @@ async function forward(request: Request, path: string[]) {
   }
 
   const buffer = await upstream.arrayBuffer();
+  const respHeaders: Record<string, string> = {
+    'Content-Type': upstream.headers.get('content-type') ?? 'application/json',
+    'Cache-Control': 'no-store',
+  };
+  const disposition = upstream.headers.get('content-disposition');
+  if (disposition) {
+    respHeaders['Content-Disposition'] = disposition;
+  }
+
   return new NextResponse(buffer, {
     status: upstream.status,
-    headers: {
-      'Content-Type': upstream.headers.get('content-type') ?? 'application/json',
-      'Cache-Control': 'no-store',
-    },
+    headers: respHeaders,
   });
 }
 

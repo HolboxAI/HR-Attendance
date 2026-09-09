@@ -4,18 +4,13 @@ import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
 import {
-  AlarmClock, Bell, CalendarClock, CalendarPlus, ClipboardList, LogOut, ScanFace,
+  AlarmClock, Bell, CalendarClock, CalendarPlus, Check, CheckCheck,
+  ClipboardList, LogOut, MonitorPlay, ScanFace, X,
 } from 'lucide-react';
 
 import type { NotificationRow } from '@/lib/format';
 import { notificationHref, timeAgo } from '@/lib/format';
 
-/**
- * One glyph per category the backend actually emits - including the
- * scheduler's nudges (late check-in, missing punch-out, monthly accrual),
- * which with PUSH_PROVIDER=null exist ONLY here. An unrecognised category
- * falls back to the plain bell rather than rendering nothing.
- */
 function categoryIcon(category: string) {
   const cls = 'size-3.5';
   if (category === 'attendance_late') return <AlarmClock className={cls} aria-hidden />;
@@ -24,17 +19,10 @@ function categoryIcon(category: string) {
   if (category.startsWith('leave')) return <CalendarClock className={cls} aria-hidden />;
   if (category.startsWith('correction')) return <ClipboardList className={cls} aria-hidden />;
   if (category.startsWith('enrolment')) return <ScanFace className={cls} aria-hidden />;
+  if (category.startsWith('wfh')) return <MonitorPlay className={cls} aria-hidden style={{ color: '#0ea5e9' }} />;
   return <Bell className={cls} aria-hidden />;
 }
 
-/**
- * A real bell, not a decorative one. notify() on the backend always writes a
- * row regardless of push (PUSH_PROVIDER=null rings nothing, deliberately), and
- * the PRD says notifications must never be the sole source of truth - so this
- * in-product list has to work on its own. Goes through /api/gateway because
- * opening a dropdown and marking rows read are user actions that must not
- * need a page navigation.
- */
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationRow[] | null>(null);
@@ -42,10 +30,6 @@ export function NotificationBell() {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // The scheduler writes nudges while a tab sits open all day, so a
-    // count fetched once at mount goes stale by mid-morning. Poll on the
-    // scheduler's own cadence and refresh when the tab regains focus -
-    // cheap (one count query) and honest.
     function refresh() {
       fetch('/api/gateway/api/v1/notifications/unread-count')
         .then((r) => (r.ok ? r.json() : null))
@@ -53,7 +37,7 @@ export function NotificationBell() {
         .catch(() => undefined);
     }
     refresh();
-    const timer = setInterval(refresh, 60_000);
+    const timer = setInterval(refresh, 15_000);
     window.addEventListener('focus', refresh);
     return () => {
       clearInterval(timer);
@@ -80,17 +64,36 @@ export function NotificationBell() {
     const next = !open;
     setOpen(next);
     if (next) {
-      const res = await fetch('/api/gateway/api/v1/notifications').catch(() => null);
-      if (res?.ok) setItems(((await res.json()) as NotificationRow[]).slice(0, 8));
+      // Fetch only unread notifications so previous viewed ones don't clutter the bell
+      const res = await fetch('/api/gateway/api/v1/notifications?unread_only=true').catch(() => null);
+      if (res?.ok) {
+        const unreadItems = (await res.json()) as NotificationRow[];
+        setItems(unreadItems);
+        setUnread(unreadItems.length);
+      }
     }
   }
 
   async function markRead(n: NotificationRow) {
-    if (n.read) return;
-    setItems((cur) => cur && cur.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    // Immediately remove from the bell dropdown so viewed notifications don't pile up
+    setItems((cur) => (cur ? cur.filter((x) => x.id !== n.id) : []));
     setUnread((c) => Math.max(0, c - 1));
     await fetch(`/api/gateway/api/v1/notifications/${n.id}/read`, { method: 'POST' }).catch(
       () => undefined,
+    );
+  }
+
+  async function markAllRead() {
+    if (!items || items.length === 0) return;
+    const toMark = [...items];
+    setItems([]);
+    setUnread(0);
+    await Promise.all(
+      toMark.map((n) =>
+        fetch(`/api/gateway/api/v1/notifications/${n.id}/read`, { method: 'POST' }).catch(
+          () => undefined,
+        ),
+      ),
     );
   }
 
@@ -114,13 +117,6 @@ export function NotificationBell() {
         )}
       </button>
 
-      {/* The backdrop is a PORTAL because the topbar animates its own
-          transform, and a transformed ancestor turns `fixed` into "fixed to
-          the topbar" - the blur would cover a 58px strip instead of the
-          page. From <body>, z-15 slots above the content (z-10) and below
-          the topbar (z-20), so the page behind the panel blurs while the
-          dropdown itself stays crisp. Only rendered while open, so it never
-          runs on the server. */}
       {open &&
         createPortal(
           <div
@@ -131,64 +127,84 @@ export function NotificationBell() {
         )}
 
       {open && (
-        <div className="bx-pop absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-2xl glass-panel border border-line bg-surface/95 backdrop-blur-2xl shadow-2xl">
+        <div className="bx-pop absolute right-0 z-30 mt-2 w-84 overflow-hidden rounded-2xl glass-panel border border-line bg-surface/95 backdrop-blur-2xl shadow-2xl">
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <span className="text-xs font-bold uppercase tracking-widest text-ink-3 font-mono">
+            <span className="text-xs font-bold uppercase tracking-widest text-ink font-mono flex items-center gap-1.5">
               Notifications
+              {unread > 0 && (
+                <span className="rounded-full bg-surface-2 border border-line px-1.5 py-0.2 text-[10px] text-ink-3">
+                  {unread}
+                </span>
+              )}
             </span>
-            <Link
-              href="/notifications"
-              onClick={() => setOpen(false)}
-              className="text-xs font-medium text-accent hover:underline"
-            >
-              View all
-            </Link>
+            <div className="flex items-center gap-2">
+              {items && items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllRead}
+                  className="text-[11px] font-mono text-ink-3 hover:text-ink flex items-center gap-1 transition-colors cursor-pointer"
+                  title="Mark all as read"
+                >
+                  <CheckCheck className="size-3" />
+                  Mark all
+                </button>
+              )}
+              <Link
+                href="/notifications"
+                onClick={() => setOpen(false)}
+                className="text-xs font-medium text-accent hover:underline font-mono"
+              >
+                View all
+              </Link>
+            </div>
           </div>
-          <div className="max-h-80 overflow-y-auto bx-scroll">
+
+          <div className="max-h-80 overflow-y-auto bx-scroll divide-y divide-line/40">
             {items === null ? (
-              <p className="px-4 py-6 text-center text-sm text-ink-3">Loading…</p>
+              <p className="px-4 py-6 text-center text-xs text-ink-3 font-mono">Loading…</p>
             ) : items.length === 0 ? (
-              <p className="px-4 py-6 text-center text-sm text-ink-3">
-                Nothing yet - leave and correction decisions, check-in
-                reminders and punch-out nudges all land here.
-              </p>
+              <div className="px-4 py-8 text-center">
+                <Check className="size-6 text-green-500 mx-auto mb-2 opacity-80" />
+                <p className="text-xs font-semibold text-ink">You&apos;re all caught up</p>
+                <p className="text-[11px] text-ink-3 font-mono mt-1">No unread notifications</p>
+              </div>
             ) : (
               items.map((n) => {
-                // Every row goes somewhere. Rows that name an action deep-link
-                // to it; everything else (messages included) opens the full
-                // notifications page, where Mark as read and Reply live - a
-                // dropdown row that only dismissed itself was a dead end.
                 const href = notificationHref(n) ?? '/notifications';
-                const inner = (
-                  <>
-                    <span className="flex items-center gap-2">
-                      {!n.read && (
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
-                      )}
-                      <span className="shrink-0 text-ink-3">{categoryIcon(n.category)}</span>
-                      <span className="min-w-0 flex-1 truncate font-medium text-ink">{n.title}</span>
-                      <span className="shrink-0 text-[11px] text-ink-3">{timeAgo(n.created_at)}</span>
-                    </span>
-                    <span className="mt-0.5 block text-xs text-ink-2">{n.body}</span>
-                  </>
-                );
-                const cls = `block w-full border-b border-line/60 px-4 py-3 text-left text-sm last:border-0 hover:bg-surface-2/60 ${
-                  n.read ? 'opacity-60' : ''
-                }`;
                 return (
-                  <Link
+                  <div
                     key={n.id}
-                    href={href}
-                    className={cls}
-                    onClick={() => {
-                      // A message is marked read by replying to it (or by the
-                      // page's own button), not by glancing at the dropdown.
-                      if (n.category !== 'message') markRead(n);
-                      setOpen(false);
-                    }}
+                    className="group relative flex items-start justify-between gap-2 px-4 py-3 hover:bg-surface-2/60 transition-colors"
                   >
-                    {inner}
-                  </Link>
+                    <Link
+                      href={href}
+                      className="min-w-0 flex-1 cursor-pointer"
+                      onClick={() => {
+                        markRead(n);
+                        setOpen(false);
+                      }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
+                        <span className="shrink-0 text-ink-3">{categoryIcon(n.category)}</span>
+                        <span className="min-w-0 flex-1 truncate font-medium text-ink text-xs">{n.title}</span>
+                        <span className="shrink-0 text-[10px] font-mono text-ink-3">{timeAgo(n.created_at)}</span>
+                      </span>
+                      <span className="mt-0.5 block text-xs text-ink-2 line-clamp-2 pl-3.5 font-mono">{n.body}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        markRead(n);
+                      }}
+                      title="Mark as read"
+                      className="shrink-0 size-6 rounded-md border border-line/60 flex items-center justify-center text-ink-3 hover:text-ink hover:bg-surface-2 transition-all opacity-0 group-hover:opacity-100 cursor-pointer mt-0.5"
+                    >
+                      <Check className="size-3" />
+                    </button>
+                  </div>
                 );
               })
             )}

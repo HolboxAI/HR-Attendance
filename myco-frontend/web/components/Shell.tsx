@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, LogOut, Menu, X, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LogOut, Menu, Settings, X } from 'lucide-react';
+
+import { HolboxSearch } from '@/components/HolboxSearch';
 import { MenuToggle } from '@/components/ui/menu-toggle';
 import { NotificationBell } from '@/components/NotificationBell';
 import { SidebarBrand, SidebarFooter, SidebarNav } from '@/components/Sidebar';
@@ -190,22 +193,34 @@ export function Shell({
               search on every dashboard page. Except the Directory, which
               has its own search box right below the header - offering the
               same field twice on one screen is clutter, not convenience. */}
-            <div className="relative flex-1 max-w-xl mx-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-3" />
-              <input
-                type="text"
-                placeholder="Search people, records..."
-                className="w-full bg-surface-2 text-ink rounded-lg pl-10 pr-4 py-2 text-sm border border-line focus:outline-none focus:border-accent/50 focus:bg-surface transition-colors"
-              />
-            </div>
+          <div className={`${pathname === '/people' ? 'hidden' : 'hidden md:flex'} items-center relative max-w-sm w-full mx-4`}>
+            <HolboxSearch
+              // Remount per route: arriving somewhere clears whatever query
+              // got you there, so the box is ready for the next search.
+              key={pathname}
+              variant="global"
+              caps={caps}
+              placeholders={[
+                'Search people — try Himesh...',
+                'Jump to a page — Devices, Board...',
+                'Find someone by code — BX007...',
+                'Open Team balances...',
+                'Who is on leave? Try the Board...',
+              ]}
+            />
+          </div>
 
           {/* User & Actions Hub */}
           <div className="flex items-center gap-2 sm:gap-3">
             <ThemeToggle />
             <NotificationBell />
 
-            <div className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-line/60">
-              <div className="size-8 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink font-bold font-mono text-xs shadow-sm">
+            <Link
+              href="/settings"
+              className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-line/60 hover:opacity-80 transition-opacity group"
+              title="Settings & Profile"
+            >
+              <div className="size-8 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink font-bold font-mono text-xs shadow-sm group-hover:border-ink/40 transition-colors">
                 {initials}
               </div>
               <div className="flex flex-col text-left">
@@ -216,7 +231,16 @@ export function Shell({
                   {roleLabel(role)}
                 </span>
               </div>
-            </div>
+            </Link>
+
+            <Link
+              href="/settings"
+              className="size-9 rounded-xl glass-panel border border-line flex items-center justify-center text-ink hover:bg-surface-2 hover:text-ink active:scale-95 cursor-pointer shadow-xs transition-all"
+              title="Settings & Preferences"
+              aria-label="Settings"
+            >
+              <Settings className="size-3.5 text-ink-3 hover:text-ink transition-colors" strokeWidth={2} aria-hidden />
+            </Link>
 
             <button
               type="button"
@@ -256,6 +280,7 @@ function titleFor(pathname: string): string {
   if (pathname.startsWith('/people')) return 'People Directory';
   if (pathname.startsWith('/enrolment')) return 'Biometrics & Enrolment';
   if (pathname.startsWith('/devices')) return 'Device Handsets';
+  if (pathname.startsWith('/settings')) return 'Settings & Preferences';
   if (pathname.startsWith('/notifications')) return 'Notifications Center';
   return 'Boxcode HRMS';
 }

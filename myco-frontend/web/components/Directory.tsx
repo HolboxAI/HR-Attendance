@@ -2,9 +2,11 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { ArrowUpRight, Search } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 
 import { Avatar } from '@/components/Avatar';
+import { HoverProfile } from '@/components/HoverProfile';
+import { HolboxSearch } from '@/components/HolboxSearch';
 import { Status } from '@/components/Status';
 
 export type DirectoryRow = {
@@ -48,16 +50,18 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
             only, and every keystroke still drives the live table filter.
             The header hides its own search on this page - two search boxes
             one above the other answered the same question twice. */}
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-ink-3" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, role, or team..."
-              className="w-full bg-surface-2 text-ink rounded-lg pl-10 pr-4 py-2.5 text-sm border border-line focus:outline-none focus:border-accent/50 focus:bg-surface transition-colors"
-            />
-          </div>
+        <div className="relative w-full max-w-sm">
+          <HolboxSearch
+            variant="directory"
+            people={rows.map((r) => ({ code: r.code, name: r.name, department: r.department }))}
+            onQueryChange={setQuery}
+            placeholders={[
+              'Search a name — Himesh, Krish...',
+              'Search a code — BX002...',
+              'Search a department — Engineering...',
+            ]}
+          />
+        </div>
         <span className="text-xs font-mono text-ink-3">Showing <strong className="text-ink">{filtered.length}</strong> of {rows.length}</span>
       </div>
 
@@ -99,6 +103,9 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                       }`}
                     >
                       <td className="px-5 py-3.5">
+                        {/* The peek covers the name too, not just the avatar -
+                            hovering anywhere on the person shows their face. */}
+                        <HoverProfile data={{ name: r.name, code: r.code, department: r.department }} className="block">
                         <Link href={`/people/${r.code}`} className="flex items-center gap-3">
                           <span className="relative shrink-0">
                             <Avatar name={r.name} />
@@ -120,6 +127,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                             </span>
                           </span>
                         </Link>
+                        </HoverProfile>
                       </td>
                       <td className="tnum px-5 py-3.5 font-mono text-xs text-ink-3">{r.shift}</td>
                       <td className="px-5 py-3.5"><Status value={r.status} /></td>
@@ -165,7 +173,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                     isDimmed ? 'scale-[0.98]' : 'scale-100 hover:bg-surface-2/60'
                   }`}
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <HoverProfile data={{ name: r.name, code: r.code, department: r.department }} className="flex min-w-0 flex-1 items-center gap-3">
                     <span className="relative shrink-0">
                       <Avatar name={r.name} />
                       <span
@@ -181,7 +189,7 @@ export function Directory({ rows }: { rows: DirectoryRow[] }) {
                         {r.code}{r.department ? ` · ${r.department}` : ''}
                       </span>
                     </span>
-                  </div>
+                  </HoverProfile>
                   <Status value={r.status} size="xs" />
                 </Link>
               );

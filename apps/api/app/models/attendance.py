@@ -155,6 +155,35 @@ class ShiftAssignment(Base, TimestampMixin):
     effective_to: Mapped[date | None] = mapped_column(Date)
 
 
+class ShiftGroup(Base, TimestampMixin):
+    __tablename__ = "shift_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255))
+    shift_template_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("shift_templates.id"), nullable=False
+    )
+
+
+class ShiftGroupMember(Base, TimestampMixin):
+    __tablename__ = "shift_group_members"
+    __table_args__ = (
+        UniqueConstraint("shift_group_id", "employee_id", name="uq_shift_group_member"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    shift_group_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("shift_groups.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("employees.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+
+
 class AttendanceDay(Base, TimestampMixin):
     """Derived, never authored. Safe to delete and recompute from punch_events."""
 

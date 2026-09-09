@@ -53,7 +53,9 @@ def list_mine(
     stmt = select(Notification).where(Notification.user_id == user.id)
     if unread_only:
         stmt = stmt.where(Notification.read_at.is_(None))
-    rows = db.scalars(stmt.order_by(Notification.created_at.desc()).limit(200)).all()
+    rows = db.scalars(
+        stmt.order_by(Notification.created_at.desc(), Notification.updated_at.desc()).limit(200)
+    ).all()
     return [_out(n) for n in rows]
 
 

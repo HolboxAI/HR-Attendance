@@ -19,7 +19,7 @@ import { authHeaders, signOut } from './session';
 import { apiBase } from './config';
 import type {
   CorrectionItem, Holiday, LeaveBalance, LeaveRequestItem, MonthData, MonthDay, NotificationItem,
-  PunchDirection, PunchResult, TodayStatus,
+  PunchDirection, PunchResult, TodayStatus, WFHRequestItem
 } from './types';
 
 export class PermanentPunchError extends Error {}
@@ -43,6 +43,19 @@ async function authed(path: string, init?: RequestInit): Promise<Response> {
 async function detail(res: Response, fallback: string): Promise<string> {
   const body = await res.json().catch(() => null);
   return (body?.detail as string) ?? fallback;
+}
+
+export async function getIdentity() {
+  try {
+    const res = await authed('/api/v1/auth/me');
+    if (res.ok) {
+      return await res.json();
+    }
+    return null;
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
+    return null;
+  }
 }
 
 /* ------------------------------------------------------------------ today */
@@ -157,7 +170,7 @@ export async function getLeaveBalance(): Promise<LeaveBalance[]> {
         .map((b: Record<string, number | string | boolean>) => ({
           code: b.code as string, name: b.name as string, isPaid: true,
           available: b.available as number, accrued: b.accrued as number,
-          used: b.used as number,
+          used: b.used as number, requiresProof: b.requires_proof as boolean,
         }));
     }
     throw new Error(await detail(res, `Could not load balances (${res.status})`));
@@ -175,6 +188,7 @@ export async function getMyLeave(): Promise<LeaveRequestItem[]> {
         id: r.id as string, code: r.leave_type_code as string,
         fromDate: r.from_date as string, toDate: r.to_date as string,
         days: r.days as number, status: r.status as LeaveRequestItem['status'],
+        category: (r.category ?? null) as string | null,
         note: (r.decided_note ?? r.reason ?? null) as string | null,
       }));
     }
@@ -186,15 +200,32 @@ export async function getMyLeave(): Promise<LeaveRequestItem[]> {
 
 export async function applyForLeave(args: {
   code: string; from: string; to: string; halfDay: boolean; reason: string;
+  category?: string;
+  fileUri?: string; fileType?: string; fileName?: string; webFile?: any;
 }): Promise<string | null> {
   try {
+    const formData = new FormData();
+    formData.append('leave_type_code', args.code);
+    formData.append('from_date', args.from);
+    formData.append('to_date', args.to || args.from);
+    formData.append('half_day_start', String(args.halfDay));
+    if (args.category) formData.append('category', args.category);
+    if (args.reason) formData.append('reason', args.reason);
+    if (args.fileUri && args.fileType && args.fileName) {
+      if (Platform.OS === 'web' && args.webFile) {
+        formData.append('file', args.webFile);
+      } else {
+        formData.append('file', {
+          uri: args.fileUri,
+          type: args.fileType,
+          name: args.fileName,
+        } as any);
+      }
+    }
+
     const res = await authed('/api/v1/leave/request', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        leave_type_code: args.code, from_date: args.from, to_date: args.to || args.from,
-        half_day_start: args.halfDay, reason: args.reason || null,
-      }),
+      body: formData,
     });
     if (res.ok) return null;
     return detail(res, `Could not apply (${res.status})`);
@@ -239,7 +270,7 @@ export async function getMyCorrections(): Promise<CorrectionItem[]> {
 }
 
 export async function submitCorrection(args: {
-  shiftDate: string; direction: PunchDirection; claimedAt: string; reason: string;
+  shiftDate: string; direction: PunchDirection; claimedAt: string; reason: string; category: string;
 }): Promise<string | null> {
   try {
     const res = await authed('/api/v1/corrections', {
@@ -247,7 +278,7 @@ export async function submitCorrection(args: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         shift_date: args.shiftDate, direction: args.direction,
-        claimed_at: args.claimedAt, reason: args.reason,
+        claimed_at: args.claimedAt, reason: args.reason, category: args.category,
       }),
     });
     if (res.ok) return null;
@@ -331,6 +362,7 @@ export async function getNotifications(): Promise<NotificationItem[]> {
         body: n.body as string,
         read: !!n.read,
         createdAt: n.created_at as string,
+        data: n.data as Record<string, unknown> | undefined,
       }));
     }
     throw new Error(await detail(res, `Could not load notifications (${res.status})`));
@@ -390,6 +422,31 @@ export async function markNotificationRead(id: string): Promise<void> {
   }
 }
 
+export async function uploadLeaveDocument(id: string, args: { fileUri: string; fileType: string; fileName: string; webFile?: any }): Promise<string | null> {
+  try {
+    const formData = new FormData();
+    if (Platform.OS === 'web' && args.webFile) {
+      formData.append('file', args.webFile);
+    } else {
+      formData.append('file', {
+        uri: args.fileUri,
+        type: args.fileType,
+        name: args.fileName,
+      } as any);
+    }
+
+    const res = await authed(`/api/v1/leave/${id}/document`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (res.ok) return null;
+    return detail(res, `Could not upload (${res.status})`);
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
+    return 'Could not reach the server - check your connection and try again';
+  }
+}
+
 /* --------------------------------------------------------------- password */
 
 export async function setPassword(current: string, next: string): Promise<string | null> {
@@ -405,5 +462,33 @@ export async function setPassword(current: string, next: string): Promise<string
     if (err instanceof SessionExpiredError) throw err;
     // "Changed" while the old password stayed live is a lockout tomorrow.
     return 'Could not reach the server - the password was NOT changed';
+  }
+}
+
+export async function getWfhRequests(): Promise<WFHRequestItem[]> {
+  try {
+    const res = await authed('/api/v1/wfh');
+    if (res.ok) {
+      return (await res.json()) as WFHRequestItem[];
+    }
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
+    console.error('getWfhRequests failed', err);
+  }
+  return [];
+}
+
+export async function submitWfhRequest(shiftDate: string, reason: string): Promise<string | null> {
+  try {
+    const res = await authed('/api/v1/wfh/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ shift_date: shiftDate, reason }),
+    });
+    if (res.ok) return null;
+    return detail(res, 'Could not submit request');
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
+    return 'Could not reach the server';
   }
 }

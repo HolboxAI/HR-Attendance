@@ -4,9 +4,15 @@ import {
   TextInput, View,
 } from 'react-native';
 
-import { cancelCorrection, getMyCorrections, submitCorrection } from './api';
+import {
+  getMyCorrections,
+  submitCorrection,
+  cancelCorrection,
+  getIdentity,
+} from './api';
 import { hhmm, plainDate, STATUS_META } from './format';
 import MiniCalendar from './MiniCalendar';
+import { currentIdentity } from './session';
 import { useTheme } from './ThemeContext';
 import { theme, type ThemeColors } from './theme';
 import type { CorrectionItem, MonthDay, PunchDirection } from './types';
@@ -35,16 +41,25 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
     prefill && prefill.first_in && !prefill.last_out ? 'out' : 'in',
   );
   const [time, setTime] = useState('');
+  const [category, setCategory] = useState('');
+  const [categoryOpen, setCategoryOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const [cancelBusy, setCancelBusy] = useState<string | null>(null);
+  const [correctionLimit, setCorrectionLimit] = useState(5);
 
   const load = useCallback(async () => {
     setError(null);
     try {
       setItems(await getMyCorrections());
+      const freshIdent = await getIdentity();
+      if (freshIdent) setCorrectionLimit(freshIdent.correction_limit);
+      else {
+        const ident = await currentIdentity();
+        if (ident) setCorrectionLimit(ident.correction_limit);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load requests');
     }
@@ -71,6 +86,10 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
       setFormError(`The time must look like ${TIME_HINT}, e.g. 18:30.`);
       return;
     }
+    if (!category) {
+      setFormError('Please select a category for the missing punch.');
+      return;
+    }
     if (!reason.trim()) {
       setFormError('Say why the punch is missing - HR reads this.');
       return;
@@ -82,6 +101,7 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
       shiftDate,
       direction,
       claimedAt: `${shiftDate}T${hhmmPadded}:00+05:30`,
+      category,
       reason: reason.trim(),
     });
     setBusy(false);
@@ -92,7 +112,8 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
     setDone(true);
     setFormOpen(false);
     setCalendarOpen(false);
-    setShiftDate(''); setTime(''); setReason('');
+    setCategoryOpen(false);
+    setShiftDate(''); setTime(''); setCategory(''); setReason('');
     void load();
   }
 
@@ -102,6 +123,16 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
     setCancelBusy(null);
     void load();
   }
+
+  const usedCorrections = useMemo(() => {
+    if (!items) return 0;
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return items.filter(r => 
+      r.shiftDate.startsWith(currentMonthStr) && 
+      (r.status === 'pending' || r.status === 'approved')
+    ).length;
+  }, [items]);
 
   return (
     <ScrollView
@@ -121,6 +152,14 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
         A flagged day gets fixed by asking. Your claim becomes a real punch only
         when HR approves it.
       </Text>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: c.surface2, padding: 12, borderRadius: 12, marginBottom: 16 }}>
+        <Text style={{ fontSize: 13, color: c.ink, fontWeight: '600' }}>Monthly Limit</Text>
+        <Text style={{ fontSize: 13, fontVariant: ['tabular-nums'] }}>
+          <Text style={{ color: usedCorrections >= correctionLimit ? c.crit : c.ink, fontWeight: '700' }}>{usedCorrections}</Text>
+          <Text style={{ color: c.ink3 }}> / {correctionLimit} used</Text>
+        </Text>
+      </View>
 
       {done && (
         <View style={s.okBox} accessibilityLiveRegion="polite">
@@ -180,7 +219,36 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
             autoCapitalize="none" autoCorrect={false} keyboardType="numbers-and-punctuation"
           />
 
-          <Text style={s.label}>Why - HR reads this</Text>
+          <Text style={s.label}>Category</Text>
+          <Pressable
+            style={s.input}
+            onPress={() => setCategoryOpen((v) => !v)}
+            accessibilityRole="button"
+          >
+            <Text style={[{ fontSize: 13, color: category ? c.ink : c.ink3 }]}>
+              {category || 'Select a reason...'}
+            </Text>
+          </Pressable>
+          {categoryOpen && (
+            <View style={{ marginTop: 4, borderRadius: 12, backgroundColor: c.surface2, overflow: 'hidden' }}>
+              {[
+                'Phone/device battery died', 'Emergency', 'Network/connectivity issue',
+                'Forgot to punch', 'Device/application issue', 'Other'
+              ].map(opt => (
+                <Pressable
+                  key={opt}
+                  onPress={() => { setCategory(opt); setCategoryOpen(false); }}
+                  style={{ padding: 12, borderBottomWidth: 1, borderBottomColor: c.line }}
+                >
+                  <Text style={{ fontSize: 13, color: category === opt ? c.accent : c.ink }}>
+                    {opt}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          <Text style={s.label}>Explanation - HR reads this</Text>
           <TextInput
             style={[s.input, s.multiline]} value={reason} onChangeText={setReason}
             placeholder="e.g. Phone battery died before I could check out"
@@ -192,7 +260,9 @@ export default function CorrectionsScreen({ prefill }: { prefill: MonthDay | nul
           )}
 
           <Pressable
-            style={[s.submit, busy && s.busy]} onPress={submit} disabled={busy}
+            style={[s.submit, (busy || usedCorrections >= correctionLimit) && s.busy]} 
+            onPress={submit} 
+            disabled={busy || usedCorrections >= correctionLimit}
             accessibilityRole="button"
           >
             {busy

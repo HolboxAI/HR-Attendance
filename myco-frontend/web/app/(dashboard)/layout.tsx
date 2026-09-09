@@ -1,4 +1,5 @@
 import { Shell } from '@/components/Shell';
+import { HoverProfileProvider, HoverCursorPreview } from '@/components/HoverProfile';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity } from '@/lib/session';
 
@@ -23,15 +24,18 @@ export default async function DashboardLayout({
   const caps = capabilitiesFor(me?.role);
 
   return (
-    <div id="bx-shell" className="bx-light h-screen max-h-screen overflow-hidden">
-      <Shell
-        email={me?.email ?? ''}
-        role={me?.role ?? 'employee'}
-        name={me?.full_name ?? null}
-        caps={caps}
-      >
-        {children}
-      </Shell>
-    </div>
+    <HoverProfileProvider>
+      <HoverCursorPreview />
+      <div id="bx-shell" className="bx-light h-screen max-h-screen overflow-hidden">
+        <Shell
+          email={me?.email ?? ''}
+          role={me?.role ?? 'employee'}
+          name={me?.full_name ?? null}
+          caps={caps}
+        >
+          {children}
+        </Shell>
+      </div>
+    </HoverProfileProvider>
   );
 }

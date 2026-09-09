@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   ArrowUpRight,
-  Bell, CalendarClock, CalendarRange, Camera, ChevronLeft, ClipboardList, History, LayoutGrid,
-  ScanFace, Scale, Smartphone, SlidersHorizontal, Users,
+  Bell, CalendarClock, CalendarRange, Camera, ChevronLeft, ClipboardList, Clock, History, LayoutGrid,
+  ScanFace, Scale, Smartphone, SlidersHorizontal, Users, PieChart, MonitorPlay, Settings
 } from 'lucide-react';
 
 import type { Capabilities } from '@/lib/capabilities';
@@ -49,6 +49,7 @@ export const SECTIONS: Section[] = [
     title: 'Leave',
     items: [
       { href: '/leave', label: 'Leave', icon: CalendarClock, show: all, exact: true },
+      { href: '/leave/status', label: 'Leave status', icon: CalendarClock, show: all },
       { href: '/leave/balances', label: 'Team balances', icon: Scale, show: (c) => c.canDecideLeave },
       { href: '/leave/policy', label: 'Policy & holidays', icon: SlidersHorizontal, show: (c) => c.canManageLeavePolicy },
       { href: '/leave/operations', label: 'Accrual & year-end', icon: History, show: (c) => c.canManageLeavePolicy },
@@ -61,6 +62,21 @@ export const SECTIONS: Section[] = [
       { href: '/people', label: 'Directory', icon: Users, show: (c) => c.canViewBoard },
       { href: '/enrolment', label: 'Enrolment', icon: ScanFace, show: (c) => c.canManageEnrolment },
       { href: '/devices', label: 'Devices', icon: Smartphone, show: (c) => c.canManageDevices },
+      { href: '/people/wfh', label: 'WFH Config', icon: MonitorPlay, show: (c) => c.canManageEnrolment },
+      { href: '/people/shifts', label: 'Shifts', icon: Clock, show: (c) => c.canManageLeavePolicy },
+    ],
+  },
+  {
+    title: 'History',
+    items: [
+      { href: '/history', label: 'History Overview', icon: PieChart, show: (c) => c.canViewBoard, exact: true },
+      { href: '/history/attendance', label: 'Attendance', icon: History, show: (c) => c.canViewBoard },
+    ],
+  },
+  {
+    title: 'System',
+    items: [
+      { href: '/settings', label: 'Settings', icon: Settings, show: all },
     ],
   },
 ];
@@ -201,9 +217,19 @@ export function SidebarBrand({
 
 export function SidebarFooter({ collapsed = false }: { collapsed?: boolean }) {
   return (
-    <div className={`border-t border-line py-2.5 text-[10px] text-ink-3 flex items-center font-mono transition-all duration-300 ${collapsed ? 'px-2 justify-center' : 'px-4'
+    <div className={`border-t border-line py-2.5 text-[10px] text-ink-3 flex items-center justify-between font-mono transition-all duration-300 ${collapsed ? 'px-2 justify-center' : 'px-4'
       }`}>
-      {!collapsed && <span>IIMA Ventures</span>}
+      {!collapsed ? (
+        <>
+          <span>IIMA Ventures</span>
+          <span className="flex items-center gap-1.5 text-[9px] font-semibold text-emerald-400">
+            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            Live
+          </span>
+        </>
+      ) : (
+        <span className="size-2 rounded-full bg-emerald-400 animate-pulse" title="System Live" />
+      )}
     </div>
   );
 }

@@ -135,15 +135,41 @@ def notify(
         row.sent_at = datetime.now(timezone.utc)
 
     # Email notifications for specific categories and specific admins
-    ALLOWED_EMAILS = {"krishraghavsharma@gmail.com", "krish@holbox.ai"}
-    if user.email and user.email in ALLOWED_EMAILS:
-        if category in ("attendance_late", "attendance.late_arrival", "attendance.absent_alert", "attendance.early_leave", "leave.pending"):
+    ALLOWED_EMAILS = {"krishraghavsharma@gmail.com", "krish@holbox.ai", "krish@boxcode.ai"}
+    is_admin = getattr(user, "role", None) in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN)
+    if user.email and (user.email.lower() in ALLOWED_EMAILS or is_admin):
+        if category in ("attendance_late", "attendance.late_arrival", "attendance.absent_alert", "attendance.early_leave", "leave.pending", "leave.document_uploaded"):
+            html_body = None
+            if category in ("leave.pending", "leave.document_uploaded") and data and "leave_request_id" in data:
+                from app.core.security import generate_action_token
+                from app.core.config import settings
+                req_id = data["leave_request_id"]
+                approve_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": True, "approver_id": str(user.id)})
+                reject_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": False, "approver_id": str(user.id)})
+                
+                api_url = getattr(settings, "api_url", "http://98.84.138.15/api/v1")
+                approve_url = f"{api_url}/leave/email-decide?token={approve_token}"
+                reject_url = f"{api_url}/leave/email-decide?token={reject_token}"
+                
+                html_body = f"""
+                <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 40px 20px; line-height: 1.6; text-align: center;">
+                  <div style="max-width: 500px; margin: 0 auto; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 32px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+                    <h2 style="color: #ffffff; font-weight: 700; margin-top: 0; margin-bottom: 24px; font-size: 20px; text-transform: uppercase; letter-spacing: 1px;">Leave Request</h2>
+                    <p style="font-size: 15px; margin-bottom: 32px; color: #c9d1d9;">{body}</p>
+                    <div style="display: block; margin-top: 24px;">
+                      <a href="{approve_url}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); margin-right: 8px;">Approve</a>
+                      <a href="{reject_url}" style="display: inline-block; padding: 12px 28px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); margin-left: 8px;">Reject</a>
+                    </div>
+                  </div>
+                </div>
+                """
+
             from threading import Thread
-            Thread(target=_send_email_task, args=(user.email, title, body), daemon=True).start()
+            Thread(target=_send_email_task, args=(user.email, title, body, html_body), daemon=True).start()
 
     return row
 
-def _send_email_task(to_email: str, subject: str, body: str) -> None:
+def _send_email_task(to_email: str, subject: str, body: str, html_body: str | None = None) -> None:
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -151,13 +177,17 @@ def _send_email_task(to_email: str, subject: str, body: str) -> None:
     if not settings.smtp_host:
         import logging
         logging.getLogger("boxcode.email").info(f"MOCK EMAIL to {to_email}: {subject} - {body}")
+        if html_body:
+            logging.getLogger("boxcode.email").info(f"MOCK HTML: {html_body}")
         return
 
-    msg = MIMEMultipart()
-    msg['From'] = settings.smtp_from
+    msg = MIMEMultipart('alternative')
+    msg['From'] = settings.smtp_from or settings.smtp_user or "noreply@boxcode.local"
     msg['To'] = to_email
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
+    if html_body:
+        msg.attach(MIMEText(html_body, 'html'))
 
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:

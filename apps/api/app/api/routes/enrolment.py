@@ -71,10 +71,14 @@ class EnrolResponse(BaseModel):
     photo_count: int
 
 
-def _employee(db: Session, code: str) -> Employee:
-    emp = db.scalar(select(Employee).where(Employee.emp_code == code))
+def _employee(db: Session, code_or_email: str) -> Employee:
+    if "@" in code_or_email:
+        emp = db.scalar(select(Employee).where(Employee.email == code_or_email))
+    else:
+        emp = db.scalar(select(Employee).where(Employee.emp_code == code_or_email))
+        
     if emp is None:
-        raise HTTPException(404, f"No employee with code {code}")
+        raise HTTPException(404, f"No employee with identifier {code_or_email}")
     return emp
 
 

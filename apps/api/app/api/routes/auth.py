@@ -57,6 +57,7 @@ class Identity(BaseModel):
     full_name: str | None
     can_punch: bool
     is_admin: bool
+    correction_limit: int = 5
 
 
 class LoginResponse(BaseModel):
@@ -90,10 +91,10 @@ def _identity(db: Session, user: User) -> Identity:
         employee_id=emp.id if emp else None,
         employee_code=emp.emp_code if emp else None,
         full_name=emp.full_name if emp else None,
-        # Stated explicitly so each client does not have to re-derive the role
         # rules and get them subtly different. An admin can punch.
         can_punch=emp is not None and emp.is_active,
         is_admin=RANK.get(user.role, -1) >= RANK[UserRole.HR_ADMIN],
+        correction_limit=emp.correction_limit if emp and emp.correction_limit is not None else 5,
     )
 
 

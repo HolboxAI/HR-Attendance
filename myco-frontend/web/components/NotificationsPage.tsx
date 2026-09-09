@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BellOff, Check, CheckCheck, Reply, ScanFace, Send, X } from 'lucide-react';
 
 import Link from 'next/link';
@@ -14,6 +14,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   corrections: 'Corrections',
   attendance: 'Attendance',
   message: 'Messages',
+  wfh: 'Work From Home',
 };
 
 /**
@@ -40,6 +41,18 @@ function senderName(n: NotificationRow): string {
 function enrolmentRequestId(n: NotificationRow): string | null {
   if (n.category !== 'enrolment.submitted') return null;
   const id = n.data?.request_id;
+  return typeof id === 'string' ? id : null;
+}
+
+function leaveRequestId(n: NotificationRow): string | null {
+  if (n.category !== 'leave.partially_approved') return null;
+  const id = n.data?.leave_request_id;
+  return typeof id === 'string' ? id : null;
+}
+
+function wfhRequestId(n: NotificationRow): string | null {
+  if (n.category !== 'wfh.pending') return null;
+  const id = n.data?.wfh_request_id;
   return typeof id === 'string' ? id : null;
 }
 
@@ -79,10 +92,27 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
   const [decided, setDecided] = useState<Record<string, string>>({});
   const [decideError, setDecideError] = useState<string | null>(null);
 
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadedMap, setUploadedMap] = useState<Record<string, boolean>>({});
+
   const categories = useMemo(
     () => [...new Set(initial.map((n) => family(n.category)))],
     [initial],
   );
+
+  // Auto-mark all as read when the page is opened
+  useEffect(() => {
+    const unreadOnes = items.filter((n) => !n.read);
+    if (unreadOnes.length === 0) return;
+    setItems((cur) => cur.map((n) => ({ ...n, read: true })));
+    for (const n of unreadOnes) {
+      fetch(`/api/gateway/api/v1/notifications/${n.id}/read`, { method: 'POST' }).catch(() => undefined);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const shown = items.filter((n) =>
     filter === 'all' ? true : filter === 'unread' ? !n.read : family(n.category) === filter,
@@ -150,6 +180,52 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
     setDecided((cur) => ({ ...cur, [n.id]: approve ? 'approved' : 'rejected' }));
     setReviewingId(null);
     // The backend marks every admin's copy read on decision; mirror it here.
+    setItems((cur) => cur.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+  }
+
+  async function uploadDocument(n: NotificationRow) {
+    const id = leaveRequestId(n);
+    if (!id || !uploadFile || uploading) return;
+    setUploading(true);
+    setUploadError(null);
+
+    const formData = new FormData();
+    formData.append('file', uploadFile);
+
+    const res = await fetch(proxy(`/api/v1/leave/${id}/document`), {
+      method: 'POST',
+      body: formData,
+    }).catch(() => null);
+    setUploading(false);
+
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => null) : null;
+      setUploadError(body?.detail ?? 'Could not upload document - try again.');
+      return;
+    }
+
+    setUploadedMap((cur) => ({ ...cur, [n.id]: true }));
+    setUploadingId(null);
+    setUploadFile(null);
+    setItems((cur) => cur.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+  }
+
+  async function decideWfh(n: NotificationRow, approve: boolean) {
+    const id = wfhRequestId(n);
+    if (!id || deciding) return;
+    setDeciding(true);
+    setDecideError(null);
+    const res = await fetch(proxy(`/api/v1/admin/wfh/${id}/decide`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: approve ? 'approved' : 'rejected' }),
+    }).catch(() => null);
+    setDeciding(false);
+    if (!res || !res.ok) {
+      setDecideError('Could not decide WFH request - it may have already been resolved.');
+      return;
+    }
+    setDecided((cur) => ({ ...cur, [n.id]: approve ? 'approved' : 'rejected' }));
     setItems((cur) => cur.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
   }
 
@@ -228,16 +304,15 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
             const code = senderCode(n);
             const canReply = n.category === 'message' && Boolean(n.data?.from);
             const requestId = enrolmentRequestId(n);
+            const lId = leaveRequestId(n);
+            const wId = wfhRequestId(n);
+            const isUploaded = uploadedMap[n.id];
             const decision = decided[n.id];
             const cls = `bx-rise-i block w-full px-5 py-4 text-left transition-all duration-300 ${
               isHovered ? 'bg-surface-2/70' : 'hover:bg-surface-2/50'
             } ${isDimmed ? 'opacity-40' : n.read ? 'opacity-80' : 'opacity-100'}`;
             const style = { ['--bx-i' as string]: Math.min(i, 10) };
-            const title = code ? (
-              // Same face-on-hover as the Board and Directory: the sender's
-              // reference photo floats up beside the cursor.
-              {n.title}
-            ) : n.title;
+            const title = n.title;
             const inner = (
               <>
                 <span className="flex items-baseline gap-2.5">
@@ -290,10 +365,44 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
                       <ScanFace className="size-3" aria-hidden /> Review photo
                     </button>
                   )}
+                  {lId && !isUploaded && uploadingId !== n.id && (
+                    <button
+                      type="button"
+                      onClick={() => { setUploadingId(n.id); setUploadError(null); setUploadFile(null); }}
+                      className="flex items-center gap-1.5 rounded-lg border border-line px-2.5 py-1 text-[11px] font-mono font-semibold text-ink-2 hover:text-ink hover:bg-surface-2 transition-all cursor-pointer"
+                    >
+                      <ScanFace className="size-3" aria-hidden /> Upload Document
+                    </button>
+                  )}
+                  {wId && !decision && (
+                    <span className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={deciding}
+                        onClick={() => decideWfh(n, true)}
+                        className="flex items-center gap-1 rounded-lg bg-green-500/10 text-green-600 border border-green-500/20 px-2.5 py-1 text-[11px] font-mono font-semibold hover:bg-green-500/20 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Check className="size-3" aria-hidden /> Approve WFH
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deciding}
+                        onClick={() => decideWfh(n, false)}
+                        className="flex items-center gap-1 rounded-lg bg-red-500/10 text-red-600 border border-red-500/20 px-2.5 py-1 text-[11px] font-mono font-semibold hover:bg-red-500/20 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <X className="size-3" aria-hidden /> Reject WFH
+                      </button>
+                    </span>
+                  )}
+                  {isUploaded && (
+                    <span role="status" className="flex items-center gap-1 text-[11px] font-mono font-semibold text-ink">
+                      <Check className="size-3" aria-hidden /> Document uploaded
+                    </span>
+                  )}
                   {decision && (
                     <span role="status" className="flex items-center gap-1 text-[11px] font-mono font-semibold text-ink">
                       <Check className="size-3" aria-hidden />
-                      {decision === 'approved' ? 'Approved - their reference photo is live' : 'Rejected'}
+                      {decision === 'approved' ? 'Approved' : 'Rejected'}
                     </span>
                   )}
                   {sentId === n.id && (
@@ -341,6 +450,39 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
                         className="rounded-lg px-2 py-1.5 text-[11px] font-mono font-semibold text-ink-3 hover:text-ink transition-all cursor-pointer"
                       >
                         Close
+                      </button>
+                    </span>
+                  </span>
+                )}
+
+                {lId && uploadingId === n.id && (
+                  <span className="mt-3 block max-w-xs">
+                    <span className="mt-1.5 block text-[11px] font-mono text-ink-3 mb-2">
+                      Please upload the medical document required for your leave request.
+                    </span>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                      className="block w-full text-xs font-mono file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-[11px] file:font-semibold file:bg-surface-2 file:text-ink hover:file:bg-surface-3 transition-all cursor-pointer"
+                    />
+                    {uploadError && (
+                      <span role="alert" className="mt-1 block text-[11px] font-mono text-st-absent">{uploadError}</span>
+                    )}
+                    <span className="mt-2 flex items-center gap-2">
+                      <button
+                        type="button" disabled={uploading || !uploadFile}
+                        onClick={() => uploadDocument(n)}
+                        className="flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-[11px] font-mono font-bold text-ground hover:opacity-90 transition-all cursor-pointer disabled:opacity-40"
+                      >
+                        <Check className="size-3" aria-hidden />
+                        {uploading ? 'Uploading…' : 'Upload'}
+                      </button>
+                      <button
+                        type="button" onClick={() => { setUploadingId(null); setUploadFile(null); }}
+                        className="rounded-lg px-2 py-1.5 text-[11px] font-mono font-semibold text-ink-3 hover:text-ink transition-all cursor-pointer"
+                      >
+                        Cancel
                       </button>
                     </span>
                   </span>

@@ -311,6 +311,9 @@ def decide_request(
     if request.status != "pending":
         return False, f"Already {request.status}"
 
+    if approver.employee_id is not None and approver.employee_id == request.employee_id:
+        return False, "You cannot decide your own enrolment request"
+
     employee = db.get(Employee, request.employee_id)
     if employee is None or not employee.is_active:
         return False, "Employee record is inactive"

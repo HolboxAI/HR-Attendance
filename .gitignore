@@ -10,3 +10,7 @@ data/
 !data/README.md
 sessions/
 *.tsbuildinfo
+*.db
+*.sqlite
+*.sqlite3
+CLAUDE*.md

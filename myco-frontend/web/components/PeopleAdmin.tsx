@@ -383,3 +383,93 @@ export function ResetPasswordButton({ code, name }: { code: string; name: string
     </div>
   );
 }
+
+export function EditCorrectionLimitButton({
+  code,
+  currentLimit,
+}: {
+  code: string;
+  currentLimit: number;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [limit, setLimit] = useState(currentLimit);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+
+    const res = await fetch(proxy(`/api/v1/admin/employees/${code}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ correction_limit: limit }),
+    }).catch(() => null);
+
+    setBusy(false);
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => null) : null;
+      setError(typeof body?.detail === 'string' ? body.detail : 'Could not update limit');
+      return;
+    }
+
+    setOpen(false);
+    router.refresh();
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2 transition-all active:scale-95"
+      >
+        Edit Correction Limit
+      </button>
+
+      {open && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-surface/30 p-4 backdrop-blur-md">
+          <div className="w-full max-w-sm rounded-2xl border border-line bg-surface p-6 shadow-2xl">
+            <h2 className="font-display text-lg font-bold text-ink mb-4">Edit Correction Limit</h2>
+            <form onSubmit={submit} className="space-y-4">
+              <label className="block text-sm font-mono text-ink-3">
+                Limit (1-15)
+                <input
+                  type="number"
+                  min={1}
+                  max={15}
+                  value={limit}
+                  onChange={(e) => setLimit(Number(e.target.value))}
+                  className="mt-1 block w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/40"
+                />
+              </label>
+              
+              {error && (
+                <p className="text-sm text-st-absent">{error}</p>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="rounded-xl border border-line px-4 py-2 text-xs font-semibold text-ink hover:bg-surface-2"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy}
+                  className="rounded-xl bg-ink px-4 py-2 text-xs font-black uppercase tracking-wider text-ground hover:opacity-90 disabled:opacity-50"
+                >
+                  {busy ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

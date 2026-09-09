@@ -1,7 +1,8 @@
 """Importing this package registers every table on Base.metadata."""
 
 from app.models.attendance import (  # noqa: F401
-    AttendanceDay, Device, DeviceEnrollment, PunchEvent, ShiftAssignment, ShiftTemplate,
+    AttendanceDay, Device, DeviceEnrollment, PunchEvent, ShiftAssignment, ShiftGroup,
+    ShiftGroupMember, ShiftTemplate,
 )
 from app.models.auth import RefreshSession  # noqa: F401
 from app.models.correction import CorrectionRequest  # noqa: F401
@@ -14,3 +15,4 @@ from app.models.leave import (  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.org import Department, Location, Organization  # noqa: F401
 from app.models.scheduler import ScheduledJobRun  # noqa: F401
+from app.models.wfh_request import WFHRequest  # noqa: F401

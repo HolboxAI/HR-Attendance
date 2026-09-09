@@ -184,7 +184,7 @@ def create(
 # Fields a PATCH may touch. Deliberately excludes emp_code (it is the stable
 # identifier every attendance row and export column hangs off) and is_active
 # (that is offboarding, which has to do more than flip a flag).
-EDITABLE = ("full_name", "email", "phone", "designation", "date_of_joining")
+EDITABLE = ("full_name", "email", "phone", "designation", "date_of_joining", "correction_limit")
 
 
 def update(

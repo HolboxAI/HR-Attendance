@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { hhmm, type Rejected } from '@/lib/format';
+import { HoverProfile } from '@/components/HoverProfile';
 
 export function BoardRefusedTable({ rejected }: { rejected: Rejected[] }) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
@@ -35,8 +36,10 @@ export function BoardRefusedTable({ rejected }: { rejected: Rejected[] }) {
                   {/* Refused punches are exactly where HR wants to see the
                       face - the refusal may BE about the face. */}
                   
+                  <HoverProfile data={{ name: r.full_name, code: r.employee_code }}>
                     <span className="font-medium text-ink transition-transform duration-300 inline-block group-hover:translate-x-2">{r.full_name}</span>
                     <span className="ml-2 text-xs font-mono text-ink-3">{r.employee_code}</span>
+                  </HoverProfile>
                   
                 </td>
                 <td className="tnum px-5 py-3 font-mono text-xs text-ink-3">{hhmm(r.at)}</td>

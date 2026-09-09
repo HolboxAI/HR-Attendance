@@ -36,9 +36,9 @@ class CorrectionRequest(Base, TimestampMixin):
     # What the employee says happened. It is a CLAIM while pending and becomes
     # the punch's event_ts only once someone other than the requester approves
     # it - that approval is what makes a client-supplied time acceptable here
-    # when it is refused everywhere else.
     claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(String(120), default="Other", server_default="Other", nullable=False)
 
     status: Mapped[CorrectionStatus] = mapped_column(
         default=CorrectionStatus.PENDING, index=True, nullable=False

@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { ArrowUpRight, Camera, Image as ImageIcon, Trash2, Upload } from 'lucide-react';
+import { HoverProfile } from '@/components/HoverProfile';
 
 import { CameraCaptureModal } from '@/components/CameraCaptureModal';
 import { dayMonth, enrolmentPhotoUrl, proxy, type EnrolmentRow } from '@/lib/format';
@@ -114,16 +115,18 @@ export function EnrolmentTable({ rows }: { rows: EnrolmentRow[] }) {
                   </td>
 
                   <td className="px-5 py-3.5">
-                    <span className="inline-block transition-transform duration-300 group-hover:translate-x-3">
-                      <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
-                        {r.full_name}
-                        <ArrowUpRight className="size-3.5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-ink shrink-0" aria-hidden />
+                    <HoverProfile data={{ name: r.full_name, department: r.department, code: r.employee_code }}>
+                      <span className="inline-block transition-transform duration-300 group-hover:translate-x-3">
+                        <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
+                          {r.full_name}
+                          <ArrowUpRight className="size-3.5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-ink shrink-0" aria-hidden />
+                        </span>
+                        <span className="block text-xs font-mono text-ink-3">{r.employee_code}</span>
+                        {r.department && (
+                          <span className="block text-[11px] text-ink-3/80 font-mono">{r.department}</span>
+                        )}
                       </span>
-                      <span className="block text-xs font-mono text-ink-3">{r.employee_code}</span>
-                      {r.department && (
-                        <span className="block text-[11px] text-ink-3/80 font-mono">{r.department}</span>
-                      )}
-                    </span>
+                    </HoverProfile>
                   </td>
 
                   <td className="px-5 py-3.5">

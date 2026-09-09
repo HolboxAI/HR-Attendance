@@ -18,6 +18,7 @@ export type Identity = {
   full_name: string | null;
   can_punch: boolean;
   is_admin: boolean;
+  correction_limit: number;
 };
 
 export type Session = { access: string; refresh: string; identity: Identity };

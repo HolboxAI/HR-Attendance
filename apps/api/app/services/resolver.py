@@ -28,7 +28,7 @@ class ShiftPolicy:
     start_time: time
     end_time: time
     break_minutes: int = 60
-    grace_minutes: int = 15
+    grace_minutes: int = 10
     half_day_after_minutes: int = 240
     full_day_after_minutes: int = 450
     cutover_hour: int = 5

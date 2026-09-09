@@ -8,11 +8,12 @@ import type { BoardRow } from '@/lib/format';
  * not the function). Shared plain module, usable from both sides.
  */
 export type FilterKey =
-  | 'all' | 'in_office' | 'present' | 'late' | 'absent' | 'on_leave' | 'exceptions';
+  | 'all' | 'in_office' | 'wfh' | 'present' | 'late' | 'absent' | 'on_leave' | 'exceptions';
 
 export const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'in_office', label: 'In office' },
+  { key: 'wfh', label: 'WFH' },
   { key: 'present', label: 'Present' },
   { key: 'late', label: 'Late' },
   { key: 'absent', label: 'Absent' },
@@ -28,6 +29,7 @@ export function matchesFilter(row: BoardRow, filter: FilterKey): boolean {
   switch (filter) {
     case 'all': return true;
     case 'in_office': return row.currently_in;
+    case 'wfh': return Boolean(row.is_wfh_enabled || row.status === 'wfh');
     case 'late': return row.late_minutes > 0;
     case 'exceptions': return row.has_exception;
     default: return row.status === filter;

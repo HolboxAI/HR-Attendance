@@ -116,3 +116,22 @@ def decode_token(token: str, *, expect: str) -> dict:
     if not claims.get("sub"):
         raise TokenError("Token has no subject")
     return claims
+
+
+def generate_action_token(action: str, sub: str, payload: dict, expires_hours: int = 48) -> str:
+    """Generate a short-lived token for an action (like email approval)."""
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(hours=expires_hours)
+    claims = {
+        **payload,
+        "sub": sub,
+        "typ": f"action_{action}",
+        "iat": int(now.timestamp()),
+        "exp": int(expires_at.timestamp()),
+    }
+    return jwt.encode(claims, settings.jwt_secret, algorithm=ALGORITHM)
+
+
+def decode_action_token(token: str, action: str) -> dict:
+    """Verify an action token."""
+    return decode_token(token, expect=f"action_{action}")

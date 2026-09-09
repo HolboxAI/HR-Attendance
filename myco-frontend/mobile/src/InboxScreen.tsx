@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
-  TextInput, View,
+  TextInput, View, ActionSheetIOS, Platform, Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 
-import { getNotifications, markNotificationRead, replyToNotification } from './api';
+import { getNotifications, markNotificationRead, replyToNotification, uploadLeaveDocument } from './api';
 import { useTheme } from './ThemeContext';
 import { theme, type ThemeColors } from './theme';
 import type { NotificationItem } from './types';
@@ -38,6 +39,12 @@ export default function InboxScreen({ onUnreadChange }: { onUnreadChange: (n: nu
   const [replyBusy, setReplyBusy] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [repliedTo, setRepliedTo] = useState<string | null>(null);
+  
+  const [uploadOpen, setUploadOpen] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<{ uri: string; type: string; name: string; webFile?: any } | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadedTo, setUploadedTo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -82,6 +89,77 @@ export default function InboxScreen({ onUnreadChange }: { onUnreadChange: (n: nu
     setReplyOpen(null);
     setReplyText('');
     setRepliedTo(n.id);
+  }
+
+  async function pickImage() {
+    const options = ['Take Photo', 'Choose from Library', 'Cancel'];
+    const pick = async (index: number) => {
+      let result;
+      if (index === 0) {
+        const p = await ImagePicker.requestCameraPermissionsAsync();
+        if (!p.granted) { Alert.alert('Camera permission required'); return; }
+        result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+      } else if (index === 1) {
+        result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
+      }
+      if (result && !result.canceled) {
+        const asset = result.assets?.[0];
+        if (!asset) return;
+        if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+          setUploadError('File too large. Maximum 5MB.');
+          return;
+        }
+        const uri = asset.uri;
+        const ext = uri.split('.').pop() || 'jpg';
+        setUploadFile({ uri, type: asset.file?.type || `image/${ext}`, name: asset.file?.name || `doc.${ext}`, webFile: asset.file });
+        setUploadError(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      pick(1);
+    } else if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options, cancelButtonIndex: 2 },
+        (btnIndex) => { if (btnIndex !== 2) pick(btnIndex); }
+      );
+    } else {
+      Alert.alert('Upload Document', 'Choose an option', [
+        { text: 'Take Photo', onPress: () => pick(0) },
+        { text: 'Choose from Library', onPress: () => pick(1) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
+
+  async function sendUpload(n: NotificationItem) {
+    if (!uploadFile || uploadBusy) return;
+    const reqId = n.data?.leave_request_id as string | undefined;
+    if (!reqId) {
+      setUploadError('Invalid request ID');
+      return;
+    }
+    
+    setUploadBusy(true);
+    setUploadError(null);
+    
+    const refusal = await uploadLeaveDocument(reqId, { 
+      fileUri: uploadFile.uri, 
+      fileType: uploadFile.type, 
+      fileName: uploadFile.name,
+      webFile: uploadFile.webFile
+    });
+    
+    setUploadBusy(false);
+    if (refusal) {
+      setUploadError(refusal);
+      return;
+    }
+    
+    setRead(n.id);
+    setUploadOpen(null);
+    setUploadFile(null);
+    setUploadedTo(n.id);
   }
 
   return (
@@ -137,7 +215,13 @@ export default function InboxScreen({ onUnreadChange }: { onUnreadChange: (n: nu
                   </Text>
                 )}
 
-                {(!n.read || isMessage) && (
+                {uploadedTo === n.id && (
+                  <Text style={s.sentNote} accessibilityLiveRegion="polite">
+                    ● Document uploaded
+                  </Text>
+                )}
+
+                {(!n.read || isMessage || n.category === 'leave.partially_approved') && (
                   <View style={s.actions}>
                     {!n.read && (
                       <Pressable
@@ -152,6 +236,7 @@ export default function InboxScreen({ onUnreadChange }: { onUnreadChange: (n: nu
                         style={s.actionBtn}
                         onPress={() => {
                           setReplyOpen(open ? null : n.id);
+                          setUploadOpen(null);
                           setReplyText('');
                           setReplyError(null);
                           setRepliedTo(null);
@@ -161,6 +246,59 @@ export default function InboxScreen({ onUnreadChange }: { onUnreadChange: (n: nu
                         <Text style={s.actionText}>{open ? 'Close' : 'Reply'}</Text>
                       </Pressable>
                     )}
+                    {n.category === 'leave.partially_approved' && uploadedTo !== n.id && (
+                      <Pressable
+                        style={s.actionBtn}
+                        onPress={() => {
+                          const isOpen = uploadOpen === n.id;
+                          setUploadOpen(isOpen ? null : n.id);
+                          setReplyOpen(null);
+                          setUploadFile(null);
+                          setUploadError(null);
+                        }}
+                        accessibilityRole="button"
+                      >
+                        <Text style={s.actionText}>{uploadOpen === n.id ? 'Close' : 'Upload Document'}</Text>
+                      </Pressable>
+                    )}
+                  </View>
+                )}
+
+                {uploadOpen === n.id && (
+                  <View style={s.replyBox}>
+                    <Text style={{ fontSize: 13, color: c.ink2, marginBottom: 8 }}>
+                      Please upload the medical document required for your leave request.
+                    </Text>
+                    
+                    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                      <Pressable
+                        style={[s.actionBtn, uploadFile && { borderColor: c.accent }]}
+                        onPress={pickImage}
+                        accessibilityRole="button"
+                      >
+                        <Text style={[s.actionText, uploadFile && { color: c.accent }]}>
+                          {uploadFile ? 'Change Attachment' : '📎 Attach Document'}
+                        </Text>
+                      </Pressable>
+                      {uploadFile && <Text style={{ fontSize: 12, color: c.ink3 }}>Ready</Text>}
+                    </View>
+
+                    {uploadError && (
+                      <Text style={s.replyError} accessibilityLiveRegion="polite">
+                        ○ {uploadError}
+                      </Text>
+                    )}
+                    
+                    <Pressable
+                      style={[s.sendBtn, (uploadBusy || !uploadFile) && s.sendBtnOff]}
+                      onPress={() => sendUpload(n)}
+                      disabled={uploadBusy || !uploadFile}
+                      accessibilityRole="button"
+                    >
+                      {uploadBusy
+                        ? <ActivityIndicator color={c.accentInk} />
+                        : <Text style={s.sendText}>Upload</Text>}
+                    </Pressable>
                   </View>
                 )}
 

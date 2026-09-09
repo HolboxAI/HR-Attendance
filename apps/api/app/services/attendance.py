@@ -25,9 +25,12 @@ from app.models.attendance import (
     DeviceEnrollment,
     PunchEvent,
     ShiftAssignment,
+    ShiftGroup,
+    ShiftGroupMember,
     ShiftTemplate,
 )
 from app.models.employee import Employee
+from app.models.org import Organization
 from app.models.enums import AttendanceStatus, PunchDirection, PunchSource
 from app.services.resolver import Punch, ShiftPolicy, resolve_day, shift_date_for
 
@@ -56,8 +59,18 @@ def dedupe_hash(
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def policy_for(db: Session, employee: Employee, on: date) -> tuple[ShiftPolicy, uuid.UUID | None]:
-    """The shift in force for this employee on this date."""
+def resolve_shift(
+    db: Session, employee: Employee, on: date
+) -> tuple[ShiftTemplate | None, str, str | None, uuid.UUID | None]:
+    """Resolves the shift template for an employee on a given date following PRD §8.5:
+    1. Employee-specific shift assignment (direct override)
+    2. Shift group assignment (via ShiftGroupMember -> ShiftGroup)
+    3. Organization-wide default shift (Organization.settings['default_shift_template_id'] or first template)
+
+    Returns: (template, source, group_name, assignment_id)
+    where source is "direct" | "group" | "default" | "fallback"
+    """
+    # 1. Direct employee assignment
     stmt = (
         select(ShiftTemplate, ShiftAssignment.id)
         .join(ShiftAssignment, ShiftAssignment.shift_template_id == ShiftTemplate.id)
@@ -65,15 +78,55 @@ def policy_for(db: Session, employee: Employee, on: date) -> tuple[ShiftPolicy, 
             and_(
                 ShiftAssignment.employee_id == employee.id,
                 ShiftAssignment.effective_from <= on,
+                (ShiftAssignment.effective_to.is_(None) | (ShiftAssignment.effective_to >= on)),
             )
         )
         .order_by(ShiftAssignment.effective_from.desc())
     )
     row = db.execute(stmt).first()
-    if row is None:
+    if row:
+        return row[0], "direct", None, row[1]
+
+    # 2. Shift group assignment
+    stmt_group = (
+        select(ShiftTemplate, ShiftGroup.name)
+        .join(ShiftGroup, ShiftGroup.shift_template_id == ShiftTemplate.id)
+        .join(ShiftGroupMember, ShiftGroupMember.shift_group_id == ShiftGroup.id)
+        .where(
+            and_(
+                ShiftGroupMember.employee_id == employee.id,
+                ShiftGroup.org_id == employee.org_id,
+                ShiftGroup.deleted_at.is_(None),
+            )
+        )
+        .order_by(ShiftGroupMember.created_at.desc())
+    )
+    group_row = db.execute(stmt_group).first()
+    if group_row:
+        return group_row[0], "group", group_row[1], None
+
+    # 3. Organization default shift
+    org = db.get(Organization, employee.org_id)
+    default_id = org.settings.get("default_shift_template_id") if org and org.settings else None
+    if default_id:
+        try:
+            tpl = db.get(ShiftTemplate, uuid.UUID(str(default_id)))
+            if tpl and tpl.org_id == employee.org_id:
+                return tpl, "default", None, None
+        except (ValueError, TypeError):
+            pass
+
+# No explicit default template set; falls back to DEFAULT_POLICY
+
+    return None, "fallback", None, None
+
+
+def policy_for(db: Session, employee: Employee, on: date) -> tuple[ShiftPolicy, uuid.UUID | None]:
+    """The shift in force for this employee on this date."""
+    tpl, _, _, _ = resolve_shift(db, employee, on)
+    if tpl is None:
         return DEFAULT_POLICY, None
 
-    tpl: ShiftTemplate = row[0]
     return (
         ShiftPolicy(
             start_time=tpl.start_time,
@@ -217,6 +270,8 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
         leave_fraction=leave_fraction_on(db, employee, shift_date),
         as_of=datetime.now(timezone.utc),
     )
+    
+    is_regularized = any(p.source == "manual" for p in punches)
 
     day = db.scalar(
         select(AttendanceDay).where(
@@ -236,10 +291,34 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
     day.late_minutes = resolved.late_minutes
     day.early_out_minutes = resolved.early_out_minutes
     day.overtime_minutes = resolved.overtime_minutes
-    day.status = AttendanceStatus(resolved.status)
+    is_wfh = employee.is_wfh_enabled
+    if not is_wfh:
+        from app.models.wfh_request import WFHRequest
+        from app.models.enums import CorrectionStatus
+        wfh_req = db.scalar(
+            select(WFHRequest).where(
+                and_(
+                    WFHRequest.employee_id == employee.id,
+                    WFHRequest.shift_date == shift_date,
+                    WFHRequest.status == CorrectionStatus.APPROVED,
+                )
+            )
+        )
+        if wfh_req:
+            is_wfh = True
+
+    status_val = AttendanceStatus(resolved.status)
+    if is_wfh and status_val == AttendanceStatus.PRESENT:
+        # If they are WFH and present, their status is WFH.
+        # Note: if they are half_day, we could leave it as half_day or make a half_day_wfh.
+        # For now, we override PRESENT to WFH.
+        status_val = AttendanceStatus.WFH
+
+    day.status = status_val
     day.punch_count = resolved.punch_count
     day.has_exception = resolved.has_exception
     day.exception_note = resolved.exception_note
+    day.is_regularized = is_regularized
     day.computed_at = datetime.now(timezone.utc)
 
     db.flush()

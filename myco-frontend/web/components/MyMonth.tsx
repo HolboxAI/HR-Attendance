@@ -6,14 +6,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { MonthCalendar } from '@/components/MonthCalendar';
 import { statusGlyph, statusLabel } from '@/components/Status';
-import { hhmm, hours, istToday, istYearMonth, monthLabel, type MonthDay } from '@/lib/format';
+import { hhmm, hours, istToday, istYearMonth, monthLabel, type MonthDay, type MonthResponse } from '@/lib/format';
 
-type Data = {
-  employee_code: string;
-  full_name: string;
-  days: MonthDay[];
-  totals: Record<string, number>;
-} | null;
+type Data = MonthResponse | null;
 
 /**
  * What a non-admin sees on the dashboard: their own month.

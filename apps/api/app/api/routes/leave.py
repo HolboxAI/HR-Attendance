@@ -10,7 +10,8 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -46,6 +47,16 @@ class BalanceOut(BaseModel):
     accrued: float
     used: float
     available: float
+    requires_proof: bool = False
+
+
+LEAVE_REASON_CATEGORIES = [
+    "Personal",
+    "Family emergency",
+    "Medical/health-related",
+    "Family/household responsibility",
+    "Other legitimate personal reason",
+]
 
 
 class RequestOut(BaseModel):
@@ -58,11 +69,16 @@ class RequestOut(BaseModel):
     half_day_end: bool
     days: float
     status: str
+    category: str | None = None
     reason: str | None
     decided_note: str | None
     decided_at: datetime | None
     employee_code: str | None = None
     employee_name: str | None = None
+    medical_document_required: bool = False
+    medical_document_deadline: datetime | None = None
+    medical_document_url: str | None = None
+    medical_document_submitted_at: datetime | None = None
 
 
 class ApplyRequest(BaseModel):
@@ -71,6 +87,7 @@ class ApplyRequest(BaseModel):
     to_date: date
     half_day_start: bool = False
     half_day_end: bool = False
+    category: str | None = None
     reason: str | None = None
 
 
@@ -92,10 +109,20 @@ def to_request_out(db: Session, r: LeaveRequest, emp: Employee | None = None) ->
         from_date=r.from_date, to_date=r.to_date,
         half_day_start=r.half_day_start, half_day_end=r.half_day_end,
         days=float(r.days_consumed), status=r.status.value,
+        category=r.category,
         reason=r.reason, decided_note=r.decided_note, decided_at=r.decided_at,
         employee_code=emp.emp_code if emp else None,
         employee_name=emp.full_name if emp else None,
+        medical_document_required=r.medical_document_required,
+        medical_document_deadline=r.medical_document_deadline,
+        medical_document_url=r.medical_document_url,
+        medical_document_submitted_at=r.medical_document_submitted_at,
     )
+
+
+@router.get("/categories")
+def leave_categories() -> list[str]:
+    return LEAVE_REASON_CATEGORIES
 
 
 @router.get("/types", response_model=list[LeaveTypeOut])
@@ -122,7 +149,7 @@ def my_balance(
         out.append(BalanceOut(
             leave_type_id=t.id, code=t.code, name=t.name, is_paid=t.is_paid,
             period=period, opening=float(bal.opening), accrued=float(bal.accrued),
-            used=float(bal.used), available=bal.available,
+            used=float(bal.used), available=bal.available, requires_proof=t.requires_proof,
         ))
     db.commit()
     return out
@@ -141,30 +168,70 @@ def my_requests(
 
 
 @router.post("/request", response_model=RequestOut)
-def apply(
-    body: ApplyRequest,
+async def apply(
+    request: Request,
     db: Session = Depends(get_db),
     emp: Employee = Depends(get_current_employee),
 ):
+    content_type = request.headers.get("content-type", "")
+    file_data = None
+    file_ext = None
+    if "application/json" in content_type:
+        body = await request.json()
+        leave_type_code = str(body.get("leave_type_code", ""))
+        from_date = date.fromisoformat(body["from_date"])
+        to_date = date.fromisoformat(body.get("to_date") or body["from_date"])
+        half_day_start = bool(body.get("half_day_start", False))
+        half_day_end = bool(body.get("half_day_end", False))
+        category = body.get("category")
+        reason = body.get("reason")
+    else:
+        form = await request.form()
+        leave_type_code = str(form.get("leave_type_code", ""))
+        from_date = date.fromisoformat(str(form.get("from_date", "")))
+        to_date = date.fromisoformat(str(form.get("to_date") or form.get("from_date", "")))
+        half_day_start = str(form.get("half_day_start", "false")).lower() in ("true", "1")
+        half_day_end = str(form.get("half_day_end", "false")).lower() in ("true", "1")
+        category = form.get("category")
+        reason = form.get("reason")
+        if reason is not None:
+            reason = str(reason)
+        file = form.get("file")
+        if file and hasattr(file, "read"):
+            file_data = await file.read()
+            if len(file_data) > 5 * 1024 * 1024:
+                raise HTTPException(400, "File too large. Maximum 5MB.")
+            file_ext = "pdf" if getattr(file, "content_type", "") == "application/pdf" else "jpg"
+
+    if category is not None:
+        category = str(category).strip()
+        if category and category not in LEAVE_REASON_CATEGORIES:
+            raise HTTPException(422, f"Invalid category. Must be one of: {LEAVE_REASON_CATEGORIES}")
+
     lt = db.scalar(select(LeaveType).where(
-        LeaveType.org_id == emp.org_id, LeaveType.code == body.leave_type_code.upper(),
+        LeaveType.org_id == emp.org_id, LeaveType.code == leave_type_code.upper(),
         LeaveType.is_active.is_(True), LeaveType.deleted_at.is_(None),
     ))
     if lt is None:
-        raise HTTPException(404, f"No leave type {body.leave_type_code}")
+        raise HTTPException(404, f"No leave type {leave_type_code}")
 
     result = leave_service.submit(
-        db, employee=emp, leave_type=lt, start=body.from_date, end=body.to_date,
-        reason=body.reason, half_day_start=body.half_day_start,
-        half_day_end=body.half_day_end,
+        db, employee=emp, leave_type=lt, start=from_date, end=to_date,
+        category=category, reason=reason, half_day_start=half_day_start,
+        half_day_end=half_day_end,
     )
     if not result.ok:
-        db.rollback()
-        # 409, not 400: the request is well-formed, it conflicts with the state
-        # of the world - a balance that ran out, or a range already booked.
         raise HTTPException(409, result.reason or "Could not apply")
-
+        
     db.commit()
+
+    if file_data and result.request.id:
+        from app.services.storage import storage
+        key = f"medical_docs/{result.request.id}/doc.{file_ext}"
+        storage.put(key, file_data)
+        result.request.medical_document_url = key
+        result.request.medical_document_submitted_at = datetime.now(timezone.utc)
+        db.commit()
     
     from app.services import notifications
     
@@ -181,6 +248,7 @@ def apply(
         title="Leave Request",
         body=f"{emp.full_name} requested {lt.name} for the dates: {result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.",
         exclude_user_id=emp_user.id if emp_user and emp_user.role != UserRole.HR_ADMIN else None,
+        data={"leave_request_id": str(result.request.id)},
     )
     db.commit()
     from app.services.slack import post_leave_request
@@ -228,3 +296,135 @@ def cancel(
         raise HTTPException(409, result.reason or "Could not cancel")
     db.commit()
     return to_request_out(db, row, emp)
+
+
+@router.get("/email-decide", response_class=HTMLResponse)
+def email_decide(token: str, db: Session = Depends(get_db)):
+    """Process a leave decision via an email link."""
+    from app.core.security import decode_action_token
+    def _glassy_html(title: str, message: str, status_code: int = 200) -> HTMLResponse:
+        content = f"""
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }}
+                .card {{ background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 40px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); text-align: center; max-width: 400px; width: 100%; }}
+                h1 {{ color: #ffffff; font-weight: 700; margin-top: 0; margin-bottom: 16px; font-size: 24px; }}
+                p {{ font-size: 15px; margin-bottom: 0; color: #c9d1d9; line-height: 1.5; }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>{title}</h1>
+                <p>{message}</p>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=content, status_code=status_code)
+
+    try:
+        claims = decode_action_token(token, "leave_decide")
+    except Exception as e:
+        return _glassy_html("Link Expired", "This action link is invalid or has expired.", 400)
+    
+    request_id = claims["sub"]
+    approve = claims["approve"]
+    approver_id = uuid.UUID(claims["approver_id"])
+    
+    row = db.get(LeaveRequest, uuid.UUID(request_id))
+    if not row or row.deleted_at is not None:
+        return _glassy_html("Not Found", "Leave request not found.", 404)
+        
+    approver = db.get(User, approver_id)
+    if not approver:
+        return _glassy_html("Not Found", "Approver not found.", 404)
+        
+    # Process decision
+    result = leave_service.decide(
+        db, request=row, approver=approver, approve=approve,
+    )
+    if not result.ok:
+        db.rollback()
+        return _glassy_html("Error", f"Could not process decision: {result.reason}", 409)
+        
+    db.commit()
+    action = "Approved" if approve else "Rejected"
+    return _glassy_html(f"Leave {action}", f"You have successfully {action.lower()} this request. The employee has been notified.")
+
+
+@router.post("/{request_id}/document", response_model=RequestOut)
+def upload_document(
+    request_id: uuid.UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+):
+    row = db.get(LeaveRequest, request_id)
+    if row is None or row.employee_id != emp.id or row.deleted_at is not None:
+        raise HTTPException(404, "No such request")
+        
+    if row.status != LeaveStatus.PARTIALLY_APPROVED:
+        raise HTTPException(409, "Cannot upload document: request is not partially approved")
+        
+    from app.services.storage import storage
+    
+    ext = "pdf" if file.content_type == "application/pdf" else "jpg"
+    key = f"medical_docs/{row.id}/doc.{ext}"
+    data = file.file.read()
+    storage.put(key, data)
+    
+    row.medical_document_url = key
+    row.medical_document_submitted_at = datetime.now(timezone.utc)
+    db.commit()
+
+    from app.services import notifications
+    from app.models.employee import User
+    from app.models.enums import UserRole
+    
+    emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
+    
+    notifications.notify_hr(
+        db,
+        org_id=emp.org_id,
+        category="leave.document_uploaded",
+        title="Medical Document Uploaded",
+        body=f"{emp.full_name} has submitted the required medical document for their leave request.",
+        exclude_user_id=emp_user.id if emp_user and emp_user.role != UserRole.HR_ADMIN else None,
+        data={"leave_request_id": str(row.id)},
+    )
+    db.commit()
+
+    return to_request_out(db, row, emp)
+
+@router.get("/{request_id}/document/download")
+def download_document(
+    request_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    row = db.get(LeaveRequest, request_id)
+    if row is None or row.deleted_at is not None:
+        raise HTTPException(404, "No such request")
+        
+    # Check permissions (either the employee themselves or an HR admin/manager)
+    if row.employee_id != user.employee_id and user.role not in [UserRole.HR_ADMIN, UserRole.SUPER_ADMIN, UserRole.MANAGER]:
+        raise HTTPException(403, "Not authorized to view this document")
+        
+    if not row.medical_document_url:
+        raise HTTPException(404, "No document attached to this request")
+        
+    from app.services.storage import storage
+    data = storage.get(row.medical_document_url)
+    if not data:
+        raise HTTPException(404, "Document file not found in storage")
+        
+    from fastapi.responses import Response
+    
+    # Very basic content type inference
+    content_type = "application/pdf" if row.medical_document_url.endswith(".pdf") else "image/jpeg"
+    if row.medical_document_url.endswith(".png"):
+        content_type = "image/png"
+        
+    return Response(content=data, media_type=content_type)

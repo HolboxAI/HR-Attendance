@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.correction import CorrectionRequest
@@ -62,7 +62,7 @@ def overlapping(
 
 def submit(
     db: Session, *, employee: Employee, shift_date: date, direction: PunchDirection,
-    claimed_at: datetime, reason: str, today: date | None = None,
+    claimed_at: datetime, reason: str, category: str, today: date | None = None,
 ) -> CorrectionOutcome:
     today = today or org_today()
 
@@ -79,10 +79,34 @@ def submit(
                    f"{shift_date} ({direction.value})",
         )
 
+    # Enforce limit per month
+    month_start = shift_date.replace(day=1)
+    if month_start.month == 12:
+        month_end = shift_date.replace(year=shift_date.year + 1, month=1, day=1)
+    else:
+        month_end = shift_date.replace(month=shift_date.month + 1, day=1)
+        
+    used_corrections = db.scalar(
+        select(func.count()).select_from(CorrectionRequest).where(
+            CorrectionRequest.employee_id == employee.id,
+            CorrectionRequest.shift_date >= month_start,
+            CorrectionRequest.shift_date < month_end,
+            CorrectionRequest.status.in_([CorrectionStatus.PENDING, CorrectionStatus.APPROVED]),
+            CorrectionRequest.deleted_at.is_(None)
+        )
+    ) or 0
+    
+    limit = employee.correction_limit if employee.correction_limit is not None else 5
+    if used_corrections >= limit:
+        return CorrectionOutcome(
+            False,
+            reason=f"Correction limit reached ({limit} per month)"
+        )
+
     row = CorrectionRequest(
         id=uuid.uuid4(), org_id=employee.org_id, employee_id=employee.id,
         shift_date=shift_date, direction=direction, claimed_at=claimed_at,
-        reason=reason.strip(), status=CorrectionStatus.PENDING,
+        reason=reason.strip(), category=category, status=CorrectionStatus.PENDING,
     )
     db.add(row)
     db.flush()

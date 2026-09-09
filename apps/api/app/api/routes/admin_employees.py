@@ -22,6 +22,8 @@ from app.models.employee import Employee, User
 from app.models.enums import UserRole
 from app.models.org import Department
 from app.services import employees as employee_service
+from app.api.routes.enrolment import _employee, active_enrolment
+from app.services.storage import storage
 
 router = APIRouter(prefix="/admin/employees", tags=["employees"])
 
@@ -42,6 +44,7 @@ class EmployeeOut(BaseModel):
     is_active: bool
     role: str | None
     has_login: bool
+    correction_limit: int | None
 
 
 class CreateRequest(BaseModel):
@@ -70,6 +73,7 @@ class UpdateRequest(BaseModel):
     department: str | None = None
     manager_code: str | None = None
     role: UserRole | None = None
+    correction_limit: int | None = Field(default=None, ge=1, le=15)
 
 
 class CreatedResponse(BaseModel):
@@ -94,6 +98,7 @@ def to_out(db: Session, emp: Employee) -> EmployeeOut:
         date_of_joining=emp.date_of_joining, date_of_exit=emp.date_of_exit,
         is_active=emp.is_active,
         role=user.role.value if user else None, has_login=user is not None,
+        correction_limit=emp.correction_limit,
     )
 
 
@@ -211,3 +216,18 @@ def reset_password(
         temporary_password=result.temporary_password or "",
         note="Shown once and not recoverable. Hand it over in person.",
     )
+
+@router.get("/directory/{code_or_email}/photo", dependencies=[Depends(require_role(UserRole.EMPLOYEE))])
+def get_directory_photo(code_or_email: str, db: Session = Depends(get_db)):
+    from fastapi.responses import Response
+    
+    emp = _employee(db, code_or_email)
+    current = active_enrolment(db, emp)
+    if current is None:
+        raise HTTPException(404, f"{code_or_email} has no reference photo")
+    try:
+        data = storage.get(current.photo_key)
+    except FileNotFoundError:
+        raise HTTPException(404, "The reference photo file is missing from storage")
+        
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})

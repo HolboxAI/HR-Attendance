@@ -2,9 +2,12 @@ import { AddPunch } from '@/components/AddPunch';
 import { MyCorrections } from '@/components/MyCorrections';
 import { PageHeader } from '@/components/PageHeader';
 import { PendingCorrections } from '@/components/PendingCorrections';
+import { currentIdentity } from '@/lib/session';
+import { EmployeeCorrectionSummary } from '@/components/EmployeeCorrectionSummary';
 import {
-  getBoard, getCorrectionsPending, getMyCorrections, getMyMonth,
+  getBoard, getCorrectionsPending, getCorrectionsSummary, getMyCorrections, getMyMonth,
 } from '@/lib/api';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -29,19 +32,30 @@ export default async function CorrectionsPage({
   const m = now.getUTCMonth() + 1;
   const prev = m === 1 ? { y: y - 1, m: 12 } : { y, m: m - 1 };
 
-  const [pending, mine, thisMonth, lastMonth] = await Promise.all([
+  const [pending, mine, thisMonth, lastMonth, summary] = await Promise.all([
     getCorrectionsPending(),
     getMyCorrections(),
     getMyMonth(y, m),
     getMyMonth(prev.y, prev.m),
+    getCorrectionsSummary().catch(() => ({ ok: false, data: [] })),
   ]);
 
   const isHr = pending.ok;
   const today = new Date().toISOString().slice(0, 10);
   const pendingDays = new Set((mine ?? []).filter((r) => r.status === 'pending').map((r) => r.shift_date));
+  const identity = await currentIdentity();
+  const correctionLimit = identity?.correction_limit ?? 5;
+
   const flagged = [...(lastMonth?.days ?? []), ...(thisMonth?.days ?? [])]
     .filter((d) => d.has_exception && d.date <= today && !pendingDays.has(d.date))
     .slice(-6);
+
+  // Count used corrections for the current month
+  const currentMonthStr = `${y}-${String(m).padStart(2, '0')}`;
+  const usedCorrections = (mine ?? []).filter((r) => 
+    r.shift_date.startsWith(currentMonthStr) && 
+    (r.status === 'pending' || r.status === 'approved')
+  ).length;
 
   const board = isHr ? await getBoard() : null;
   const employees = board?.ok
@@ -68,6 +82,15 @@ export default async function CorrectionsPage({
         </section>
       )}
 
+      {isHr && summary.ok && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-3">
+            Employee Correction Summary
+          </h2>
+          <EmployeeCorrectionSummary summary={summary.data} />
+        </section>
+      )}
+
       {isHr && employees.length > 0 && (
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-3">
@@ -81,7 +104,7 @@ export default async function CorrectionsPage({
         <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-3">
           Yours
         </h2>
-        <MyCorrections rows={mine ?? []} flaggedDays={flagged} />
+        <MyCorrections rows={mine ?? []} flaggedDays={flagged} correctionLimit={correctionLimit} usedCorrections={usedCorrections} />
       </section>
     </div>
   );

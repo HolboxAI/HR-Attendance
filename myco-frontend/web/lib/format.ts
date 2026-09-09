@@ -23,13 +23,22 @@ export type BoardRow = {
   punch_count: number;
   has_exception: boolean;
   exception_note: string | null;
+  is_regularized: boolean;
+  is_wfh_enabled?: boolean;
 };
 
 export type Board = {
   shift_date: string;
   summary: {
-    present: number; late: number; absent: number; on_leave: number;
-    weekly_off: number; exceptions: number; currently_in: number; headcount: number;
+    present: number;
+    late: number;
+    absent: number;
+    wfh: number;
+    on_leave: number;
+    weekly_off: number;
+    exceptions: number;
+    currently_in: number;
+    headcount: number;
   };
   rows: BoardRow[];
 };
@@ -44,6 +53,10 @@ export type MonthDay = {
   first_in: string | null; last_out: string | null;
   worked_minutes: number; late_minutes: number; overtime_minutes: number;
   has_exception: boolean; exception_note: string | null;
+  is_regularized: boolean;
+  is_wfh?: boolean;
+  leave_code?: string | null;
+  leave_name?: string | null;
 };
 
 export type EnrolmentRow = {
@@ -126,11 +139,16 @@ export type LeaveRequestRow = {
   half_day_end: boolean;
   days: number;
   status: string;
+  category?: string | null;
   reason: string | null;
   decided_note: string | null;
   decided_at: string | null;
   employee_code: string | null;
   employee_name: string | null;
+  medical_document_required?: boolean;
+  medical_document_deadline?: string | null;
+  medical_document_url?: string | null;
+  medical_document_submitted_at?: string | null;
 };
 
 export type BalanceRow = {
@@ -240,19 +258,35 @@ export type TeamBalanceRow = {
 export type MonthResponse = {
   employee_code: string;
   full_name: string;
+  department?: string | null;
+  correction_limit: number;
   year: number;
   month: number;
+  start_date?: string;
+  end_date?: string;
   days: MonthDay[];
-  totals: Record<string, number>;
-};
-
-export type AccrueResult = { credited: number; skipped: number };
-export type CarryForwardResult = {
+  totals: {
+    worked_minutes: number;
+    present: number;
+    half_day: number;
+    absent: number;
+    on_leave?: number;
+    wfh?: number;
+    weekly_off?: number;
+    holiday?: number;
+    late_minutes: number;
+    overtime_minutes: number;
+    regularized?: number;
+    leaves_by_type?: Record<string, number>;
+  };
+};export type CarryForwardResult = {
   from_period: string;
   to_period: string;
   credited: number;
   skipped: number;
 };
+
+export type AccrueResult = { credited: number; skipped: number };
 
 export type CorrectResult = {
   created: boolean;
@@ -308,6 +342,9 @@ export function notificationHref(n: NotificationRow): string | null {
   if (c.startsWith('enrolment')) return '/enrolment';
   if (c === 'attendance_late') return '/checkin';
   if (c === 'attendance_punch_out') return '/corrections';
+  if (c === 'wfh.pending') return '/people/wfh';
+  if (c === 'wfh.decided') return '/people/wfh';
+  if (c.startsWith('wfh')) return '/people/wfh';
   return null;
 }
 
@@ -332,3 +369,54 @@ export function monthLabel(year: number, month: number): string {
     month: 'long', year: 'numeric', timeZone: 'UTC',
   });
 }
+
+/* ------------------------------------------------------------- shift types */
+
+export type ShiftTemplateRow = {
+  id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  break_minutes: number;
+  grace_minutes: number;
+  half_day_after_minutes: number;
+  full_day_after_minutes: number;
+  cutover_hour: number;
+  working_days: number[];
+  is_default: boolean;
+  active_assignments_count: number;
+};
+
+export type ShiftGroupMemberRow = {
+  employee_id: string;
+  emp_code: string;
+  full_name: string;
+  department?: string | null;
+};
+
+export type ShiftGroupRow = {
+  id: string;
+  name: string;
+  description?: string | null;
+  shift_template_id: string;
+  shift_template_name: string;
+  shift_template_start: string;
+  shift_template_end: string;
+  members: ShiftGroupMemberRow[];
+  member_count: number;
+};
+
+export type ShiftRosterRow = {
+  employee_id: string;
+  emp_code: string;
+  full_name: string;
+  department?: string | null;
+  designation?: string | null;
+  effective_shift_id?: string | null;
+  effective_shift_name: string;
+  effective_shift_start: string;
+  effective_shift_end: string;
+  source: 'direct' | 'group' | 'default' | 'fallback';
+  group_name?: string | null;
+  direct_assignment_id?: string | null;
+};

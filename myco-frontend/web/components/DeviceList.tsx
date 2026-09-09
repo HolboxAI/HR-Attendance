@@ -6,6 +6,7 @@ import { Smartphone } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { EmptyState } from '@/components/EmptyState';
+import { HoverProfile } from '@/components/HoverProfile';
 import { dayMonth, hhmm, proxy, type DeviceRow } from '@/lib/format';
 
 /**
@@ -97,9 +98,9 @@ export function DeviceList({ rows }: { rows: DeviceRow[] }) {
                   } ${isDimmed ? 'opacity-40' : 'opacity-100'}`}
                 >
                   <td className="px-4 py-3">
-                    
-                      {r.full_name}
-                    
+                    <HoverProfile data={{ name: r.full_name, code: r.employee_code }}>
+                      <span className="font-semibold text-ink inline-block transition-transform duration-300 group-hover:translate-x-1">{r.full_name}</span>
+                    </HoverProfile>
                     <span className="ml-2 text-xs font-mono text-ink-3">{r.employee_code}</span>
                   </td>
                   <td className="px-4 py-3 font-mono">

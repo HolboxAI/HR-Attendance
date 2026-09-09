@@ -185,6 +185,7 @@ class LeaveRequest(Base, TimestampMixin):
     to_date: Mapped[date] = mapped_column(Date, index=True, nullable=False)
     half_day_start: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     half_day_end: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(64))
     reason: Mapped[str | None] = mapped_column(Text)
 
     status: Mapped[LeaveStatus] = mapped_column(
@@ -201,6 +202,11 @@ class LeaveRequest(Base, TimestampMixin):
 
     slack_message_ts: Mapped[str | None] = mapped_column(String(32))
     slack_channel_id: Mapped[str | None] = mapped_column(String(32))
+
+    medical_document_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    medical_document_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    medical_document_url: Mapped[str | None] = mapped_column(String(500))
+    medical_document_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Holiday(Base, TimestampMixin):

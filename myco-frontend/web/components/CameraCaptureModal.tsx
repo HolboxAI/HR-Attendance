@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, RefreshCw, SwitchCamera, X } from 'lucide-react';
+import { Camera, RefreshCw, SwitchCamera, UploadCloud, X } from 'lucide-react';
 
 interface CameraCaptureModalProps {
   open: boolean;
@@ -39,6 +39,7 @@ export function CameraCaptureModal({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedBlob, setCapturedBlob] = useState<Blob | null>(null);
@@ -91,7 +92,11 @@ export function CameraCaptureModal({
 
     async function startCamera() {
       try {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+          const isSecure = typeof window !== 'undefined' && window.isSecureContext;
+          if (!isSecure) {
+            throw new Error('Live camera is disabled by browsers on HTTP (requires HTTPS/SSL). You can upload or snap a photo directly from your device below.');
+          }
           throw new Error('Camera access is not supported in this browser.');
         }
 
@@ -200,16 +205,34 @@ export function CameraCaptureModal({
     );
   }
 
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCapturedBlob(file);
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    stopTracks();
+  }
+
   function retakePhoto() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
     setCapturedBlob(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getUserMedia === 'function') {
+      setCameraError(null);
+    }
   }
 
   function confirmUpload() {
     if (!capturedBlob) return;
-    const filename = `${employeeCode}_photo_${Date.now()}.jpg`;
-    const file = new File([capturedBlob], filename, { type: 'image/jpeg' });
+    let file: File;
+    if (capturedBlob instanceof File) {
+      file = capturedBlob;
+    } else {
+      const filename = `${employeeCode}_photo_${Date.now()}.jpg`;
+      file = new File([capturedBlob], filename, { type: 'image/jpeg' });
+    }
     stopTracks();
     onCapture(file);
   }
@@ -253,12 +276,24 @@ export function CameraCaptureModal({
       <div className="p-5 flex flex-col items-center">
         <div className="relative w-full aspect-square max-w-[360px] rounded-2xl overflow-hidden bg-black border border-line/80 shadow-inner flex items-center justify-center">
           {cameraError ? (
-            <div className="px-6 text-center text-xs text-st-absent flex flex-col items-center gap-2">
-              <span className="text-2xl">📷⚠️</span>
-              <p className="font-medium">{cameraError}</p>
-              <p className="text-[11px] text-ink-3">
-                You can also upload an existing image file using the file selector.
-              </p>
+            <div className="px-6 text-center text-xs flex flex-col items-center justify-center gap-3 p-6 h-full w-full bg-zinc-950/80">
+              <div className="size-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shadow-sm">
+                <Camera className="size-7" />
+              </div>
+              <div className="space-y-1.5 max-w-xs text-center">
+                <p className="font-semibold text-ink text-xs leading-snug">{cameraError}</p>
+                <p className="text-[11px] text-ink-3 leading-relaxed">
+                  Select an existing selfie or snap a photo using your device below.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-ink text-ground text-xs font-semibold hover:opacity-90 active:scale-95 transition-all shadow-md cursor-pointer mt-1"
+              >
+                <UploadCloud className="size-4" />
+                <span>Choose / Take Photo</span>
+              </button>
             </div>
           ) : capturedBlob && previewUrl ? (
             /* Snapshot Preview */
@@ -308,6 +343,26 @@ export function CameraCaptureModal({
         {/* Hidden off-screen canvas for frame capture */}
         <canvas ref={canvasRef} className="hidden" />
 
+        {/* Hidden file input for direct photo upload fallback */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="user"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+
+        {!cameraError && !capturedBlob && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-2.5 text-[11px] text-ink-3 hover:text-ink underline transition-colors cursor-pointer"
+          >
+            Or choose a photo file from device
+          </button>
+        )}
+
         {error ? (
           <p
             role="alert"
@@ -354,11 +409,20 @@ export function CameraCaptureModal({
                 {busy ? busyLabel : confirmLabel}
               </button>
             </>
+          ) : cameraError ? (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2 text-xs font-bold text-surface shadow-md hover:bg-accent/90 transition-all active:scale-95 cursor-pointer"
+            >
+              <UploadCloud className="size-3.5" />
+              Choose Photo
+            </button>
           ) : (
             <button
               type="button"
               onClick={snapPhoto}
-              disabled={!!cameraError || !stream}
+              disabled={!stream}
               className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-2 text-xs font-bold text-surface shadow-md hover:bg-accent/90 transition-all disabled:opacity-50 active:scale-95"
             >
               <div className="size-3 rounded-full bg-surface border border-accent/40" />

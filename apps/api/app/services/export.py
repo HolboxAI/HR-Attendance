@@ -274,3 +274,216 @@ def to_csv(rows: list[Row], *, year: int, month: int, org_name: str) -> str:
         w.writerow(line)
 
     return buf.getvalue()
+
+
+def _clean_pdf_text(text: str | None) -> str:
+    if not text:
+        return ""
+    replacements = {
+        "\u2014": "-",  # em-dash
+        "\u2013": "-",  # en-dash
+        "\u2018": "'",  # left single quote
+        "\u2019": "'",  # right single quote
+        "\u201c": '"',  # left double quote
+        "\u201d": '"',  # right double quote
+        "\u2022": "*",  # bullet
+        "\u2026": "...",# ellipsis
+        "\u00a0": " ",  # non-breaking space
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def employee_to_pdf(
+    employee: Employee,
+    department: str | None,
+    days: list[dict],
+    totals: dict,
+    start_date: date,
+    end_date: date,
+    org_name: str,
+) -> bytes:
+    """Generate a clean, printable PDF attendance report for a single employee over any date range."""
+    from fpdf import FPDF
+
+    safe_org_name = _clean_pdf_text(org_name)
+    safe_emp_name = _clean_pdf_text(employee.full_name)
+    safe_dept_name = _clean_pdf_text(department or "General")
+
+    class EmployeePDF(FPDF):
+        def header(self):
+            self.set_font("helvetica", "B", 8)
+            self.set_text_color(120, 120, 130)
+            self.cell(0, 4, f"{safe_org_name.upper()} - EMPLOYEE ATTENDANCE REPORT", align="L")
+            self.ln(2)
+
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("helvetica", "", 8)
+            self.set_text_color(150, 150, 155)
+            self.cell(0, 6, f"Page {self.page_no()} of {{nb}} - Confidential", align="C")
+
+    pdf = EmployeePDF(orientation="portrait", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(10, 12, 10)
+    pdf.add_page()
+
+    # Employee Name & Details
+    pdf.set_font("helvetica", "B", 18)
+    pdf.set_text_color(20, 24, 33)
+    pdf.cell(0, 8, safe_emp_name, new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("helvetica", "", 9)
+    pdf.set_text_color(100, 105, 115)
+    date_str = f"{start_date:%d %b %Y} to {end_date:%d %b %Y}"
+    meta_line = f"Employee Code: {employee.emp_code}   |   Department: {safe_dept_name}   |   Period: {date_str}"
+    pdf.cell(0, 5, meta_line, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+
+    # Summary KPI Cards Box
+    pdf.set_fill_color(248, 249, 251)
+    pdf.set_draw_color(226, 228, 233)
+    pdf.rect(10, pdf.get_y(), 190, 18, style="FD")
+
+    worked_hrs = totals.get("worked_minutes", 0)
+    hrs_str = f"{worked_hrs // 60}h {worked_hrs % 60:02d}m"
+    late_mins = totals.get("late_minutes", 0)
+    late_str = f"{late_mins}m" if late_mins > 0 else "-"
+    
+    leaves_by_type = totals.get("leaves_by_type", {})
+    type_details = ", ".join(f"{k}: {v:g}" for k, v in leaves_by_type.items()) if leaves_by_type else ""
+    leave_count = totals.get("on_leave", 0)
+    leave_str = f"{leave_count} ({type_details})" if type_details else str(leave_count)
+
+    kpis = [
+        ("PRESENT", str(totals.get("present", 0))),
+        ("ABSENT", str(totals.get("absent", 0))),
+        ("LEAVES", leave_str),
+        ("HALF DAY", str(totals.get("half_day", 0))),
+        ("WFH", str(totals.get("wfh", 0))),
+        ("HOURS", hrs_str),
+        ("LATE", late_str),
+    ]
+
+    box_w = 190 / len(kpis)
+    start_y = pdf.get_y()
+    for i, (label, val) in enumerate(kpis):
+        x = 10 + i * box_w
+        pdf.set_xy(x, start_y + 2)
+        pdf.set_font("helvetica", "B", 7)
+        pdf.set_text_color(120, 125, 135)
+        pdf.cell(box_w, 4, label, align="C")
+        pdf.set_xy(x, start_y + 7)
+        pdf.set_font("helvetica", "B", 9.5)
+        pdf.set_text_color(20, 24, 33)
+        pdf.cell(box_w, 6, val, align="C")
+
+    pdf.set_y(start_y + 22)
+
+    # Table Header
+    cols = [
+        ("Date", 26),
+        ("Day", 12),
+        ("Status", 34),
+        ("In", 18),
+        ("Out", 18),
+        ("Hours", 18),
+        ("Late", 16),
+        ("Notes / Regularization", 48),
+    ]
+
+    def render_table_header():
+        pdf.set_fill_color(238, 240, 244)
+        pdf.set_draw_color(218, 220, 226)
+        pdf.set_font("helvetica", "B", 8)
+        pdf.set_text_color(60, 64, 75)
+        for title, w in cols:
+            pdf.cell(w, 7, title, border=1, fill=True, align="C")
+        pdf.ln()
+
+    render_table_header()
+
+    # Table Rows
+    pdf.set_font("helvetica", "", 8)
+    for d in days:
+        if pdf.get_y() > 270:
+            pdf.add_page()
+            render_table_header()
+            pdf.set_font("helvetica", "", 8)
+
+        st_val = d.get("status", "")
+        # Format status display
+        if st_val == "present":
+            st_label = "Present"
+        elif st_val == "absent":
+            st_label = "Absent"
+        elif st_val in ("on_leave", "half_day"):
+            code = d.get("leave_code")
+            base = "Half Day" if st_val == "half_day" else "On Leave"
+            st_label = f"{base} ({code})" if code else base
+        elif st_val == "wfh":
+            st_label = "Work From Home"
+        elif st_val == "weekly_off":
+            st_label = "Weekly Off"
+        elif st_val == "holiday":
+            st_label = "Holiday"
+        else:
+            st_label = st_val.replace("_", " ").title()
+
+        if d.get("is_wfh") and st_val != "wfh":
+            st_label += " (WFH)"
+
+        # Set row colors
+        if st_val == "absent":
+            pdf.set_fill_color(254, 242, 242)
+            pdf.set_text_color(185, 28, 28)
+        elif st_val in ("on_leave", "half_day"):
+            pdf.set_fill_color(254, 243, 199)
+            pdf.set_text_color(180, 83, 9)
+        elif st_val == "wfh" or d.get("is_wfh"):
+            pdf.set_fill_color(236, 254, 255)
+            pdf.set_text_color(14, 116, 144)
+        elif st_val in ("weekly_off", "holiday"):
+            pdf.set_fill_color(248, 249, 250)
+            pdf.set_text_color(140, 140, 145)
+        else:
+            pdf.set_fill_color(255, 255, 255)
+            pdf.set_text_color(30, 35, 45)
+
+        pdf.cell(26, 6, d.get("date", ""), border=1, fill=True, align="C")
+        pdf.cell(12, 6, d.get("weekday", ""), border=1, fill=True, align="C")
+        pdf.cell(34, 6, _clean_pdf_text(st_label), border=1, fill=True, align="L")
+        
+        pdf.set_text_color(30, 35, 45)
+        in_t = d.get("first_in")
+        in_str = in_t[11:16] if in_t and len(in_t) >= 16 else "-"
+        out_t = d.get("last_out")
+        out_str = out_t[11:16] if out_t and len(out_t) >= 16 else "-"
+        pdf.cell(18, 6, in_str, border=1, fill=True, align="C")
+        pdf.cell(18, 6, out_str, border=1, fill=True, align="C")
+
+        w_min = d.get("worked_minutes", 0)
+        h_str = f"{w_min // 60}h {w_min % 60:02d}m" if w_min > 0 else "-"
+        pdf.cell(18, 6, h_str, border=1, fill=True, align="C")
+
+        l_min = d.get("late_minutes", 0)
+        l_str = f"{l_min}m" if l_min > 0 else "-"
+        pdf.cell(16, 6, l_str, border=1, fill=True, align="C")
+
+        notes = []
+        if d.get("is_regularized"):
+            notes.append("[Corrected]")
+        if d.get("exception_note"):
+            notes.append(d["exception_note"])
+        if d.get("leave_name") and st_val in ("on_leave", "half_day"):
+            notes.append(d["leave_name"])
+
+        full_note = " ".join(notes)
+        note_str = full_note if len(full_note) <= 30 else full_note[:28] + "..."
+        pdf.set_font("helvetica", "", 7)
+        pdf.cell(48, 6, _clean_pdf_text(note_str), border=1, fill=True, align="L")
+        pdf.set_font("helvetica", "", 8)
+        pdf.ln()
+
+    return bytes(pdf.output())

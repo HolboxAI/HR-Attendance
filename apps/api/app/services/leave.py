@@ -411,7 +411,7 @@ def overlapping(db: Session, employee: Employee, start: date, end: date,
 
 def submit(
     db: Session, *, employee: Employee, leave_type: LeaveType,
-    start: date, end: date, reason: str | None = None,
+    start: date, end: date, category: str | None = None, reason: str | None = None,
     half_day_start: bool = False, half_day_end: bool = False,
     enforce_backdate: bool = True, today: date | None = None,
 ) -> LeaveOutcome:
@@ -461,7 +461,7 @@ def submit(
         id=uuid.uuid4(), org_id=employee.org_id, employee_id=employee.id,
         leave_type_id=leave_type.id, from_date=start, to_date=end,
         half_day_start=half_day_start, half_day_end=half_day_end,
-        reason=reason, status=LeaveStatus.PENDING,
+        category=category, reason=reason, status=LeaveStatus.PENDING,
         days_consumed=days, period=period,
     )
     db.add(row)
@@ -489,11 +489,12 @@ def _recompute_range(db: Session, employee: Employee, start: date, end: date) ->
 
 def decide(
     db: Session, *, request: LeaveRequest, approver: User,
-    approve: bool, note: str | None = None,
+    approve: bool, partial_approve: bool = False, medical_document_deadline: datetime | None = None,
+    note: str | None = None,
     allow_self_approval: bool = False,
 ) -> LeaveOutcome:
     """Approve or reject, then immediately fix the days it covers."""
-    if request.status != LeaveStatus.PENDING:
+    if request.status not in (LeaveStatus.PENDING, LeaveStatus.PARTIALLY_APPROVED):
         return LeaveOutcome(False, reason=f"That request is already {request.status.value}")
 
     # Nobody signs off their own leave, whatever their role. An hr_admin who
@@ -503,8 +504,13 @@ def decide(
 
     employee = db.get(Employee, request.employee_id)
     leave_type = db.get(LeaveType, request.leave_type_id)
+    was = request.status
 
-    if approve:
+    if partial_approve:
+        request.status = LeaveStatus.PARTIALLY_APPROVED
+        request.medical_document_required = True
+        request.medical_document_deadline = medical_document_deadline or (datetime.now(timezone.utc) + timedelta(days=3))
+    elif approve:
         if leave_type.is_paid:
             bal = balance(db, employee, leave_type, request.period)
             if float(request.days_consumed) > bal.available:
@@ -525,8 +531,8 @@ def decide(
     db.flush()
 
     audit(db, org_id=request.org_id, actor=approver, entity="leave_request",
-          entity_id=request.id, action="approve" if approve else "reject",
-          changes={"status": {"old": "pending", "new": request.status.value}},
+          entity_id=request.id, action="partial_approve" if partial_approve else ("approve" if approve else "reject"),
+          changes={"status": {"old": was.value, "new": request.status.value}},
           note=note)
 
     if approve:
@@ -536,10 +542,11 @@ def decide(
     owner = db.scalar(select(User).where(User.employee_id == employee.id))
     if owner is not None:
         leave_type_name = db.get(LeaveType, request.leave_type_id).name
+        title = "Leave partially approved" if partial_approve else ("Leave approved" if approve else "Leave rejected")
         notifications.notify(
             db, org_id=request.org_id, user=owner,
             category=f"leave.{request.status.value}",
-            title="Leave approved" if approve else "Leave rejected",
+            title=title,
             body=note or (f"{leave_type_name}, {request.from_date} to {request.to_date}"),
             data={"leave_request_id": str(request.id)},
         )

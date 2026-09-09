@@ -15,16 +15,19 @@ const DIRECTION_LABEL: Record<string, string> = { in: 'Check-in', out: 'Check-ou
  * form says so, because "submitted" and "fixed" are different facts.
  */
 export function MyCorrections({
-  rows, flaggedDays,
+  rows, flaggedDays, correctionLimit, usedCorrections,
 }: {
   rows: CorrectionRow[];
   flaggedDays: MonthDay[];
+  correctionLimit: number;
+  usedCorrections: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [shiftDate, setShiftDate] = useState('');
   const [direction, setDirection] = useState<'in' | 'out'>('out');
   const [time, setTime] = useState('');
+  const [category, setCategory] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,8 +46,8 @@ export function MyCorrections({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!shiftDate || !time || !reason.trim()) {
-      setError('Pick the day, the time you actually punched, and say why.');
+    if (!shiftDate || !time || !category || !reason.trim()) {
+      setError('Pick the day, the time you actually punched, select a reason, and explain what happened.');
       return;
     }
     setBusy(true);
@@ -56,7 +59,7 @@ export function MyCorrections({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        shift_date: shiftDate, direction, claimed_at: claimed, reason: reason.trim(),
+        shift_date: shiftDate, direction, claimed_at: claimed, reason: reason.trim(), category,
       }),
     }).catch(() => null);
     setBusy(false);
@@ -66,7 +69,7 @@ export function MyCorrections({
       return;
     }
     setOpen(false);
-    setShiftDate(''); setTime(''); setReason('');
+    setShiftDate(''); setTime(''); setCategory(''); setReason('');
     router.refresh();
   }
 
@@ -79,6 +82,17 @@ export function MyCorrections({
 
   return (
     <div className="space-y-6">
+      <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-line">
+        <div className="text-sm font-semibold text-ink">Monthly Corrections Limit</div>
+        <div className="text-sm font-medium">
+          <span className={usedCorrections >= correctionLimit ? 'text-red-500' : 'text-ink'}>
+            {usedCorrections}
+          </span>
+          <span className="text-ink-3 mx-1">/</span>
+          <span className="text-ink-3">{correctionLimit} used</span>
+        </div>
+      </div>
+
       {flaggedDays.length > 0 && (
         <div className="rounded-2xl glass-panel border border-line p-5">
           <h3 className="text-sm font-bold text-ink">Days of yours that need attention</h3>
@@ -161,21 +175,43 @@ export function MyCorrections({
                 />
               </label>
             </div>
-            <label className="block text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
-              Why the punch is missing - HR reads this
-              <textarea
-                value={reason} required rows={2}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g. Phone battery died before I could check out"
-                className="mt-1.5 w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-ink"
-              />
-            </label>
+            
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              <label className="block text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
+                Category
+                <select
+                  value={category} required
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="mt-1.5 w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-ink"
+                >
+                  <option value="" disabled>Select category...</option>
+                  <option value="Phone/device battery died">Phone/device battery died</option>
+                  <option value="Emergency">Emergency</option>
+                  <option value="Network/connectivity issue">Network/connectivity issue</option>
+                  <option value="Forgot to punch">Forgot to punch</option>
+                  <option value="Device/application issue">Device/application issue</option>
+                  <option value="Other">Other</option>
+                </select>
+              </label>
+              
+              <label className="block text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
+                Explanation - HR reads this
+                <input
+                  type="text" value={reason} required
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Phone battery died before I could check out"
+                  className="mt-1.5 w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-ink"
+                />
+              </label>
+            </div>
+            
             {error && (
               <p role="alert" className="text-xs text-st-absent font-mono">{error}</p>
             )}
+            
             <div className="flex gap-2.5">
               <button
-                type="submit" disabled={busy}
+                type="submit" disabled={busy || usedCorrections >= correctionLimit}
                 className="rounded-xl bg-ink text-ground px-5 py-2.5 text-xs font-black uppercase tracking-wider disabled:opacity-50 hover:opacity-90 active:scale-95 transition-all cursor-pointer"
               >
                 {busy ? 'Submitting…' : 'Submit for approval'}

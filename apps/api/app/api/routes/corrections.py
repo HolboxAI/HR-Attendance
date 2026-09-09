@@ -30,6 +30,7 @@ class SubmitRequest(BaseModel):
     direction: PunchDirection
     claimed_at: datetime
     reason: str
+    category: str = "missed_punch"
 
 
 class RequestOut(BaseModel):
@@ -38,6 +39,7 @@ class RequestOut(BaseModel):
     direction: str
     claimed_at: datetime
     reason: str
+    category: str
     status: str
     decided_note: str | None
     decided_at: datetime | None
@@ -49,7 +51,7 @@ def to_out(db: Session, r: CorrectionRequest, emp: Employee | None = None) -> Re
     emp = emp or db.get(Employee, r.employee_id)
     return RequestOut(
         id=r.id, shift_date=r.shift_date, direction=r.direction.value,
-        claimed_at=r.claimed_at, reason=r.reason, status=r.status.value,
+        claimed_at=r.claimed_at, reason=r.reason, category=r.category, status=r.status.value,
         decided_note=r.decided_note, decided_at=r.decided_at,
         employee_code=emp.emp_code if emp else None,
         employee_name=emp.full_name if emp else None,
@@ -64,7 +66,7 @@ def submit(
 ):
     result = correction_service.submit(
         db, employee=emp, shift_date=body.shift_date, direction=body.direction,
-        claimed_at=body.claimed_at, reason=body.reason,
+        claimed_at=body.claimed_at, reason=body.reason, category=body.category,
     )
     if not result.ok:
         db.rollback()

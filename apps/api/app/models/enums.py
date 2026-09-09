@@ -25,6 +25,7 @@ class AttendanceStatus(str, Enum):
     HOLIDAY = "holiday"
     ON_LEAVE = "on_leave"
     NOT_MARKED = "not_marked"       # shift in progress or no data yet
+    WFH = "wfh"                     # working from home
 
 
 class EmploymentType(str, Enum):
@@ -50,6 +51,7 @@ class LeaveStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
+    PARTIALLY_APPROVED = "partially_approved"
     CANCELLED = "cancelled"
 
 

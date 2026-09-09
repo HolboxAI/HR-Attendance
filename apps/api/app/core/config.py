@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     require_device_binding: bool = True
     default_tz: str = "Asia/Kolkata"
     api_prefix: str = "/api/v1"
+    api_url: str = "http://98.84.138.15/api/v1"
 
     # "stub" needs no AWS account. Switch to "rekognition" when there is one.
     face_provider: str = "stub"
@@ -67,7 +68,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str | None = None
     smtp_pass: str | None = None
-    smtp_from: str = "noreply@boxcode.local"
+    smtp_from: str | None = None
 
     # Whether an employee with no reference photo can still punch.
     #
