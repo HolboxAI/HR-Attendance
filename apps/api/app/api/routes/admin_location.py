@@ -32,7 +32,7 @@ router = APIRouter(prefix="/admin/location", tags=["location"])
 # Read is manager-and-above: a manager fielding "why was I refused?" needs to
 # see the radius and the policy to answer it.
 reader = Depends(require_role(UserRole.MANAGER))
-super_only = Depends(require_role(UserRole.SUPER_ADMIN))
+super_only = Depends(require_role(UserRole.HR_ADMIN))
 
 # Below this a phone sitting still at a desk starts failing on GPS drift
 # alone. See the long comment in app/services/geofence.py: a false reject

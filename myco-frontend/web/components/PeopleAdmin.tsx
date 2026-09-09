@@ -77,8 +77,7 @@ function TempPasswordReveal({
 const ROLES = [
   { value: 'employee', label: 'Employee' },
   { value: 'manager', label: 'Manager' },
-  { value: 'hr_admin', label: 'HR Admin' },
-  { value: 'super_admin', label: 'Super Admin' },
+  { value: 'hr_admin', label: 'Admin' },
 ];
 
 export function AddEmployeeButton() {

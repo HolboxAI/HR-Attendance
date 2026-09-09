@@ -32,11 +32,10 @@ from app.models.enums import UserRole                # noqa: E402
 # two roles, and giving someone `manager` when they are already `hr_admin`
 # would DEMOTE them.
 ROLES = {
-    "BX001": UserRole.SUPER_ADMIN,     # Krish
-    "BX005": UserRole.SUPER_ADMIN,     # Dhruv
-    "BX006": UserRole.SUPER_ADMIN,     # Ashley
-    "BX008": UserRole.HR_ADMIN,        # Himesh, HR manager - approves leave
-                                       # and corrections for everyone below
+    "BX001": UserRole.HR_ADMIN,     # Krish (Admin)
+    "BX005": UserRole.HR_ADMIN,     # Dhruv (Admin)
+    "BX006": UserRole.HR_ADMIN,     # Ashley (Admin)
+    "BX008": UserRole.HR_ADMIN,     # Himesh (Admin)
 }
 
 # Readable rather than maximally random: these get typed once, on a phone,

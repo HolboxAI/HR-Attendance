@@ -30,7 +30,7 @@ RANK: dict[UserRole, int] = {
     UserRole.EMPLOYEE: 0,
     UserRole.MANAGER: 1,
     UserRole.HR_ADMIN: 2,
-    UserRole.SUPER_ADMIN: 3,
+    UserRole.SUPER_ADMIN: 2,  # Unified Admin access
 }
 
 

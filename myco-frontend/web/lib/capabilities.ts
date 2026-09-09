@@ -17,7 +17,7 @@ const RANK: Record<Role, number> = {
   employee: 0,
   manager: 1,
   hr_admin: 2,
-  super_admin: 3,
+  super_admin: 2,
 };
 
 function rank(role: string): number {
@@ -39,7 +39,7 @@ export type Capabilities = {
   canManageDevices: boolean;
   /** hr_admin+ · hire, edit, offboard, re-issue a temporary password */
   canManagePeople: boolean;
-  /** super_admin · reserved: no endpoint requires this today (PRD §1.2) */
+  /** admin · full administrative access across the platform */
   isSuperAdmin: boolean;
 };
 
@@ -53,7 +53,7 @@ export function capabilitiesFor(role: string | undefined): Capabilities {
     canManageEnrolment: r >= RANK.hr_admin,
     canManageDevices: r >= RANK.hr_admin,
     canManagePeople: r >= RANK.hr_admin,
-    isSuperAdmin: r >= RANK.super_admin,
+    isSuperAdmin: r >= RANK.hr_admin,
   };
 }
 
@@ -61,8 +61,9 @@ export function roleLabel(role: string): string {
   const labels: Record<string, string> = {
     employee: 'Employee',
     manager: 'Manager',
-    hr_admin: 'HR Admin',
-    super_admin: 'Super Admin',
+    hr_admin: 'Admin',
+    super_admin: 'Admin',
+    admin: 'Admin',
   };
   return labels[role] ?? role.replace('_', ' ');
 }

@@ -12,6 +12,7 @@ import {
 import { PageHeader } from '@/components/PageHeader';
 import { applyTheme } from '@/components/ThemeToggle';
 import type { Identity } from '@/lib/session';
+import { roleLabel } from '@/lib/capabilities';
 
 interface SettingsPageProps {
   user: Identity | null;
@@ -525,7 +526,7 @@ The system is ready for review and employee onboarding.`;
                 </div>
                 <div className="flex justify-between py-1 border-b border-line/40">
                   <span className="text-ink-3">Token Scope:</span>
-                  <span className="text-emerald-400 font-semibold">{user?.role || 'Super Admin'}</span>
+                  <span className="text-emerald-400 font-semibold">{roleLabel(user?.role || 'hr_admin')}</span>
                 </div>
                 <div className="flex justify-between py-1">
                   <span className="text-ink-3">Session Type:</span>
@@ -619,7 +620,7 @@ The system is ready for review and employee onboarding.`;
               <p className="text-xs font-mono text-ink-3">{user?.email}</p>
             </div>
             <span className="px-3 py-1 rounded-full text-xs font-mono font-semibold uppercase tracking-wider bg-surface-2 text-ink border border-line">
-              {user?.role?.replace('_', ' ') || 'Super Admin'}
+              {roleLabel(user?.role || 'hr_admin')}
             </span>
           </div>
 

@@ -156,12 +156,10 @@ check("wifi cannot be required yet", body["wifi_can_be_required"], False)
 check("employee cannot read", client.get(
     "/api/v1/admin/location", headers=KARAN).status_code, 403)
 
-print("2. Only a super admin may change it - the first such endpoint")
-r = client.put("/api/v1/admin/location", json={"radius_m": 300}, headers=HIMESH)
-check("hr_admin refused", r.status_code, 403)
+print("2. Admins can change location, employees cannot")
 check("employee refused", client.put(
     "/api/v1/admin/location", json={"radius_m": 300}, headers=KARAN).status_code, 403)
-check("super_admin allowed", client.put(
+check("admin allowed", client.put(
     "/api/v1/admin/location", json={"radius_m": 300}, headers=KRISH).status_code, 200)
 
 print("3. BSSIDs are validated and canonicalised on the way in")

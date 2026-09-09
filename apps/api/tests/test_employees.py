@@ -170,18 +170,17 @@ for field, value, word in [("department", "Marketing", "department"),
     check(f"bad {field} refused", r.status_code, 409)
     check(f"bad {field} explained", word.lower() in r.json()["detail"].lower(), True)
 
-print("7. Only a super admin can mint an admin")
+print("7. Admins can create admins, employees cannot")
 r = client.post("/api/v1/admin/employees", json={
     "emp_code": "BX014", "full_name": "Sneaky", "email": "sneaky@test.local",
     "role": "hr_admin",
-}, headers=HIMESH)
-check("hr_admin cannot create an hr_admin", r.status_code, 409)
-check("reason is about privilege", "super admin" in r.json()["detail"].lower(), True)
+}, headers=DAKSH)
+check("employee cannot create an admin", r.status_code, 403)
 r = client.post("/api/v1/admin/employees", json={
     "emp_code": "BX014", "full_name": "Legit", "email": "legit@test.local",
     "role": "hr_admin",
-}, headers=KRISH)
-check("super_admin can", r.status_code, 201)
+}, headers=HIMESH)
+check("admin can create an admin", r.status_code, 201)
 check("role applied", r.json()["employee"]["role"], "hr_admin")
 
 print("8. Editing records old and new")
@@ -211,11 +210,14 @@ check("taken email refused", client.patch(
     "/api/v1/admin/employees/BX012", json={"email": "daksh@test.local"},
     headers=HIMESH).status_code, 409)
 
-print("10. Role changes are super-admin only, and never your own")
-check("hr_admin cannot promote", client.patch(
+print("10. Role changes are admin only, and never your own")
+check("employee cannot change role", client.patch(
     "/api/v1/admin/employees/BX012", json={"role": "hr_admin"},
-    headers=HIMESH).status_code, 409)
-check("super_admin can", client.patch(
+    headers=DAKSH).status_code, 403)
+check("admin Himesh can change role", client.patch(
+    "/api/v1/admin/employees/BX012", json={"role": "hr_admin"},
+    headers=HIMESH).status_code, 200)
+check("admin Krish can change role", client.patch(
     "/api/v1/admin/employees/BX012", json={"role": "manager"},
     headers=KRISH).status_code, 200)
 own = client.patch("/api/v1/admin/employees/BX001", json={"role": "employee"},

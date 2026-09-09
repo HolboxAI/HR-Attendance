@@ -96,11 +96,10 @@ def create(
     if db.scalar(select(User).where(User.email == email)) is not None:
         return EmployeeOutcome(False, reason=f"{email} is already in use")
 
-    # Only super_admin may mint another admin. An hr_admin promoting someone to
-    # super_admin would be a privilege escalation dressed up as onboarding.
-    if role != UserRole.EMPLOYEE and actor.role != UserRole.SUPER_ADMIN:
+    # Only admins may create accounts above employee.
+    if role != UserRole.EMPLOYEE and actor.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN):
         return EmployeeOutcome(
-            False, reason="Only a super admin can create an account above employee"
+            False, reason="Only an admin can create an account above employee"
         )
 
     dept_row = None
@@ -234,8 +233,8 @@ def update(
     user = db.scalar(select(User).where(User.employee_id == employee.id))
 
     if role is not None and user is not None and user.role != role:
-        if actor.role != UserRole.SUPER_ADMIN:
-            return EmployeeOutcome(False, reason="Only a super admin can change a role")
+        if actor.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN):
+            return EmployeeOutcome(False, reason="Only an admin can change a role")
         if user.id == actor.id:
             # Nobody edits their own access. Same rule as leave approvals.
             return EmployeeOutcome(False, reason="You cannot change your own role")
