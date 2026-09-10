@@ -544,11 +544,13 @@ export function SettingsPage({ user }: SettingsPageProps) {
 
           <div className="lg:col-span-2 rounded-2xl glass-panel border border-line p-6 shadow-sm space-y-4">
             <h3 className="font-display text-sm font-bold text-ink border-b border-line/60 pb-3">
-              Employee & Workplace Details
+              {user?.is_admin ? 'Administrator & Workplace Details' : 'Employee & Workplace Details'}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Employee Code</span>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">
+                  {user?.is_admin ? 'Admin Code' : 'Employee Code'}
+                </span>
                 <p className="font-semibold text-ink font-mono">{user?.employee_code || 'HB001'}</p>
               </div>
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">

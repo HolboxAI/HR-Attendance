@@ -487,3 +487,241 @@ def employee_to_pdf(
         pdf.ln()
 
     return bytes(pdf.output())
+
+
+def attendance_history_to_pdf(
+    rows: list[dict],
+    start_date: date,
+    end_date: date,
+    org_name: str,
+    filters_desc: str | None = None,
+) -> bytes:
+    """Generate a high-grade landscape PDF attendance register report for filtered history records."""
+    from fpdf import FPDF
+
+    safe_org_name = _clean_pdf_text(org_name or "Holbox AI")
+
+    class HistoryPDF(FPDF):
+        def header(self):
+            self.set_font("helvetica", "B", 8)
+            self.set_text_color(120, 120, 130)
+            self.cell(0, 4, f"{safe_org_name.upper()} - ATTENDANCE REGISTER & HISTORY", align="L")
+            self.ln(2)
+
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("helvetica", "", 7.5)
+            self.set_text_color(150, 150, 155)
+            now_str = datetime.now().strftime("%d %b %Y %H:%M")
+            self.cell(0, 6, f"Page {self.page_no()} of {{nb}}  |  Generated {now_str}  |  Confidential Attendance Record", align="C")
+
+    pdf = HistoryPDF(orientation="landscape", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(10, 12, 10)
+    pdf.add_page()
+
+    # Report Title & Summary Metadata
+    pdf.set_font("helvetica", "B", 16)
+    pdf.set_text_color(20, 24, 33)
+    pdf.cell(0, 7, "Attendance Register & History Report", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font("helvetica", "", 8.5)
+    pdf.set_text_color(90, 95, 105)
+    if start_date == end_date:
+        period_str = f"Date: {start_date:%d %b %Y}"
+    else:
+        period_str = f"Period: {start_date:%d %b %Y} to {end_date:%d %b %Y}"
+
+    filter_info = f"Filters: {filters_desc}" if filters_desc else "Filters: All Records"
+    meta_line = f"{period_str}   |   Organization: {safe_org_name}   |   {filter_info}"
+    pdf.cell(0, 5, _clean_pdf_text(meta_line), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    # Compute Summary KPIs
+    total_count = len(rows)
+    present_count = sum(1 for r in rows if r.get("status") == "present")
+    absent_count = sum(1 for r in rows if r.get("status") == "absent")
+    leave_count = sum(1 for r in rows if r.get("status") in ("on_leave", "half_day"))
+    wfh_count = sum(1 for r in rows if r.get("status") == "wfh")
+    late_count = sum(1 for r in rows if (r.get("late_minutes") or 0) > 0)
+    corrections_count = sum(1 for r in rows if r.get("is_regularized"))
+    total_mins = sum((r.get("worked_minutes") or 0) for r in rows)
+    hrs_str = f"{total_mins // 60}h {total_mins % 60:02d}m"
+
+    kpis = [
+        ("TOTAL RECORDS", str(total_count)),
+        ("PRESENT", str(present_count)),
+        ("ABSENT", str(absent_count)),
+        ("ON LEAVE / HD", str(leave_count)),
+        ("WFH", str(wfh_count)),
+        ("LATE", str(late_count)),
+        ("CORRECTIONS", str(corrections_count)),
+        ("TOTAL HOURS", hrs_str),
+    ]
+
+    # Render KPI Summary Box
+    total_w = 277.0
+    box_w = total_w / len(kpis)
+    start_y = pdf.get_y()
+    pdf.set_fill_color(248, 249, 251)
+    pdf.set_draw_color(226, 228, 233)
+    pdf.rect(10, start_y, total_w, 14, style="FD")
+
+    for i, (label, val) in enumerate(kpis):
+        bx = 10 + i * box_w
+        pdf.set_xy(bx, start_y + 1.5)
+        pdf.set_font("helvetica", "B", 6.5)
+        pdf.set_text_color(120, 125, 135)
+        pdf.cell(box_w, 3.5, label, align="C")
+        pdf.set_xy(bx, start_y + 5.5)
+        pdf.set_font("helvetica", "B", 9)
+        pdf.set_text_color(20, 24, 33)
+        pdf.cell(box_w, 6, val, align="C")
+
+    pdf.set_y(start_y + 17)
+
+    # Columns Plan (Total Width = 277mm)
+    cols = [
+        ("Date", 22, "C"),
+        ("Code", 18, "C"),
+        ("Employee Name", 44, "L"),
+        ("Department", 32, "L"),
+        ("Status", 26, "C"),
+        ("First In", 18, "C"),
+        ("Last Out", 18, "C"),
+        ("Worked", 18, "C"),
+        ("Late", 15, "C"),
+        ("Remarks / Details", 66, "L"),
+    ]
+
+    def render_table_header():
+        pdf.set_fill_color(238, 240, 244)
+        pdf.set_draw_color(218, 220, 226)
+        pdf.set_font("helvetica", "B", 7.5)
+        pdf.set_text_color(50, 55, 65)
+        for title, w, align in cols:
+            pdf.cell(w, 6.5, title, border=1, fill=True, align=align)
+        pdf.ln()
+
+    render_table_header()
+
+    if not rows:
+        pdf.set_font("helvetica", "I", 8.5)
+        pdf.set_text_color(120, 120, 130)
+        pdf.cell(total_w, 10, "No attendance records found matching the active filters.", border=1, align="C")
+        pdf.ln()
+        return bytes(pdf.output())
+
+    pdf.set_font("helvetica", "", 7.5)
+    for r in rows:
+        if pdf.get_y() > 185:
+            pdf.add_page()
+            render_table_header()
+            pdf.set_font("helvetica", "", 7.5)
+
+        # Date formatting
+        s_date = r.get("shift_date")
+        if hasattr(s_date, "strftime"):
+            date_str = s_date.strftime("%d %b %Y")
+        elif isinstance(s_date, str) and len(s_date) >= 10:
+            try:
+                date_str = datetime.strptime(s_date[:10], "%Y-%m-%d").strftime("%d %b %Y")
+            except Exception:
+                date_str = s_date[:10]
+        else:
+            date_str = str(s_date or "-")
+
+        # Employee code & name
+        code_str = str(r.get("employee_code") or "")
+        name_val = str(r.get("full_name") or "")
+        safe_name = name_val if len(name_val) <= 24 else name_val[:23] + "..."
+        dept_val = str(r.get("department") or "-")
+        safe_dept = dept_val if len(dept_val) <= 18 else dept_val[:17] + "..."
+
+        # Status text & colors
+        st_val = str(r.get("status") or "").lower()
+        if st_val == "present":
+            st_label = "Present"
+            pdf.set_fill_color(240, 253, 244)
+            pdf.set_text_color(22, 101, 52)
+        elif st_val == "absent":
+            st_label = "Absent"
+            pdf.set_fill_color(254, 242, 242)
+            pdf.set_text_color(185, 28, 28)
+        elif st_val in ("on_leave", "half_day"):
+            st_label = "Half Day" if st_val == "half_day" else "On Leave"
+            pdf.set_fill_color(254, 243, 199)
+            pdf.set_text_color(180, 83, 9)
+        elif st_val == "wfh":
+            st_label = "WFH"
+            pdf.set_fill_color(236, 254, 255)
+            pdf.set_text_color(14, 116, 144)
+        elif st_val in ("weekly_off", "holiday"):
+            st_label = "Weekly Off" if st_val == "weekly_off" else "Holiday"
+            pdf.set_fill_color(248, 249, 250)
+            pdf.set_text_color(130, 135, 145)
+        else:
+            st_label = st_val.replace("_", " ").title()
+            pdf.set_fill_color(255, 255, 255)
+            pdf.set_text_color(30, 35, 45)
+
+        # In & Out times
+        def fmt_time(t_val):
+            if not t_val:
+                return "-"
+            if hasattr(t_val, "strftime"):
+                return t_val.strftime("%I:%M %p")
+            if isinstance(t_val, str) and len(t_val) >= 16:
+                try:
+                    return datetime.fromisoformat(t_val.replace("Z", "+00:00")).strftime("%I:%M %p")
+                except Exception:
+                    return t_val[11:16]
+            return "-"
+
+        in_str = fmt_time(r.get("first_in"))
+        out_str = fmt_time(r.get("last_out"))
+
+        # Worked hours & Late
+        w_min = r.get("worked_minutes") or 0
+        h_str = f"{w_min // 60}h {w_min % 60:02d}m" if w_min > 0 else "-"
+        l_min = r.get("late_minutes") or 0
+        l_str = f"{l_min}m" if l_min > 0 else "-"
+
+        # Remarks / Details
+        notes = []
+        if r.get("is_regularized"):
+            notes.append("[Regularized]")
+        if r.get("has_exception"):
+            exc = r.get("exception_note") or "Exception"
+            notes.append(f"[{exc}]")
+        if (r.get("punch_count") or 0) > 0:
+            notes.append(f"({r['punch_count']} punches)")
+        rem_str = " ".join(notes) if notes else "-"
+        if len(rem_str) > 42:
+            rem_str = rem_str[:40] + "..."
+
+        # Output Row Cells
+        pdf.cell(22, 6, date_str, border=1, fill=True, align="C")
+        pdf.cell(18, 6, code_str, border=1, fill=True, align="C")
+        pdf.cell(44, 6, _clean_pdf_text(safe_name), border=1, fill=True, align="L")
+        pdf.cell(32, 6, _clean_pdf_text(safe_dept), border=1, fill=True, align="L")
+        pdf.cell(26, 6, _clean_pdf_text(st_label), border=1, fill=True, align="C")
+
+        # Neutral color for time and numerical columns
+        pdf.set_text_color(30, 35, 45)
+        pdf.cell(18, 6, in_str, border=1, fill=True, align="C")
+        pdf.cell(18, 6, out_str, border=1, fill=True, align="C")
+        pdf.cell(18, 6, h_str, border=1, fill=True, align="C")
+        
+        # Highlight late minutes with amber if late
+        if l_min > 0:
+            pdf.set_text_color(180, 83, 9)
+        pdf.cell(15, 6, l_str, border=1, fill=True, align="C")
+        pdf.set_text_color(30, 35, 45)
+
+        pdf.set_font("helvetica", "", 6.5)
+        pdf.cell(66, 6, _clean_pdf_text(rem_str), border=1, fill=True, align="L")
+        pdf.set_font("helvetica", "", 7.5)
+        pdf.ln()
+
+    return bytes(pdf.output())
