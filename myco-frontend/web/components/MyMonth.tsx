@@ -362,42 +362,26 @@ export function MyMonth({
       </section>
 
       {/* 2. Circular Check-in / Check-out Interactive Widget with Dynamic Blue Parameter */}
-      <section className="glass-panel rounded-3xl border border-line p-6 sm:p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-8 bg-gradient-to-b from-surface via-surface to-surface-2/30">
-        <div className="space-y-3 text-center md:text-left max-w-sm">
+      <section className="glass-panel rounded-3xl border border-line p-6 sm:p-10 shadow-sm flex flex-col items-center justify-center text-center space-y-6 bg-gradient-to-b from-surface via-surface to-surface-2/30 relative overflow-hidden">
+        {/* Top Header & Status */}
+        <div className="space-y-2 max-w-md mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
             <span className="size-2 rounded-full bg-blue-500 animate-pulse" />
             Live Shift Progress Tracker
           </div>
-          <h2 className="font-display text-2xl font-bold text-ink">
+          <h2 className="font-display text-2xl sm:text-3xl font-bold text-ink">
             {isCurrentlyIn ? 'Shift in Progress' : 'Ready to Check In'}
           </h2>
           <p className="text-xs text-ink-3 leading-relaxed">
             {isCurrentlyIn
-              ? `You punched in at ${hhmm12(todayData?.checked_in_at)}. Tap the button when your shift ends to record your checkout.`
+              ? `You punched in at ${hhmm12(todayData?.checked_in_at)}. Tap the circular button when your shift ends to record your checkout.`
               : 'Tap the circular button below to open your camera and verify your attendance.'}
           </p>
-
-          <div className="pt-2 flex flex-col gap-1.5 font-mono text-xs text-ink-2">
-            <div className="flex items-center justify-center md:justify-start gap-2">
-              <span className="text-ink-3">Shift Window:</span>
-              <span className="font-semibold text-ink">{todayData?.shift_label || '09:30 - 18:30'}</span>
-            </div>
-            <div className="flex items-center justify-center md:justify-start gap-2">
-              <span className="text-ink-3">Time Remaining:</span>
-              <span className="font-bold text-blue-600 dark:text-blue-400">
-                {shiftInfo.isShiftEnded
-                  ? 'Shift completed for today'
-                  : !shiftInfo.isShiftStarted
-                  ? `Starts in ${hours(Math.max(0, -shiftInfo.elapsedMinutes))}`
-                  : `${hours(shiftInfo.remainingMinutes)} left in shift`}
-              </span>
-            </div>
-          </div>
         </div>
 
-        {/* Circular Progress & Action Button */}
-        <div className="relative flex items-center justify-center shrink-0">
-          <svg className="size-56 sm:size-64" viewBox="0 0 200 200">
+        {/* Centered Circular Progress & Action Button */}
+        <div className="relative flex items-center justify-center shrink-0 my-2">
+          <svg className="size-60 sm:size-68" viewBox="0 0 200 200">
             <defs>
               <linearGradient id="shiftBlueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#38bdf8" />
@@ -429,7 +413,7 @@ export function MyMonth({
               transform="rotate(-90 100 100)"
               className="transition-all duration-1000 ease-out"
               style={{
-                filter: 'drop-shadow(0 0 6px rgba(37, 99, 235, 0.45))',
+                filter: 'drop-shadow(0 0 8px rgba(37, 99, 235, 0.45))',
               }}
             />
           </svg>
@@ -441,10 +425,10 @@ export function MyMonth({
               onClick={() => setModalOpen(true)}
               disabled={busy}
               aria-label={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
-              className={`size-36 sm:size-40 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-xl border-2 ${
+              className={`size-40 sm:size-44 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-2xl border-2 ${
                 isCurrentlyIn
-                  ? 'bg-gradient-to-b from-rose-500/15 via-rose-600/10 to-surface border-rose-500/40 hover:border-rose-500 hover:shadow-rose-500/20'
-                  : 'bg-gradient-to-b from-blue-500/15 via-blue-600/10 to-surface border-blue-500/40 hover:border-blue-500 hover:shadow-blue-500/20'
+                  ? 'bg-gradient-to-b from-rose-500/15 via-rose-600/10 to-surface border-rose-500/40 hover:border-rose-500 hover:shadow-rose-500/25'
+                  : 'bg-gradient-to-b from-blue-500/15 via-blue-600/10 to-surface border-blue-500/40 hover:border-blue-500 hover:shadow-blue-500/25'
               }`}
             >
               {busy ? (
@@ -454,26 +438,50 @@ export function MyMonth({
                 </>
               ) : isCurrentlyIn ? (
                 <>
-                  <LogOut className="size-7 text-rose-500 dark:text-rose-400 mb-1" />
-                  <span className="font-display text-lg font-black tracking-tight text-rose-600 dark:text-rose-400">
+                  <LogOut className="size-8 text-rose-500 dark:text-rose-400 mb-1" />
+                  <span className="font-display text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
                     Check Out
                   </span>
-                  <span className="text-[10px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                  <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
                     {todayData?.checked_in_at ? `In ${hhmm12(todayData.checked_in_at)}` : 'Tap to punch'}
                   </span>
                 </>
               ) : (
                 <>
-                  <LogIn className="size-7 text-blue-500 dark:text-blue-400 mb-1" />
-                  <span className="font-display text-lg font-black tracking-tight text-blue-600 dark:text-blue-400">
+                  <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
+                  <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
                     Check In
                   </span>
-                  <span className="text-[10px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                  <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
                     Tap to punch
                   </span>
                 </>
               )}
             </button>
+          </div>
+        </div>
+
+        {/* Bottom Shift Meta Information */}
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-2 border border-line text-xs font-mono">
+            <span className="text-ink-3">Shift:</span>
+            <span className="font-semibold text-ink">{todayData?.shift_label || '09:30 - 18:30'}</span>
+          </div>
+
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-2 border border-line text-xs font-mono">
+            <span className="text-ink-3">Remaining:</span>
+            <span className="font-bold text-blue-600 dark:text-blue-400">
+              {shiftInfo.isShiftEnded
+                ? 'Shift completed for today'
+                : !shiftInfo.isShiftStarted
+                ? `Starts in ${hours(Math.max(0, -shiftInfo.elapsedMinutes))}`
+                : `${hours(shiftInfo.remainingMinutes)} left`}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-mono text-blue-600 dark:text-blue-400">
+            <span>Progress:</span>
+            <span className="font-bold">{Math.round(shiftInfo.progress)}%</span>
           </div>
         </div>
       </section>
