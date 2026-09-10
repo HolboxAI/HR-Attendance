@@ -345,6 +345,8 @@ export function notificationHref(n: NotificationRow): string | null {
   if (c === 'wfh.pending') return '/people/wfh';
   if (c === 'wfh.decided') return '/people/wfh';
   if (c.startsWith('wfh')) return '/people/wfh';
+  if (c === 'employee.signup_request') return '/people';
+  if (c.startsWith('employee')) return '/people';
   return null;
 }
 

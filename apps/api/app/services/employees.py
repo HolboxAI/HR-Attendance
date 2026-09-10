@@ -68,6 +68,24 @@ def _by_code(db: Session, org_id: uuid.UUID, code: str) -> Employee | None:
     )
 
 
+def suggest_next_employee_code(db: Session, org_id: uuid.UUID) -> str:
+    """Find the next sequential employee code matching prefix BX###."""
+    import re
+    codes = db.scalars(select(Employee.emp_code).where(Employee.org_id == org_id)).all()
+    max_num = 0
+    for c in codes:
+        m = re.match(r"^BX(\d+)$", (c or "").strip().upper())
+        if m:
+            try:
+                num = int(m.group(1))
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                pass
+    next_num = max_num + 1
+    return f"BX{next_num:03d}"
+
+
 def create(
     db: Session,
     *,
@@ -83,6 +101,7 @@ def create(
     manager_code: str | None = None,
     date_of_joining: date | None = None,
     role: UserRole = UserRole.EMPLOYEE,
+    password_hash: str | None = None,
 ) -> EmployeeOutcome:
     """Create an employee, their login, and their shift assignment."""
     emp_code = emp_code.strip().upper()
@@ -149,10 +168,17 @@ def create(
             shift_template_id=shift_row.id, effective_from=joined,
         ))
 
-    password = new_password()
+    if password_hash:
+        final_hash = password_hash
+        temporary_pass = None
+    else:
+        password = new_password()
+        final_hash = hash_password(password)
+        temporary_pass = password
+
     user = User(
         id=uuid.uuid4(), org_id=org_id, employee_id=employee.id,
-        email=email, password_hash=hash_password(password),
+        email=email, password_hash=final_hash,
         role=role, is_active=True,
     )
     db.add(user)
@@ -177,7 +203,7 @@ def create(
                  "role": {"old": None, "new": role.value}},
     )
 
-    return EmployeeOutcome(True, employee=employee, temporary_password=password)
+    return EmployeeOutcome(True, employee=employee, temporary_password=temporary_pass)
 
 
 # Fields a PATCH may touch. Deliberately excludes emp_code (it is the stable

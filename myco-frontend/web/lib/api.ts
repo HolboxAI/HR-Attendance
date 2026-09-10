@@ -95,3 +95,25 @@ export const getUnreadCount = async (): Promise<number> => {
   const r = await apiGet<{ unread: number }>('/api/v1/notifications/unread-count');
   return r?.unread ?? 0;
 };
+
+/* ------------------------------------------------------------- signups */
+
+export type PendingSignup = {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  desired_department: string | null;
+  desired_designation: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type SignupsData = {
+  requests: PendingSignup[];
+  suggested_emp_code: string;
+  departments: string[];
+  shifts: string[];
+};
+
+export const getPendingSignups = () => apiFetch<SignupsData>('/api/v1/admin/signups');

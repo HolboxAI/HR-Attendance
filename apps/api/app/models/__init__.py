@@ -15,4 +15,5 @@ from app.models.leave import (  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.org import Department, Location, Organization  # noqa: F401
 from app.models.scheduler import ScheduledJobRun  # noqa: F401
+from app.models.signup_request import SignupRequest  # noqa: F401
 from app.models.wfh_request import WFHRequest  # noqa: F401

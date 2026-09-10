@@ -71,3 +71,9 @@ class CorrectionStatus(str, Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
     CANCELLED = "cancelled"
+
+
+class SignupStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"

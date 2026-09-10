@@ -289,3 +289,48 @@ def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: i
             logger.error(f"Slack API error: {res_data.get('error')}")
     except Exception as e:
         logger.error(f"Failed to post early leave alert to Slack: {e}")
+
+
+def post_signup_request_alert(
+    full_name: str,
+    email: str,
+    phone: str | None = None,
+    department: str | None = None,
+) -> None:
+    """Post an alert when a candidate submits an employee signup request."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    contact_bits = [f"📧 `{email}`"]
+    if phone:
+        contact_bits.append(f"📞 `{phone}`")
+    if department:
+        contact_bits.append(f"🏢 Dept: *{department}*")
+    info_line = " | ".join(contact_bits)
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"✨ *New Employee Registration Request*\n*{full_name}* has requested to join Holbox AI.\n{info_line}\n\n_Review and approve in the Workforce Directory (`/people`) or Notifications._"
+            }
+        }
+    ]
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": f"New Employee Signup: {full_name} ({email})",
+                "blocks": blocks,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error(f"Slack API error in post_signup_request_alert: {res_data.get('error')}")
+    except Exception as e:
+        logger.error(f"Failed to post signup request alert to Slack: {e}")

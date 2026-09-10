@@ -249,7 +249,17 @@ export function AuthPage() {
             </button>
           </form>
 
-          <p className="text-center text-[11px] text-white/40 font-mono pt-2">
+          <div className="pt-2 text-center text-xs text-white/60">
+            New employee or joiner?{' '}
+            <Link
+              href="/signup"
+              className="font-semibold text-emerald-400 hover:text-emerald-300 underline underline-offset-4 transition-colors"
+            >
+              Request to join / Sign up
+            </Link>
+          </div>
+
+          <p className="text-center text-[11px] text-white/40 font-mono pt-1">
             By continuing, you agree to Boxcode's{' '}
             <Link href="#" className="underline text-white/50 hover:text-white transition-colors">
               Security Policy

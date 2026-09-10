@@ -228,9 +228,20 @@ login_paths = {
     and p != "/api/v1/mobile/register-device"
 }
 box("one-login", check("exactly one login endpoint", login_paths, {"/api/v1/auth/login"}))
-box("one-login", check("no signup endpoint",
-                       any(("register" in p and p != "/api/v1/mobile/register-device")
-                           or "signup" in p for p in paths), False))
+box("one-login", check("signup endpoint exists", "/api/v1/auth/signup" in paths, True))
+signup_res = client.post("/api/v1/auth/signup", json={
+    "full_name": "New Candidate",
+    "email": "candidate@holbox.ai",
+    "password": "Password123!",
+    "phone": "+919876543210",
+    "desired_department": "Engineering",
+})
+box("signup", check("signup creates pending request", signup_res.status_code, 201))
+box("signup", check("duplicate email refused", client.post("/api/v1/auth/signup", json={
+    "full_name": "New Candidate",
+    "email": "candidate@holbox.ai",
+    "password": "Password123!",
+}).status_code, 409))
 box("one-login", check("register-device without a session is refused",
                        client.post("/api/v1/mobile/register-device",
                                    json={"platform": "web"}).status_code, 401))

@@ -80,6 +80,20 @@ class SetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
 
 
+class SignupRequestIn(BaseModel):
+    full_name: str = Field(min_length=1, max_length=160)
+    email: str = Field(min_length=3, max_length=200)
+    password: str = Field(min_length=8, max_length=128)
+    phone: str | None = None
+    desired_department: str | None = None
+    desired_designation: str | None = None
+
+
+class SignupResponse(BaseModel):
+    ok: bool
+    message: str
+
+
 def _identity(db: Session, user: User) -> Identity:
     emp = db.get(Employee, user.employee_id) if user.employee_id else None
     from app.api.deps import RANK
@@ -242,3 +256,88 @@ def set_password(
         session.revoked_at = now
     db.commit()
     return {"changed": True, "other_sessions_signed_out": True}
+
+
+@router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
+def signup(body: SignupRequestIn, db: Session = Depends(get_db)) -> SignupResponse:
+    from app.models.org import Organization
+    from app.models.signup_request import SignupRequest
+    from app.models.enums import SignupStatus
+    from app.services import notifications, slack
+
+    email = body.email.strip().lower()
+    full_name = body.full_name.strip()
+
+    if not full_name or not email or not body.password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name, email and password are required")
+
+    # Verify if user already exists
+    existing_user = db.scalar(select(User).where(User.email == email))
+    if existing_user is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "An account with this email address already exists. Please sign in.",
+        )
+
+    # Verify if pending signup request already exists
+    existing_req = db.scalar(
+        select(SignupRequest).where(
+            SignupRequest.email == email,
+            SignupRequest.status == SignupStatus.PENDING,
+        )
+    )
+    if existing_req is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "A registration request for this email is already awaiting admin approval.",
+        )
+
+    # Get primary organization
+    org = db.scalar(select(Organization))
+    if org is None:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "No organization configured")
+
+    req = SignupRequest(
+        id=uuid.uuid4(),
+        org_id=org.id,
+        full_name=full_name,
+        email=email,
+        phone=body.phone.strip() if body.phone else None,
+        password_hash=hash_password(body.password),
+        desired_department=body.desired_department.strip() if body.desired_department else None,
+        desired_designation=body.desired_designation.strip() if body.desired_designation else None,
+        status=SignupStatus.PENDING,
+    )
+    db.add(req)
+    db.flush()
+
+    # Notify HR Admins in-app
+    notifications.notify_hr(
+        db,
+        org_id=org.id,
+        category="employee.signup_request",
+        title=f"New Signup Request: {full_name}",
+        body=f"{full_name} ({email}) has requested to join as an employee. Review and approve in Directory.",
+        data={
+            "signup_id": str(req.id),
+            "full_name": full_name,
+            "email": email,
+            "phone": req.phone,
+            "desired_department": req.desired_department,
+            "desired_designation": req.desired_designation,
+        },
+    )
+
+    # Dispatch Slack notification alert
+    slack.post_signup_request_alert(
+        full_name=full_name,
+        email=email,
+        phone=req.phone,
+        department=req.desired_department,
+    )
+
+    db.commit()
+    return SignupResponse(
+        ok=True,
+        message="Your registration request has been submitted to Admin. You will be able to sign in once approved.",
+    )

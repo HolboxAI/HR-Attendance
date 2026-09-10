@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { BellOff, Check, CheckCheck, Reply, ScanFace, Send, X } from 'lucide-react';
+import { BellOff, Check, CheckCheck, Reply, ScanFace, Send, UserPlus, X } from 'lucide-react';
 
 import Link from 'next/link';
 
@@ -15,6 +15,8 @@ const CATEGORY_LABEL: Record<string, string> = {
   attendance: 'Attendance',
   message: 'Messages',
   wfh: 'Work From Home',
+  employee: 'Registration',
+  signup: 'Registration',
 };
 
 /**
@@ -393,6 +395,15 @@ export function NotificationsPage({ initial }: { initial: NotificationRow[] }) {
                         <X className="size-3" aria-hidden /> Reject WFH
                       </button>
                     </span>
+                  )}
+                  {n.category === 'employee.signup_request' && (
+                    <Link
+                      href="/people"
+                      onClick={() => markRead(n)}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 text-[11px] font-mono font-semibold shadow-xs transition-all cursor-pointer"
+                    >
+                      <UserPlus className="size-3" aria-hidden /> Review in Directory
+                    </Link>
                   )}
                   {isUploaded && (
                     <span role="status" className="flex items-center gap-1 text-[11px] font-mono font-semibold text-ink">

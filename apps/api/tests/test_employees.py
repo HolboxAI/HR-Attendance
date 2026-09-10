@@ -316,6 +316,62 @@ db.expire_all()
 check("employee row is gone", db.scalar(select(Employee).where(Employee.emp_code == "BX012")), None)
 check("user row is gone", db.scalar(select(User).where(User.email == "priya.new@test.local")), None)
 
+print("17. Self-service signup and admin approval flow")
+# 1. Candidate submits signup
+cand_pw = "MySecurePass123!"
+su_res = client.post("/api/v1/auth/signup", json={
+    "full_name": "Rohan Sharma",
+    "email": "rohan@holbox.ai",
+    "password": cand_pw,
+    "phone": "+919812345678",
+    "desired_department": "Engineering",
+    "desired_designation": "Software Engineer",
+})
+check("signup request submitted", su_res.status_code, 201)
+
+# 2. Candidate cannot log in yet
+check("unapproved signup cannot login", client.post("/api/v1/auth/login", json={
+    "email": "rohan@holbox.ai",
+    "password": cand_pw,
+}).status_code, 401)
+
+# 3. Employee cannot list signups
+check("regular employee cannot list signups", client.get("/api/v1/admin/signups", headers=DAKSH).status_code, 403)
+
+# 4. HR Admin lists signups
+admin_signups = client.get("/api/v1/admin/signups", headers=HIMESH)
+check("admin can list signups", admin_signups.status_code, 200)
+su_list = admin_signups.json()
+check("pending signups count >= 1", len(su_list["requests"]) >= 1, True)
+rohan_req = next((r for r in su_list["requests"] if r["email"] == "rohan@holbox.ai"), None)
+check("rohan found in pending signups", rohan_req is not None, True)
+suggested_code = su_list["suggested_emp_code"]
+check("suggested code has BX prefix", suggested_code.startswith("BX"), True)
+
+# 5. HR Admin approves Rohan's signup
+appr_res = client.post(f"/api/v1/admin/signups/{rohan_req['id']}/approve", json={
+    "emp_code": suggested_code,
+    "department": "Engineering",
+    "designation": "Software Engineer",
+    "role": "employee",
+}, headers=HIMESH)
+check("admin approval succeeds", appr_res.status_code, 200)
+check("approval returned ok", appr_res.json()["ok"], True)
+check("employee code assigned", appr_res.json()["employee"]["emp_code"], suggested_code)
+
+# 6. Now Rohan can immediately log in with his signup password!
+rohan_login = client.post("/api/v1/auth/login", json={
+    "email": "rohan@holbox.ai",
+    "password": cand_pw,
+})
+check("approved employee can login with chosen password", rohan_login.status_code, 200)
+check("rohan has employee code in identity", rohan_login.json()["identity"]["employee_code"], suggested_code)
+
+# 7. Re-approving fails
+check("cannot re-approve already decided signup", client.post(
+    f"/api/v1/admin/signups/{rohan_req['id']}/approve", json={"emp_code": "BX998"}, headers=HIMESH
+).status_code, 400)
+
 db.close()
 print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
 sys.exit(0 if ok else 1)

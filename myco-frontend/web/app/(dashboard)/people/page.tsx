@@ -2,7 +2,7 @@ import { Directory, type DirectoryRow } from '@/components/Directory';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { AddEmployeeButton } from '@/components/PeopleAdmin';
-import { getBoard, getDevices, getEnrolments } from '@/lib/api';
+import { getBoard, getDevices, getEnrolments, getPendingSignups } from '@/lib/api';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity } from '@/lib/session';
 
@@ -11,8 +11,8 @@ export const dynamic = 'force-dynamic';
 /**
  * Scoped automatically by the API: a manager's board only contains their
  * reports, so their directory only contains their reports. HR-only facts
- * (enrolment, device binding) merge in when those calls succeed and simply
- * stay absent when they don't.
+ * (enrolment, device binding, signup approvals) merge in when those calls succeed
+ * and simply stay absent when they don't.
  */
 export default async function PeoplePage() {
   const me = await currentIdentity();
@@ -28,7 +28,12 @@ export default async function PeoplePage() {
     );
   }
 
-  const [enrolments, devices] = await Promise.all([getEnrolments(), getDevices()]);
+  const [enrolments, devices, signupsRes] = await Promise.all([
+    getEnrolments(),
+    getDevices(),
+    caps.canManagePeople ? getPendingSignups() : Promise.resolve(null),
+  ]);
+
   const enrolledBy = new Map((enrolments?.rows ?? []).map((r) => [r.employee_code, r.enrolled]));
   const deviceBy = devices.ok
     ? new Map(devices.data.map((d) => [d.employee_code, d.bound]))
@@ -50,7 +55,7 @@ export default async function PeoplePage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PageHeader
           title="People"
-          sub="Everyone you can see, with today's status. New hires are created here by HR - there is no self-service signup, deliberately."
+          sub="Everyone you can see, with today's status. Review team members, manage access, and approve new employee registrations."
         />
         {caps.canManagePeople && <AddEmployeeButton />}
       </div>
@@ -58,6 +63,7 @@ export default async function PeoplePage() {
         rows={rows}
         canDelete={caps.canManagePeople}
         currentEmployeeCode={me?.employee_code}
+        signupsData={signupsRes?.ok ? signupsRes.data : undefined}
       />
     </div>
   );
