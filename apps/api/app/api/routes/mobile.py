@@ -57,7 +57,10 @@ class TodayResponse(BaseModel):
     checked_in_at: str | None
     checked_out_at: str | None
     worked_minutes: int
+    late_minutes: int = 0
     shift_label: str
+    shift_start: str | None = None
+    shift_end: str | None = None
     office_name: str
 
 
@@ -89,7 +92,10 @@ def me(
         checked_in_at=day.first_in.isoformat() if day.first_in else None,
         checked_out_at=day.last_out.isoformat() if day.last_out else None,
         worked_minutes=day.worked_minutes,
+        late_minutes=day.late_minutes,
         shift_label=f"{policy.start_time:%H:%M} - {policy.end_time:%H:%M}",
+        shift_start=f"{policy.start_time:%H:%M}",
+        shift_end=f"{policy.end_time:%H:%M}",
         office_name=str(OFFICE["name"]),
     )
 

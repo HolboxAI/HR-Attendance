@@ -20,7 +20,7 @@ interface SettingsPageProps {
 
 export function SettingsPage({ user }: SettingsPageProps) {
   // Tabs
-  const [activeTab, setActiveTab] = useState<'security' | 'handover' | 'profile' | 'preferences' | 'notifications'>('security');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'notifications'>('profile');
 
   // Password Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -33,9 +33,6 @@ export function SettingsPage({ user }: SettingsPageProps) {
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-
-  // Executive text copy state
-  const [copiedHandover, setCopiedHandover] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Preference states (stored in localStorage)
@@ -176,31 +173,6 @@ export function SettingsPage({ user }: SettingsPageProps) {
     }
   };
 
-  // Executive announcement message
-  const executiveText = `Hi Team,
-
-The Boxcode HRMS platform is now officially LIVE and running on our dedicated AWS Cloud instance!
-
-🌐 Portal URL: http://98.84.138.15
-🔑 Admin Login: ${user?.email || 'krish@boxcode.ai'}
-
-Operational Systems:
-✅ Attendance Board & Real-Time Tracking
-✅ Facial Biometric Verification & Device Registration
-✅ Punch Corrections & Attendance Regularization
-✅ Multi-Shift Rostering (Interns, Fixed & Rotational)
-✅ Leave Requests, Balances & Organization Holiday Calendar
-✅ Full Audit Trails & Real-Time Notifications
-
-The system is ready for review and employee onboarding.`;
-
-  const copyExecutiveText = () => {
-    navigator.clipboard.writeText(executiveText);
-    setCopiedHandover(true);
-    triggerToast('Announcement message copied to clipboard');
-    setTimeout(() => setCopiedHandover(false), 3000);
-  };
-
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-10">
       {/* Toast notification */}
@@ -214,70 +186,14 @@ The system is ready for review and employee onboarding.`;
       {/* Page Header */}
       <PageHeader
         title="Settings & System Preferences"
-        sub="Manage your personal credentials, customize display options, and view live cloud infrastructure details."
-      >
-        <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-xs">
-            <span className="size-2 rounded-full bg-emerald-400 animate-pulse" />
-            AWS EC2 Live
-          </span>
-        </div>
-      </PageHeader>
-
-      {/* Live System Handover Banner for Senior Review */}
-      <div className="rounded-2xl glass-panel border border-line p-5 sm:p-6 relative overflow-hidden bg-gradient-to-r from-surface to-surface-2/40 shadow-sm">
-        <div className="absolute -right-8 -top-8 size-40 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div className="space-y-1.5 max-w-2xl">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono uppercase tracking-wider font-bold bg-ink text-ground">
-                Live Deployment
-              </span>
-              <span className="text-xs font-mono text-ink-3">v1.0.4-prod • 98.84.138.15</span>
-            </div>
-            <h2 className="font-display text-lg font-bold text-ink">
-              Boxcode HRMS Enterprise Portal is Active & Ready
-            </h2>
-            <p className="text-xs text-ink-3 leading-relaxed">
-              All workforce modules—including biometric check-in, multi-shift rosters, leave approvals, and live attendance boards—are running smoothly in production. You can copy the executive summary below to share with seniors.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={copyExecutiveText}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-ink text-ground text-xs font-semibold hover:opacity-90 active:scale-95 transition-all shadow-sm cursor-pointer"
-            >
-              {copiedHandover ? (
-                <>
-                  <Check className="size-3.5 text-emerald-400" />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="size-3.5" />
-                  <span>Copy Handover Text</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('handover')}
-              className="px-3 py-2 rounded-xl glass-panel border border-line text-xs font-medium text-ink hover:bg-surface-2 transition-colors cursor-pointer"
-            >
-              View Message
-            </button>
-          </div>
-        </div>
-      </div>
+        sub="Manage your personal credentials, customize display options, and account preferences."
+      />
 
       {/* Navigation Tabs */}
       <div className="flex items-center gap-1.5 border-b border-line pb-2 overflow-x-auto bx-scroll">
         {[
-          { id: 'security', label: 'Security & Password', icon: KeyRound },
-          { id: 'handover', label: 'Senior Handover Note', icon: Sparkles },
           { id: 'profile', label: 'My Account Profile', icon: UserCheck },
+          { id: 'security', label: 'Security & Password', icon: KeyRound },
           { id: 'preferences', label: 'Display & Interface', icon: Sliders },
           { id: 'notifications', label: 'Notifications', icon: BellRing },
         ].map((tab) => {
@@ -538,73 +454,7 @@ The system is ready for review and employee onboarding.`;
         </div>
       )}
 
-      {/* TAB 2: SENIOR HANDOVER NOTE */}
-      {activeTab === 'handover' && (
-        <div className="rounded-2xl glass-panel border border-line p-6 shadow-sm space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-line/60 pb-4">
-            <div className="space-y-1">
-              <h2 className="font-display text-base font-bold text-ink flex items-center gap-2">
-                <Sparkles className="size-4 text-amber-400" />
-                Executive Handover Note for Seniors
-              </h2>
-              <p className="text-xs text-ink-3">
-                Copy and send this concise summary to leadership, management, or your senior to announce the live HRMS deployment.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={copyExecutiveText}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-ink text-ground text-xs font-semibold hover:opacity-90 active:scale-95 transition-all shadow-sm cursor-pointer shrink-0"
-            >
-              {copiedHandover ? (
-                <>
-                  <Check className="size-3.5 text-emerald-400" />
-                  <span>Message Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="size-3.5" />
-                  <span>Copy to Clipboard</span>
-                </>
-              )}
-            </button>
-          </div>
 
-          <div className="rounded-xl bg-surface-2/60 border border-line p-4 font-mono text-xs text-ink leading-relaxed whitespace-pre-wrap select-all">
-            {executiveText}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-            <div className="p-4 rounded-xl border border-line bg-surface/50 space-y-1">
-              <div className="flex items-center gap-2 text-xs font-semibold text-ink">
-                <Radio className="size-3.5 text-emerald-400 animate-pulse" />
-                Production Ready
-              </div>
-              <p className="text-[11px] text-ink-3">
-                Full microservice architecture running under Nginx reverse proxy on AWS EC2.
-              </p>
-            </div>
-            <div className="p-4 rounded-xl border border-line bg-surface/50 space-y-1">
-              <div className="flex items-center gap-2 text-xs font-semibold text-ink">
-                <Fingerprint className="size-3.5 text-blue-400" />
-                Biometric & Roster
-              </div>
-              <p className="text-[11px] text-ink-3">
-                Facial landmark vectors + multi-shift scheduling ready for company testing.
-              </p>
-            </div>
-            <div className="p-4 rounded-xl border border-line bg-surface/50 space-y-1">
-              <div className="flex items-center gap-2 text-xs font-semibold text-ink">
-                <ShieldCheck className="size-3.5 text-emerald-400" />
-                Audit Protection
-              </div>
-              <p className="text-[11px] text-ink-3">
-                Immutable punch logs and 7-day correction quota tracking active.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* TAB 3: MY ACCOUNT PROFILE */}
       {activeTab === 'profile' && (
