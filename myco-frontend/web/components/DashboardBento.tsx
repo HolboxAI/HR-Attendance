@@ -24,6 +24,7 @@ import { hhmm } from "@/lib/format";
 import type { Capabilities } from "@/lib/capabilities";
 import { proxy } from "@/lib/format";
 import { GlowCard } from "@/components/ui/spotlight-card";
+import { Avatar } from "@/components/Avatar";
 
 interface DashboardBentoProps {
   board: Board;
@@ -54,6 +55,7 @@ export function DashboardBento({
   const headcount = Math.max(1, board.summary.headcount);
   const presentPct = Math.round((board.summary.present / headcount) * 100);
   const inOfficePct = Math.round((board.summary.currently_in / headcount) * 100);
+  const wfhEmployees = board.rows.filter((r) => r.is_wfh_enabled || r.status === 'wfh');
 
   return (
     <div className="space-y-6">
@@ -223,6 +225,94 @@ export function DashboardBento({
             <ArrowUpRight className="size-4 text-ink-3 group-hover:text-ink transition-colors" />
           </GlowCard>
         </a>
+
+        {/* Remote & Work From Home (WFH) Bento Card */}
+        {wfhEmployees.length > 0 && (
+          <GlowCard
+            glowColor="monochrome"
+            customSize
+            className="md:col-span-6 rounded-3xl p-7 glass-panel flex flex-col justify-between shadow-lg relative overflow-hidden group"
+          >
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-widest text-ink-3 font-mono">
+                  Remote & Work From Home (WFH)
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-[10px] font-mono font-medium border border-cyan-500/20">
+                  <span className="size-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                  {board.summary.wfh || 0} active · {wfhEmployees.length} remote eligible
+                </span>
+              </div>
+              <Link
+                href="/board?f=wfh#register"
+                className="inline-flex items-center gap-1 text-xs font-mono text-ink-3 hover:text-ink transition-colors"
+              >
+                View Live Board
+                <ArrowUpRight className="size-3.5" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 mt-5 pt-4 border-t border-line/40">
+              {wfhEmployees.map((r) => {
+                const isActive = r.punch_count > 0 || r.currently_in || r.status === 'wfh' || r.status === 'present' || r.status === 'half_day';
+                return (
+                  <div
+                    key={r.employee_code}
+                    className="rounded-2xl bg-surface-2/40 border border-line/50 p-3.5 flex flex-col justify-between group-hover:border-line transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative shrink-0">
+                          <Avatar name={r.full_name} />
+                          <span
+                            className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-surface ${
+                              isActive ? 'bg-emerald-500' : 'bg-slate-400'
+                            }`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <Link
+                            href={`/people/${r.employee_code}`}
+                            className="text-xs font-bold text-ink hover:underline truncate block"
+                          >
+                            {r.full_name}{' '}
+                            <span className="text-[10px] font-mono font-normal text-ink-3">
+                              ({r.employee_code})
+                            </span>
+                          </Link>
+                          <p className="text-[11px] text-ink-3 font-mono truncate">
+                            {r.department || 'General'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`text-[9px] font-mono px-2 py-0.5 rounded-full border shrink-0 ${
+                          isActive
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 font-medium'
+                            : 'bg-surface-2 text-ink-3 border-line'
+                        }`}
+                      >
+                        {isActive ? 'Active WFH' : 'Scheduled'}
+                      </span>
+                    </div>
+
+                    <div className="mt-2.5 pt-2 border-t border-line/30 flex items-center justify-between text-[11px] font-mono">
+                      <span className="text-ink-3">
+                        {isActive ? `In: ${hhmm(r.first_in)}` : 'Awaiting punch'}
+                      </span>
+                      {r.late_minutes > 0 ? (
+                        <span className="text-amber-500 font-medium">+{r.late_minutes}m late</span>
+                      ) : (
+                        <span className="text-ink-3">{r.status.toUpperCase()}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </GlowCard>
+        )}
       </section>
     </div>
   );

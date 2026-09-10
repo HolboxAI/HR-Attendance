@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Loader2, Trash2, X } from 'lucide-react';
 
 import { Avatar } from '@/components/Avatar';
@@ -33,6 +33,7 @@ export function Directory({
   currentEmployeeCode = null,
 }: DirectoryProps) {
   const router = useRouter();
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [localRows, setLocalRows] = useState<DirectoryRow[]>(rows);
   const [query, setQuery] = useState('');
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
@@ -46,6 +47,16 @@ export function Directory({
   useEffect(() => {
     setLocalRows(rows);
   }, [rows]);
+
+  useEffect(() => {
+    const d = dialogRef.current;
+    if (!d) return;
+    if (deleteTarget && !d.open) {
+      d.showModal();
+    } else if (!deleteTarget && d.open) {
+      d.close();
+    }
+  }, [deleteTarget]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -311,10 +322,26 @@ export function Directory({
         </>
       )}
 
-      {/* Confirmation Modal */}
-      {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-md rounded-2xl glass-panel p-6 text-ink shadow-2xl border border-line bg-surface/95 overflow-hidden space-y-5">
+      {/* Native Confirmation Dialog - renders directly in browser Top Layer, perfectly centered */}
+      <dialog
+        ref={dialogRef}
+        onClose={() => {
+          if (!isDeleting) {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+        onCancel={(e) => {
+          if (isDeleting) e.preventDefault();
+          else {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+        className="bx-pop m-auto w-full max-w-md rounded-2xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-md overflow-hidden bg-surface"
+      >
+        {deleteTarget && (
+          <div className="p-6 space-y-5">
             {/* Header Icon & Close */}
             <div className="flex items-start justify-between">
               <div className="size-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 shadow-sm">
@@ -400,8 +427,8 @@ export function Directory({
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </dialog>
     </div>
   );
 }

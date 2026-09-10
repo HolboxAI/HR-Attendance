@@ -155,7 +155,7 @@ export default function CheckinPage() {
       setFeedback({
         type: 'error',
         message: detail,
-        offerRegister: res.status === 403 && detail.includes('not registered'),
+        offerRegister: res.status === 403 && (detail.includes('not registered') || detail.includes('different phone') || detail.includes('Ask HR')),
       });
       return;
     }

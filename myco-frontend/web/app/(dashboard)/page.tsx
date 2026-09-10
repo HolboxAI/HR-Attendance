@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import {
   AlertTriangle, BellOff, CalendarClock, CalendarDays, CalendarRange,
-  CircleUserRound, ClipboardList, Download, ScanFace, Smartphone, UserCheck,
+  CircleUserRound, ClipboardList, Download, MonitorPlay, ScanFace, Smartphone, UserCheck,
 } from 'lucide-react';
 
 import { AttendancePulse } from '@/components/AttendancePulse';
+import { Avatar } from '@/components/Avatar';
 import { ErrorState } from '@/components/ErrorState';
 import { MetricTile } from '@/components/MetricTile';
 import { MyMonth } from '@/components/MyMonth';
@@ -91,6 +92,7 @@ export default async function DashboardPage({
     ]);
 
   const exceptions = board.rows.filter((r) => r.has_exception);
+  const wfhEmployees = board.rows.filter((r) => r.is_wfh_enabled || r.status === 'wfh');
   const unconfirmedHolidays = (holidays ?? []).filter((h) => !h.is_confirmed);
   const monthNum = new Date().getUTCMonth() + 1;
   const monthLabel = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
@@ -159,12 +161,13 @@ export default async function DashboardPage({
         </div>
         {/* Each count links to the register filtered to the people it counts
             - the number and its names are one fact, one click apart. */}
-        <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-6">
           <MetricTile index={0} label="In office" icon="userCheck" href="/board?f=in_office#register" value={board.summary.currently_in} sub={`of ${board.summary.headcount} team members`} tone="neutral" />
-          <MetricTile index={1} label="Present" icon="person" href="/board?f=present#register" value={board.summary.present} sub="full shift completed" tone="neutral" />
-          <MetricTile index={2} label="Late" icon="clock" href="/board?f=late#register" value={board.summary.late} sub="past grace window" tone="neutral" />
-          <MetricTile index={3} label="Absent" icon="bellOff" href="/board?f=absent#register" value={board.summary.absent} sub="no punch recorded" tone="neutral" />
-          <MetricTile index={4} label="On leave" icon="calendar" href="/board?f=on_leave#register" value={board.summary.on_leave} sub="approved leave today" tone="neutral" />
+          <MetricTile index={1} label="WFH" icon="wfh" href="/board?f=wfh#register" value={board.summary.wfh || 0} sub="remote active" tone="neutral" />
+          <MetricTile index={2} label="Present" icon="person" href="/board?f=present#register" value={board.summary.present} sub="full shift completed" tone="neutral" />
+          <MetricTile index={3} label="Late" icon="clock" href="/board?f=late#register" value={board.summary.late} sub="past grace window" tone="neutral" />
+          <MetricTile index={4} label="Absent" icon="bellOff" href="/board?f=absent#register" value={board.summary.absent} sub="no punch recorded" tone="neutral" />
+          <MetricTile index={5} label="On leave" icon="calendar" href="/board?f=on_leave#register" value={board.summary.on_leave} sub="approved leave today" tone="neutral" />
         </div>
       </section>
 
@@ -175,6 +178,89 @@ export default async function DashboardPage({
         </h2>
         <AttendancePulse rows={board.rows} />
       </section>
+
+      {/* Remote & Work From Home (WFH) Team Card */}
+      {wfhEmployees.length > 0 && (
+        <section className="space-y-3" aria-label="WFH Team">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-3 font-mono">
+                Remote & Work From Home (WFH)
+              </h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 text-[10px] font-mono font-medium border border-cyan-500/20">
+                <span className="size-1.5 rounded-full bg-cyan-500 animate-pulse" />
+                {board.summary.wfh || 0} active · {wfhEmployees.length} remote eligible
+              </span>
+            </div>
+            <Link
+              href="/board?f=wfh#register"
+              className="text-xs font-mono text-ink-3 hover:text-ink flex items-center gap-1 transition-colors"
+            >
+              View on Board →
+            </Link>
+          </div>
+
+          <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+            {wfhEmployees.map((r) => {
+              const isActive = r.punch_count > 0 || r.currently_in || r.status === 'wfh' || r.status === 'present' || r.status === 'half_day';
+              return (
+                <div
+                  key={r.employee_code}
+                  className="glass-panel glass-panel-hover rounded-2xl p-4 flex flex-col justify-between border border-line bg-surface/60 group relative overflow-hidden transition-all shadow-xs"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative shrink-0">
+                        <Avatar name={r.full_name} />
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-surface ${
+                            isActive ? 'bg-emerald-500' : 'bg-slate-400'
+                          }`}
+                        />
+                      </div>
+                      <div className="min-w-0 truncate">
+                        <Link
+                          href={`/people/${r.employee_code}`}
+                          className="text-sm font-bold text-ink hover:underline group-hover:text-primary transition-colors flex items-center gap-1.5 truncate"
+                        >
+                          <span className="truncate">{r.full_name}</span>
+                          <span className="text-[10px] font-mono font-normal text-ink-3 shrink-0">
+                            ({r.employee_code})
+                          </span>
+                        </Link>
+                        <p className="text-xs text-ink-3 font-mono truncate">
+                          {r.department || 'General'} · {r.shift_label}
+                        </p>
+                      </div>
+                    </div>
+
+                    <span
+                      className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border shrink-0 ${
+                        isActive
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 font-medium'
+                          : 'bg-surface-2 text-ink-3 border-line font-normal'
+                      }`}
+                    >
+                      {isActive ? 'Active WFH' : 'Scheduled WFH'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-line/40 flex items-center justify-between text-xs font-mono">
+                    <span className="text-ink-3">
+                      {isActive ? `Check-in: ${hhmm(r.first_in)}` : 'Awaiting check-in'}
+                    </span>
+                    {r.late_minutes > 0 ? (
+                      <span className="text-amber-500 font-medium">+{r.late_minutes}m late</span>
+                    ) : (
+                      <span className="text-ink-3">{r.status.toUpperCase()}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Waiting on You Queues */}
       <section className="space-y-3" aria-label="Waiting on you">

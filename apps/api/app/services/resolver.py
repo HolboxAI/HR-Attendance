@@ -178,10 +178,11 @@ def resolve_day(
 
     if open_in is not None:
         day.pairs.append((open_in, None))
-        day.has_exception = True
-        day.exception_note = "Missing punch-out - needs regularization"
+        if shift_over:
+            day.has_exception = True
+            day.exception_note = "Missing punch-out - needs regularization"
 
-    if len(punches) == 1:
+    if len(punches) == 1 and shift_over:
         day.has_exception = True
         day.exception_note = "Only one punch recorded"
 

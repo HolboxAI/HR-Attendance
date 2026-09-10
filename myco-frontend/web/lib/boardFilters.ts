@@ -29,7 +29,7 @@ export function matchesFilter(row: BoardRow, filter: FilterKey): boolean {
   switch (filter) {
     case 'all': return true;
     case 'in_office': return row.currently_in;
-    case 'wfh': return Boolean(row.is_wfh_enabled || row.status === 'wfh');
+    case 'wfh': return Boolean((row.is_wfh_enabled || row.status === 'wfh') && (row.punch_count > 0 || row.currently_in || row.status === 'wfh' || row.status === 'present' || row.status === 'half_day'));
     case 'late': return row.late_minutes > 0;
     case 'exceptions': return row.has_exception;
     default: return row.status === filter;

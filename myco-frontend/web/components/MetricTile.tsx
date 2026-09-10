@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import {
   AlertTriangle, BellOff, CalendarClock, CalendarDays, CalendarRange,
-  CircleUserRound, ClipboardList, ScanFace, Smartphone, UserCheck,
+  CircleUserRound, ClipboardList, MonitorPlay, ScanFace, Smartphone, UserCheck,
 } from 'lucide-react';
 
 import { CountUp } from '@/components/CountUp';
@@ -24,6 +24,7 @@ const ICONS = {
   scanFace: ScanFace,
   phone: Smartphone,
   userCheck: UserCheck,
+  wfh: MonitorPlay,
 } as const;
 
 export type MetricIcon = keyof typeof ICONS;
