@@ -410,12 +410,16 @@ def delete_permanently(
         db.execute(update(FaceEnrollment).where(FaceEnrollment.enrolled_by == user_id).values(enrolled_by=None))
         db.execute(update(LeaveRequest).where(LeaveRequest.approver_id == user_id).values(approver_id=None))
         db.execute(update(WFHRequest).where(WFHRequest.decided_by_id == user_id).values(decided_by_id=None))
+        db.execute(update(SignupRequest).where(SignupRequest.decided_by_id == user_id).values(decided_by_id=None))
 
         db.execute(delete(RefreshSession).where(RefreshSession.user_id == user_id))
         db.execute(delete(Notification).where(Notification.user_id == user_id))
 
         db.delete(user)
         db.flush()
+
+    from app.models.signup_request import SignupRequest
+    db.execute(delete(SignupRequest).where(SignupRequest.created_employee_id == emp_id))
 
     # 4. Cascade delete all employee operational tables
     db.execute(delete(CorrectionRequest).where(CorrectionRequest.employee_id == emp_id))
