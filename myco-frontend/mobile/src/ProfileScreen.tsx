@@ -85,24 +85,24 @@ export default function ProfileScreen({
 
       <AppearanceCard />
 
-      <View style={s.card}>
-        <Text style={s.cardTitle}>OFFICE SETUP</Text>
-        <Text style={s.body}>
-          The Survey tool records real GPS readings around the office so the
-          geofence can be set from measurements instead of a map pin. Internal
-          use - it comes out before the pilot.
-        </Text>
-        <Pressable style={s.secondaryBtn} onPress={() => setSurvey(true)} accessibilityRole="button">
-          <Text style={s.secondaryText}>Open Survey</Text>
-        </Pressable>
-      </View>
+      {(me.role === 'admin' || me.role === 'hr') && (
+        <View style={s.card}>
+          <Text style={s.cardTitle}>OFFICE SETUP</Text>
+          <Text style={s.body}>
+            Calibrated GPS survey tool to record coordinates and calibrate the
+            office geofence perimeter.
+          </Text>
+          <Pressable style={s.secondaryBtn} onPress={() => setSurvey(true)} accessibilityRole="button">
+            <Text style={s.secondaryText}>Open Survey</Text>
+          </Pressable>
+        </View>
+      )}
 
       <Pressable style={s.signOut} onPress={onSignOut} accessibilityRole="button">
         <Text style={s.signOutText}>Sign out</Text>
       </Pressable>
       <Text style={s.note}>
-        Signing out keeps this phone registered to you - you will not burn your
-        device binding by signing back in.
+        Signing out preserves your device registration on this phone.
       </Text>
     </ScrollView>
   );
