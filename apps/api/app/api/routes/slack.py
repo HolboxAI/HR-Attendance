@@ -21,22 +21,39 @@ logger = logging.getLogger(__name__)
 @router.post("/interactions")
 async def slack_interactions(
     request: Request,
-    payload: Annotated[str, Form()],
     db: Session = Depends(get_db),
 ):
     """Handle interactive button clicks from Slack."""
-    # 1. Verify the request came from Slack
+    # 1. Read raw body first before any form parsing
+    body = await request.body()
+
+    # 2. Verify the request came from Slack
     if settings.slack_signing_secret:
-        body = await request.body()
         timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
         signature = request.headers.get("X-Slack-Signature", "")
         
         if not verify_slack_signature(signature, timestamp, body, settings.slack_signing_secret):
             raise HTTPException(status_code=403, detail="Invalid Slack signature")
 
-    # 2. Parse the payload
+    # 3. Parse the payload from urlencoded form body
+    from urllib.parse import parse_qs
+    payload_str = ""
     try:
-        data = json.loads(payload)
+        parsed = parse_qs(body.decode("utf-8"))
+        if "payload" in parsed and parsed["payload"]:
+            payload_str = parsed["payload"][0]
+    except Exception:
+        pass
+
+    if not payload_str:
+        try:
+            form = await request.form()
+            payload_str = str(form.get("payload", ""))
+        except Exception:
+            pass
+
+    try:
+        data = json.loads(payload_str)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
@@ -72,7 +89,7 @@ async def slack_interactions(
 
     # Find an admin to act as the approver (since this is an admin channel)
     hr_admin = db.scalar(
-        select(User).where(User.role == UserRole.HR_ADMIN, User.is_active.is_(True)).limit(1)
+        select(User).where(User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]), User.is_active.is_(True)).limit(1)
     )
     if not hr_admin:
         # Fallback to ANY user if no HR admin exists
