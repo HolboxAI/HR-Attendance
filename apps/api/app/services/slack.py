@@ -40,46 +40,72 @@ def post_leave_request(
     to_date: date,
     days: float,
     reason: str,
+    document_url: str | None = None,
+    is_sick_leave: bool = False,
 ) -> tuple[str, str] | None:
     """Post an interactive leave request message to Slack. Returns (ts, channel_id)."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         logger.info("Slack bot not configured. Skipping leave request notification.")
-        return
+        return None
+
+    doc_part = f"\n📎 *Attached Document:* <{document_url}|Click to View Document>" if document_url else ""
+    mrkdwn_text = (
+        f"🌴 *Leave Request: {employee_name}*\n"
+        f"Requested *{days:g} days* of {leave_type} from {from_date} to {to_date}.\n"
+        f"> \"{reason}\""
+        f"{doc_part}"
+    )
+
+    elements = [
+        {
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Approve",
+                "emoji": True
+            },
+            "style": "primary",
+            "value": f"approve:{leave_request_id}",
+            "action_id": "approve_leave"
+        }
+    ]
+
+    # Only provide Partial Approve for Sick Leave
+    if is_sick_leave:
+        elements.append({
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "Partial Approve",
+                "emoji": True
+            },
+            "value": f"partial_approve:{leave_request_id}",
+            "action_id": "partial_approve_leave"
+        })
+
+    elements.append({
+        "type": "button",
+        "text": {
+            "type": "plain_text",
+            "text": "Reject",
+            "emoji": True
+        },
+        "style": "danger",
+        "value": f"reject:{leave_request_id}",
+        "action_id": "reject_leave"
+    })
 
     blocks = [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"🌴 *Leave Request: {employee_name}*\nRequested *{days:g} days* of {leave_type} from {from_date} to {to_date}.\n> \"{reason}\""
+                "text": mrkdwn_text
             }
         },
         {
             "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Approve",
-                        "emoji": True
-                    },
-                    "style": "primary",
-                    "value": f"approve:{leave_request_id}",
-                    "action_id": "approve_leave"
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "Reject",
-                        "emoji": True
-                    },
-                    "style": "danger",
-                    "value": f"reject:{leave_request_id}",
-                    "action_id": "reject_leave"
-                }
-            ]
+            "elements": elements
         }
     ]
 
@@ -112,16 +138,21 @@ def update_leave_request(
     original_text: str,
     approved: bool,
     actor_name: str,
+    partial_approve: bool = False,
+    note: str | None = None,
 ) -> None:
     """Update a leave request message to remove buttons after it is decided."""
     if not settings.slack_bot_token:
         return
 
-    # Extract the employee name and details from the original text block
-    # Assuming original_text has the markdown we sent in post_leave_request
-    
-    status_text = f"✅ Approved by @{actor_name}" if approved else f"❌ Rejected by @{actor_name}"
-    
+    if partial_approve:
+        note_str = f'\n> Note: "{note}"' if note else ""
+        status_text = f"⚠️ *Partially Approved by @{actor_name}* (Medical Certificate Requested){note_str}"
+    elif approved:
+        status_text = f"✅ *Approved by @{actor_name}*"
+    else:
+        status_text = f"❌ *Rejected by @{actor_name}*"
+
     blocks = [
         {
             "type": "section",
@@ -160,14 +191,20 @@ def sync_leave_decision_to_slack(
     approved: bool,
     actor_name: str,
     source: str = "Email",
+    partial_approve: bool = False,
+    note: str | None = None,
 ) -> None:
     """Sync a decision made outside of Slack (e.g. Email or Portal) to Slack."""
     if not settings.slack_bot_token:
         return
 
-    icon = "✅" if approved else "❌"
-    action = "Approved" if approved else "Rejected"
-    status_text = f"{icon} {action} via {source} by @{actor_name}"
+    if partial_approve:
+        note_str = f'\n> Admin Note: "{note}"' if note else ""
+        status_text = f"⚠️ Partially Approved via {source} by @{actor_name} (Awaiting Medical Document){note_str}"
+    elif approved:
+        status_text = f"✅ Approved via {source} by @{actor_name}"
+    else:
+        status_text = f"❌ Rejected via {source} by @{actor_name}"
 
     original_text = (
         f"🌴 *Leave Request: {employee_name}*\n"
@@ -199,6 +236,73 @@ def sync_leave_decision_to_slack(
         )
     except Exception as e:
         logger.error(f"Failed to sync leave decision to Slack: {e}")
+
+
+
+def post_document_uploaded_alert(
+    leave_request_id: str,
+    employee_name: str,
+    leave_type_name: str,
+    from_date: date,
+    to_date: date,
+    document_url: str,
+    original_channel_id: str | None = None,
+    original_thread_ts: str | None = None,
+) -> None:
+    """Alert Slack admin channel that an employee has uploaded their medical certificate."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    channel = original_channel_id or settings.slack_channel_id
+    text_content = (
+        f"📄 *Medical Certificate Uploaded: {employee_name}*\n"
+        f"Employee has submitted medical documentation for *{leave_type_name}* ({from_date} to {to_date}).\n"
+        f"📎 *Medical Document:* <{document_url}|Click Here to View Document>"
+    )
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": text_content,
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Approve Leave", "emoji": True},
+                    "style": "primary",
+                    "value": f"approve:{leave_request_id}",
+                    "action_id": "approve_leave",
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Reject", "emoji": True},
+                    "style": "danger",
+                    "value": f"reject:{leave_request_id}",
+                    "action_id": "reject_leave",
+                },
+            ],
+        },
+    ]
+
+    try:
+        httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": channel,
+                "thread_ts": original_thread_ts,
+                "text": f"Medical document submitted by {employee_name}",
+                "blocks": blocks,
+            },
+            timeout=5.0,
+        )
+    except Exception as e:
+        logger.error(f"Failed to post document uploaded alert to Slack: {e}")
 
 
 def post_absence_alert(employee_name: str, shift_start: str) -> None:

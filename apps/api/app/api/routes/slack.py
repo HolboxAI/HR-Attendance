@@ -63,11 +63,26 @@ async def slack_interactions(
     action = data.get("actions", [{}])[0]
     action_value = action.get("value", "")
     
-    if not action_value.startswith("approve:") and not action_value.startswith("reject:"):
+    if action_value.startswith("partial_approve:"):
+        action_type = "partial_approve"
+        request_id_str = action_value.split(":", 1)[1]
+        partial_approve = True
+        approve = True
+        decision_note = f"Partially approved via Slack by @{data.get('user', {}).get('username', 'admin')}. Please submit your medical certificate / doctor's prescription."
+    elif action_value.startswith("approve:"):
+        action_type = "approve"
+        request_id_str = action_value.split(":", 1)[1]
+        partial_approve = False
+        approve = True
+        decision_note = f"Decided via Slack by @{data.get('user', {}).get('username', 'admin')}"
+    elif action_value.startswith("reject:"):
+        action_type = "reject"
+        request_id_str = action_value.split(":", 1)[1]
+        partial_approve = False
+        approve = False
+        decision_note = f"Decided via Slack by @{data.get('user', {}).get('username', 'admin')}"
+    else:
         return {"message": "Ignored unknown action"}
-
-    action_type, request_id_str = action_value.split(":", 1)
-    approve = (action_type == "approve")
 
     slack_user = data.get("user", {}).get("username", "Unknown User")
     channel_id = data.get("channel", {}).get("id")
@@ -82,7 +97,7 @@ async def slack_interactions(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid leave request ID")
 
-    # 3. Process the approval/rejection
+    # 3. Process the approval/rejection/partial approval
     leave_req = db.get(LeaveRequest, leave_request_id)
     if not leave_req:
         return {"message": "Leave request not found"}
@@ -104,13 +119,13 @@ async def slack_interactions(
         request=leave_req,
         approver=hr_admin,
         approve=approve,
-        note=f"Decided via Slack by @{slack_user}",
+        partial_approve=partial_approve,
+        note=decision_note,
         allow_self_approval=True  # Bypasses the self-approval block for Slack bots
     )
 
     if not outcome.ok:
         logger.warning(f"Slack approval failed: {outcome.reason}")
-        # Could post an ephemeral error back to the user here
         return {"message": outcome.reason}
 
     db.commit()
@@ -123,6 +138,8 @@ async def slack_interactions(
             original_text=original_text,
             approved=approve,
             actor_name=slack_user,
+            partial_approve=partial_approve,
+            note="Please submit your medical certificate / doctor's prescription." if partial_approve else None,
         )
 
     return {"message": "Success"}

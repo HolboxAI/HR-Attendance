@@ -225,6 +225,7 @@ async def apply(
         
     db.commit()
 
+    doc_view_url = None
     if file_data and result.request.id:
         from app.services.storage import storage
         key = f"medical_docs/{result.request.id}/doc.{file_ext}"
@@ -232,6 +233,11 @@ async def apply(
         result.request.medical_document_url = key
         result.request.medical_document_submitted_at = datetime.now(timezone.utc)
         db.commit()
+
+        from app.core.security import generate_action_token
+        doc_token = generate_action_token("leave_document_view", sub=str(result.request.id), payload={}, expires_hours=168)
+        api_url = getattr(settings, "api_url", "https://attendance.holbox.ai/api/v1")
+        doc_view_url = f"{api_url}/leave/{result.request.id}/document/view?token={doc_token}"
     
     from app.services import notifications
     
@@ -248,15 +254,19 @@ async def apply(
         title="Leave Request",
         body=f"{emp.full_name} requested {lt.name} for the dates: {result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.",
         exclude_user_id=emp_user.id if emp_user and emp_user.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN) else None,
-        data={"leave_request_id": str(result.request.id)},
+        data={
+            "leave_request_id": str(result.request.id),
+            "doc_view_url": doc_view_url,
+            "has_document": bool(doc_view_url),
+            "doc_filename": f"medical_doc_{emp.emp_code}.{file_ext}" if file_data else None,
+            "doc_bytes": file_data if file_data else None,
+        },
     )
     db.commit()
     from app.services.slack import post_leave_request
     from fastapi import BackgroundTasks
     
-    # We can inject BackgroundTasks into the route, or just run it synchronously. 
-    # Since we didn't inject it in the func signature, let's just call it synchronously for now, 
-    # or import threading to fire and forget. A 5-second timeout won't kill the UX.
+    is_sick = (lt.code.upper() == "SL" or "sick" in lt.name.lower())
     try:
         slack_resp = post_leave_request(
             leave_request_id=str(result.request.id),
@@ -266,6 +276,8 @@ async def apply(
             to_date=result.request.to_date,
             days=float(result.request.days_consumed),
             reason=result.request.reason or "No reason provided",
+            document_url=doc_view_url,
+            is_sick_leave=is_sick,
         )
         if slack_resp:
             result.request.slack_message_ts = slack_resp[0]
@@ -429,6 +441,27 @@ def upload_document(
     row.medical_document_submitted_at = datetime.now(timezone.utc)
     db.commit()
 
+    from app.core.security import generate_action_token
+    doc_token = generate_action_token("leave_document_view", sub=str(row.id), payload={}, expires_hours=168)
+    api_url = getattr(settings, "api_url", "https://attendance.holbox.ai/api/v1")
+    doc_view_url = f"{api_url}/leave/{row.id}/document/view?token={doc_token}"
+
+    from app.services.slack import post_document_uploaded_alert
+    try:
+        lt = db.get(LeaveType, row.leave_type_id)
+        post_document_uploaded_alert(
+            leave_request_id=str(row.id),
+            employee_name=emp.full_name,
+            leave_type_name=lt.name if lt else "Sick Leave",
+            from_date=row.from_date,
+            to_date=row.to_date,
+            document_url=doc_view_url,
+            original_channel_id=row.slack_channel_id,
+            original_thread_ts=row.slack_message_ts,
+        )
+    except Exception:
+        pass
+
     from app.services import notifications
     from app.models.employee import User
     from app.models.enums import UserRole
@@ -440,13 +473,56 @@ def upload_document(
         org_id=emp.org_id,
         category="leave.document_uploaded",
         title="Medical Document Uploaded",
-        body=f"{emp.full_name} has submitted the required medical document for their leave request.",
+        body=f"{emp.full_name} has submitted the required medical document for their leave request ({row.from_date} to {row.to_date}).",
         exclude_user_id=emp_user.id if emp_user and emp_user.role != UserRole.HR_ADMIN else None,
-        data={"leave_request_id": str(row.id)},
+        data={
+            "leave_request_id": str(row.id),
+            "doc_view_url": doc_view_url,
+            "has_document": True,
+            "doc_filename": f"medical_doc_{emp.emp_code}.{ext}",
+            "doc_bytes": data,
+        },
     )
     db.commit()
 
     return to_request_out(db, row, emp)
+
+
+@router.get("/{request_id}/document/view")
+def view_document_with_token(
+    request_id: uuid.UUID,
+    token: str = Query(..., description="Action token for secure viewing without session"),
+    db: Session = Depends(get_db),
+):
+    """Direct inline viewing of leave document with action token (for Slack & Email)."""
+    from app.core.security import decode_action_token
+    try:
+        claims = decode_action_token(token, "leave_document_view")
+        if claims.get("sub") != str(request_id):
+            raise HTTPException(403, "Invalid token for this document")
+    except Exception:
+        raise HTTPException(403, "Invalid or expired document link")
+
+    row = db.get(LeaveRequest, request_id)
+    if row is None or row.deleted_at is not None or not row.medical_document_url:
+        raise HTTPException(404, "Document not found")
+
+    from app.services.storage import storage
+    data = storage.get(row.medical_document_url)
+    if not data:
+        raise HTTPException(404, "Document file not found in storage")
+
+    content_type = "application/pdf" if row.medical_document_url.endswith(".pdf") else "image/jpeg"
+    if row.medical_document_url.endswith(".png"):
+        content_type = "image/png"
+
+    filename = f"medical_doc_{row.id}.{'pdf' if content_type == 'application/pdf' else 'jpg'}"
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
 
 @router.get("/{request_id}/document/download")
 def download_document(

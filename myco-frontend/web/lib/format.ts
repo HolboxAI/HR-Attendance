@@ -182,10 +182,11 @@ export type AuditRow = {
 };
 
 export const LEAVE_STATUS: Record<string, { label: string; glyph: string; tone: string }> = {
-  pending:   { label: 'Pending',   glyph: '◌', tone: 'text-st-late' },
-  approved:  { label: 'Approved',  glyph: '●', tone: 'text-st-present' },
-  rejected:  { label: 'Rejected',  glyph: '○', tone: 'text-st-absent' },
-  cancelled: { label: 'Cancelled', glyph: '–', tone: 'text-ink-3' },
+  pending:            { label: 'Pending',            glyph: '◌', tone: 'text-st-late' },
+  partially_approved: { label: 'Partially Approved', glyph: '◐', tone: 'text-amber-500' },
+  approved:           { label: 'Approved',           glyph: '●', tone: 'text-st-present' },
+  rejected:           { label: 'Rejected',           glyph: '○', tone: 'text-st-absent' },
+  cancelled:          { label: 'Cancelled',          glyph: '–', tone: 'text-ink-3' },
 };
 
 /** "8 Aug" / "8–12 Aug 2026" - a date range people can read at a glance. */

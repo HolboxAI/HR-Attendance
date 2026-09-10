@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { dateRange, type LeaveRequestRow } from '@/lib/format';
+import { dateRange, proxy, type LeaveRequestRow } from '@/lib/format';
 import { useRouter } from 'next/navigation';
 
 export function LeaveStatusPageClient({ rows, isHr }: { rows: LeaveRequestRow[]; isHr: boolean }) {
@@ -29,12 +29,13 @@ export function LeaveStatusPageClient({ rows, isHr }: { rows: LeaveRequestRow[];
     formData.append('file', uploadFile);
 
     try {
-      const res = await fetch(`/api/v1/leave/${id}/document`, {
+      const res = await fetch(proxy(`/api/v1/leave/${id}/document`), {
         method: 'POST',
         body: formData,
       });
       if (!res.ok) {
-        throw new Error('Upload failed');
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail || 'Upload failed');
       }
       setDocUploadId(null);
       setUploadFile(null);
@@ -49,7 +50,7 @@ export function LeaveStatusPageClient({ rows, isHr }: { rows: LeaveRequestRow[];
   async function decide(id: string, approve: boolean) {
     setDecidingId(id);
     setDecideError(null);
-    const res = await fetch(`/api/v1/admin/leave/${id}/decide`, {
+    const res = await fetch(proxy(`/api/v1/admin/leave/${id}/decide`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approve, note: null }),
@@ -130,12 +131,26 @@ export function LeaveStatusPageClient({ rows, isHr }: { rows: LeaveRequestRow[];
               {r.status === 'partially_approved' && (
                 <div className="mt-4 p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5">
                   <h4 className="text-xs font-bold text-yellow-600 uppercase mb-2">Medical Document Required</h4>
+                  {r.decided_note && (
+                    <div className="mb-3 p-2.5 rounded-lg bg-surface-2 border border-line text-xs font-mono">
+                      <span className="font-bold text-yellow-600 uppercase text-[10px] tracking-wider block mb-0.5">Admin Note to Employee</span>
+                      <span className="text-ink">{r.decided_note}</span>
+                    </div>
+                  )}
                   {r.medical_document_url ? (
                     <div className="flex flex-col gap-3 w-full">
-                      <div className="flex items-center gap-4">
-                        <span className="text-xs font-mono text-ink-3">Document submitted on {new Date(r.medical_document_submitted_at!).toLocaleDateString()}</span>
-                        {/* In a real app, this would be a secure download link */}
-                        <a href={`/api/gateway/api/v1/leave/${r.id}/document/download`} target="_blank" className="text-xs text-ink hover:underline">View Document</a>
+                      <div className="flex flex-wrap items-center gap-4">
+                        <span className="text-xs font-mono text-ink-3">
+                          Document submitted on {new Date(r.medical_document_submitted_at!).toLocaleDateString()}
+                        </span>
+                        <a
+                          href={proxy(`/api/v1/leave/${r.id}/document/download`)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-line bg-surface-2 text-xs font-bold font-mono text-ink hover:bg-surface-3 transition-colors"
+                        >
+                          📎 View Medical Document
+                        </a>
                       </div>
                       
                       {isHr && (
@@ -143,9 +158,9 @@ export function LeaveStatusPageClient({ rows, isHr }: { rows: LeaveRequestRow[];
                           <button
                             onClick={() => decide(r.id, true)}
                             disabled={decidingId === r.id}
-                            className="flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-xs font-bold text-ground hover:opacity-90 transition-all disabled:opacity-50"
+                            className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 transition-all disabled:opacity-50"
                           >
-                            {decidingId === r.id ? 'Saving...' : 'Approve Leave'}
+                            {decidingId === r.id ? 'Saving...' : 'Confirm Final Approve'}
                           </button>
                           <button
                             onClick={() => decide(r.id, false)}

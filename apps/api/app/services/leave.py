@@ -566,7 +566,7 @@ def decide(
         if source != "Slack":  # Slack interactions update the card directly
             Thread(
                 target=sync_leave_decision_to_slack,
-                args=(request.slack_channel_id, request.slack_message_ts, employee.full_name, lt_name, request.from_date, request.to_date, float(request.days_consumed), request.reason or "No reason provided", approve, actor_name, source),
+                args=(request.slack_channel_id, request.slack_message_ts, employee.full_name, lt_name, request.from_date, request.to_date, float(request.days_consumed), request.reason or "No reason provided", approve, actor_name, source, partial_approve, note),
                 daemon=True,
             ).start()
 

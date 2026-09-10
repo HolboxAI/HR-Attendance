@@ -63,6 +63,7 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
       {rows.map((r) => {
         const isHovered = hoveredId === r.id;
         const isDimmed = hoveredId !== null && !isHovered;
+        const isSickLeave = r.leave_type_code === 'SL' || r.leave_type_code?.toUpperCase().includes('SICK');
         return (
           <div
             key={r.id}
@@ -99,17 +100,39 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
             </div>
             
             {r.status === 'partially_approved' && r.medical_document_url && (
-              <div className="mt-3 p-3 rounded-xl border border-line bg-surface-2/50 flex flex-col gap-2">
-                <span className="text-xs font-bold text-ink">Medical Document Uploaded</span>
-                <span className="text-xs font-mono text-ink-3">Submitted on {new Date(r.medical_document_submitted_at!).toLocaleDateString()}</span>
-                <a href={`/api/gateway/api/v1/leave/${r.id}/document/download`} target="_blank" className="text-xs text-ink font-semibold hover:underline">
-                  View Document
+              <div className="mt-3 p-3.5 rounded-xl border border-line bg-surface-2/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-ink">✅ Medical Document Uploaded</span>
+                    <span className="text-[10px] font-mono text-ink-3">
+                      {r.medical_document_submitted_at ? `on ${new Date(r.medical_document_submitted_at).toLocaleDateString()}` : ''}
+                    </span>
+                  </div>
+                  {r.decided_note && (
+                    <p className="text-xs text-ink-3 italic">Admin Note: &ldquo;{r.decided_note}&rdquo;</p>
+                  )}
+                </div>
+                <a
+                  href={`/api/gateway/api/v1/leave/${r.id}/document/download`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-accent/40 bg-accent/10 text-accent text-xs font-mono font-bold hover:bg-accent/20 transition-colors shrink-0"
+                >
+                  📎 View Document
                 </a>
               </div>
             )}
             {r.status === 'partially_approved' && !r.medical_document_url && (
-              <div className="mt-3 p-3 rounded-xl border border-line bg-surface-2/50">
-                <span className="text-xs font-mono text-ink-3">Waiting for employee to upload medical document.</span>
+              <div className="mt-3 p-3.5 rounded-xl border border-yellow-500/30 bg-yellow-500/5 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-yellow-600">⏳ Awaiting Medical Certificate</span>
+                  <span className="text-[10px] font-mono text-ink-3">
+                    {r.medical_document_deadline ? `Deadline: ${new Date(r.medical_document_deadline).toLocaleDateString()}` : ''}
+                  </span>
+                </div>
+                {r.decided_note && (
+                  <p className="text-xs text-ink-2 font-mono">Sent to employee: &ldquo;{r.decided_note}&rdquo;</p>
+                )}
               </div>
             )}
 
@@ -126,23 +149,30 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
             )}
             
             {partialApproving === r.id && (
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 space-y-3 p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5">
+                <div className="text-xs font-bold text-yellow-600 uppercase tracking-wide">
+                  Sick Leave Partial Approval
+                </div>
                 <div>
-                  <label htmlFor={`deadline-${r.id}`} className="block text-xs font-mono text-ink-3">
-                    Document Deadline (Optional)
+                  <label htmlFor={`pnote-${r.id}`} className="block text-xs font-mono text-ink-2 font-semibold">
+                    Message for employee (editable)
                   </label>
-                  <input
-                    id={`deadline-${r.id}`} type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2 text-xs text-ink"
+                  <textarea
+                    id={`pnote-${r.id}`}
+                    rows={2}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Enter message for employee requesting medical documents..."
+                    className="mt-1 w-full rounded-xl border border-line bg-surface px-3.5 py-2 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-ink"
                   />
                 </div>
                 <div>
-                  <label htmlFor={`pnote-${r.id}`} className="block text-xs font-mono text-ink-3">
-                    Note for employee (Optional)
+                  <label htmlFor={`deadline-${r.id}`} className="block text-xs font-mono text-ink-3">
+                    Document Submission Deadline (Optional)
                   </label>
                   <input
-                    id={`pnote-${r.id}`} value={note} onChange={(e) => setNote(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3.5 py-2 text-xs text-ink"
+                    id={`deadline-${r.id}`} type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-line bg-surface px-3.5 py-2 text-xs text-ink"
                   />
                 </div>
               </div>
@@ -150,13 +180,25 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {partialApproving === r.id || rejecting === r.id ? null : (
-                <button
-                  type="button" disabled={busy === r.id} onClick={() => decide(r.id, true)}
-                  className="rounded-xl bg-ink text-ground px-4 py-2 text-xs font-black uppercase tracking-wider disabled:opacity-50 hover:opacity-90 transition-all cursor-pointer"
-                >
-                  {busy === r.id ? 'Saving…' : 'Approve'}
-                </button>
+                <>
+                  {r.status === 'partially_approved' && r.medical_document_url ? (
+                    <button
+                      type="button" disabled={busy === r.id} onClick={() => decide(r.id, true, false)}
+                      className="rounded-xl bg-emerald-600 text-white px-4 py-2 text-xs font-black uppercase tracking-wider disabled:opacity-50 hover:bg-emerald-500 transition-all cursor-pointer shadow-xs"
+                    >
+                      {busy === r.id ? 'Saving…' : 'Confirm Final Approve'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button" disabled={busy === r.id} onClick={() => decide(r.id, true)}
+                      className="rounded-xl bg-ink text-ground px-4 py-2 text-xs font-black uppercase tracking-wider disabled:opacity-50 hover:opacity-90 transition-all cursor-pointer"
+                    >
+                      {busy === r.id ? 'Saving…' : 'Approve'}
+                    </button>
+                  )}
+                </>
               )}
+
               {rejecting === r.id ? (
                 <>
                   <button
@@ -176,7 +218,7 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
                 <>
                   <button
                     type="button" disabled={busy === r.id} onClick={() => decide(r.id, true, true, deadline)}
-                    className="rounded-xl bg-ink text-ground px-4 py-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50 hover:opacity-90 transition-all cursor-pointer"
+                    className="rounded-xl bg-amber-500 text-white px-4 py-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50 hover:bg-amber-600 transition-all cursor-pointer shadow-xs"
                   >
                     Confirm Partial Approve
                   </button>
@@ -189,12 +231,19 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
                 </>
               ) : (
                 <>
-                  <button
-                    type="button" onClick={() => setPartialApproving(r.id)}
-                    className="rounded-xl border border-line glass-panel px-4 py-2 text-xs font-bold uppercase tracking-wider text-ink-2 hover:text-ink hover:bg-surface-2 transition-all cursor-pointer"
-                  >
-                    Partial Approve…
-                  </button>
+                  {/* Only display Partial Approve for Sick Leave that is not yet partially approved */}
+                  {isSickLeave && r.status !== 'partially_approved' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPartialApproving(r.id);
+                        setNote("Please submit your medical certificate / doctor's prescription for verification.");
+                      }}
+                      className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 text-yellow-600 px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-yellow-500/20 transition-all cursor-pointer"
+                    >
+                      Partial Approve…
+                    </button>
+                  )}
                   <button
                     type="button" onClick={() => setRejecting(r.id)}
                     className="rounded-xl border border-line glass-panel px-4 py-2 text-xs font-bold uppercase tracking-wider text-ink-2 hover:text-ink hover:bg-surface-2 transition-all cursor-pointer"

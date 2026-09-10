@@ -41,6 +41,37 @@ export function MyLeave({
   const [hoveredReqId, setHoveredReqId] = useState<string | null>(null);
   const [hoveredCardCode, setHoveredCardCode] = useState<string | null>(null);
 
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  async function handleDocUpload(id: string) {
+    if (!uploadFile) return;
+    setUploadBusy(true);
+    setUploadError(null);
+    const formData = new FormData();
+    formData.append('file', uploadFile);
+
+    try {
+      const res = await fetch(proxy(`/api/v1/leave/${id}/document`), {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => null);
+        throw new Error(b?.detail || 'Upload failed');
+      }
+      setUploadingId(null);
+      setUploadFile(null);
+      router.refresh();
+    } catch (err: any) {
+      setUploadError(err.message || 'Error uploading document');
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+
   async function apply(e: React.FormEvent) {
     e.preventDefault();
     if (requiresProof && !file) {
@@ -236,9 +267,10 @@ export function MyLeave({
               <tbody onMouseLeave={() => setHoveredReqId(null)}>
                 {requests.map((r) => {
                   const s = LEAVE_STATUS[r.status] ?? LEAVE_STATUS.pending;
-                  const live = r.status === 'pending' || r.status === 'approved';
+                  const live = r.status === 'pending' || r.status === 'approved' || r.status === 'partially_approved';
                   const isHovered = hoveredReqId === r.id;
                   const isDimmed = hoveredReqId !== null && !isHovered;
+                  const isPartiallyApproved = r.status === 'partially_approved';
                   return (
                     <tr 
                       key={r.id} 
@@ -250,7 +282,7 @@ export function MyLeave({
                       </td>
                       <td className="px-4 py-3 text-ink-2">{r.leave_type_code}</td>
                       <td className="tnum px-4 py-3">{r.days}</td>
-                      <td className={`px-4 py-3 ${s.tone}`}>
+                      <td className={`px-4 py-3 ${s.tone} font-semibold`}>
                         <span aria-hidden>{s.glyph} </span>{s.label}
                       </td>
                       <td className="px-4 py-3 text-ink-3">
@@ -259,7 +291,75 @@ export function MyLeave({
                             {r.category}
                           </span>
                         )}
-                        {r.decided_note ?? r.reason ?? ''}
+                        {r.reason && <span className="mr-2 text-ink-2">{r.reason}</span>}
+                        {isPartiallyApproved && (
+                          <div className="mt-1.5 space-y-1">
+                            {r.decided_note && (
+                              <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-mono text-amber-500">
+                                <strong className="uppercase text-[10px] tracking-wider block text-amber-600">Admin Message:</strong>
+                                &ldquo;{r.decided_note}&rdquo;
+                              </div>
+                            )}
+                            {r.medical_document_url ? (
+                              <div className="flex items-center gap-2 pt-0.5">
+                                <a
+                                  href={proxy(`/api/v1/leave/${r.id}/document/download`)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs font-mono font-bold text-emerald-500 hover:underline"
+                                >
+                                  📎 View Uploaded Medical Document
+                                </a>
+                                <span className="text-[10px] font-mono text-ink-3">✅ Submitted</span>
+                              </div>
+                            ) : (
+                              <div className="pt-1">
+                                {uploadingId === r.id ? (
+                                  <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-surface-2 border border-line">
+                                    <input
+                                      type="file"
+                                      accept=".pdf,.jpg,.jpeg,.png"
+                                      onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                                      className="text-xs font-mono max-w-[220px]"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDocUpload(r.id)}
+                                      disabled={!uploadFile || uploadBusy}
+                                      className="rounded-lg bg-ink text-ground px-3 py-1 text-xs font-bold disabled:opacity-50 hover:opacity-90"
+                                    >
+                                      {uploadBusy ? 'Uploading...' : 'Submit Doc'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setUploadingId(null); setUploadFile(null); setUploadError(null); }}
+                                      className="text-xs text-ink-3 hover:text-ink font-mono"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-mono text-amber-500 font-semibold">⚠️ Medical certificate required</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setUploadingId(r.id); setUploadError(null); }}
+                                      className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 px-2.5 py-1 text-[11px] font-mono font-bold transition-colors cursor-pointer"
+                                    >
+                                      Upload Document
+                                    </button>
+                                  </div>
+                                )}
+                                {uploadError && uploadingId === r.id && (
+                                  <p className="text-[11px] text-st-absent font-mono mt-1">{uploadError}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {!isPartiallyApproved && r.decided_note && (
+                          <span className="text-ink-3 italic font-mono text-xs">Note: {r.decided_note}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {live && (

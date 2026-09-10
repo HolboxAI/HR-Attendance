@@ -138,9 +138,12 @@ def notify(
     ALLOWED_EMAILS = {"krishraghavsharma@gmail.com", "krish@holbox.ai", "krish@boxcode.ai"}
     is_admin = getattr(user, "role", None) in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN)
     if user.email and (user.email.lower() in ALLOWED_EMAILS or is_admin):
-        if category in ("attendance_late", "attendance.late_arrival", "attendance.absent_alert", "attendance.early_leave", "leave.pending", "leave.document_uploaded"):
+        if category in ("attendance_late", "attendance.late_arrival", "attendance.absent_alert", "attendance.early_leave", "leave.pending", "leave.document_uploaded", "leave.partially_approved"):
             html_body = None
-            if category in ("leave.pending", "leave.document_uploaded") and data and "leave_request_id" in data:
+            attachment_bytes = None
+            attachment_filename = None
+
+            if category in ("leave.pending", "leave.document_uploaded", "leave.partially_approved") and data and "leave_request_id" in data:
                 from app.core.security import generate_action_token
                 req_id = data["leave_request_id"]
                 approve_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": True, "approver_id": str(user.id)})
@@ -150,11 +153,50 @@ def notify(
                 approve_url = f"{api_url}/leave/email-decide?token={approve_token}"
                 reject_url = f"{api_url}/leave/email-decide?token={reject_token}"
                 
+                # Check for document view URL
+                doc_url = data.get("doc_view_url")
+                if not doc_url:
+                    from app.models.leave import LeaveRequest
+                    try:
+                        lr = db.get(LeaveRequest, uuid.UUID(req_id))
+                        if lr and lr.medical_document_url:
+                            d_tok = generate_action_token("leave_document_view", sub=str(lr.id), payload={}, expires_hours=168)
+                            doc_url = f"{api_url}/leave/{lr.id}/document/view?token={d_tok}"
+                    except Exception:
+                        pass
+
+                # Get document attachment data
+                if data.get("doc_bytes"):
+                    attachment_bytes = data["doc_bytes"]
+                    attachment_filename = data.get("doc_filename") or f"medical_doc_{req_id[:8]}.pdf"
+                else:
+                    from app.models.leave import LeaveRequest
+                    try:
+                        lr = db.get(LeaveRequest, uuid.UUID(req_id))
+                        if lr and lr.medical_document_url:
+                            from app.services.storage import storage
+                            attachment_bytes = storage.get(lr.medical_document_url)
+                            ext = "pdf" if lr.medical_document_url.endswith(".pdf") else "jpg"
+                            attachment_filename = f"medical_doc_{lr.id}.{ext}"
+                    except Exception:
+                        pass
+
+                doc_btn_html = ""
+                if doc_url:
+                    doc_btn_html = f"""
+                    <div style="margin: 20px 0;">
+                      <a href="{doc_url}" style="display: inline-block; padding: 11px 24px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+                        📎 View Attached Medical Document
+                      </a>
+                    </div>
+                    """
+
                 html_body = f"""
                 <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 40px 20px; line-height: 1.6; text-align: center;">
                   <div style="max-width: 500px; margin: 0 auto; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 32px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
                     <h2 style="color: #ffffff; font-weight: 700; margin-top: 0; margin-bottom: 24px; font-size: 20px; text-transform: uppercase; letter-spacing: 1px;">Leave Request</h2>
-                    <p style="font-size: 15px; margin-bottom: 32px; color: #c9d1d9;">{body}</p>
+                    <p style="font-size: 15px; margin-bottom: 20px; color: #c9d1d9;">{body}</p>
+                    {doc_btn_html}
                     <div style="display: block; margin-top: 24px;">
                       <a href="{approve_url}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); margin-right: 8px;">Approve</a>
                       <a href="{reject_url}" style="display: inline-block; padding: 12px 28px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); margin-left: 8px;">Reject</a>
@@ -164,16 +206,23 @@ def notify(
                 """
 
             from threading import Thread
-            Thread(target=_send_email_task, args=(user.email, title, body, html_body), daemon=True).start()
+            Thread(target=_send_email_task, args=(user.email, title, body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
 
             # For testing: Also guarantee delivery to Krish's verified test email (smtp_user)
             test_inbox = getattr(settings, "smtp_user", None) or "krish@holbox.ai"
             if test_inbox and test_inbox.lower() != user.email.lower() and category in ("leave.pending", "leave.document_uploaded"):
-                Thread(target=_send_email_task, args=(test_inbox, title, body, html_body), daemon=True).start()
+                Thread(target=_send_email_task, args=(test_inbox, title, body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
 
     return row
 
-def _send_email_task(to_email: str, subject: str, body: str, html_body: str | None = None) -> None:
+def _send_email_task(
+    to_email: str,
+    subject: str,
+    body: str,
+    html_body: str | None = None,
+    attachment_bytes: bytes | None = None,
+    attachment_filename: str | None = None,
+) -> None:
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
@@ -189,13 +238,22 @@ def _send_email_task(to_email: str, subject: str, body: str, html_body: str | No
             logging.getLogger("boxcode.email").info(f"MOCK HTML: {html_body}")
         return
 
-    msg = MIMEMultipart('alternative')
+    msg = MIMEMultipart('mixed')
     msg['From'] = settings.smtp_from or settings.smtp_user or "noreply@boxcode.local"
     msg['To'] = to_email
     msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
+
+    alt_part = MIMEMultipart('alternative')
+    alt_part.attach(MIMEText(body, 'plain'))
     if html_body:
-        msg.attach(MIMEText(html_body, 'html'))
+        alt_part.attach(MIMEText(html_body, 'html'))
+    msg.attach(alt_part)
+
+    if attachment_bytes and attachment_filename:
+        from email.mime.application import MIMEApplication
+        part = MIMEApplication(attachment_bytes, Name=attachment_filename)
+        part['Content-Disposition'] = f'attachment; filename="{attachment_filename}"'
+        msg.attach(part)
 
     try:
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port) as server:

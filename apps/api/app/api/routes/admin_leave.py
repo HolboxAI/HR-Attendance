@@ -184,7 +184,7 @@ def decide(
         
         Thread(
             target=update_leave_request, 
-            args=(row.slack_channel_id, row.slack_message_ts, orig_text, body.approve, approver_name),
+            args=(row.slack_channel_id, row.slack_message_ts, orig_text, body.approve, approver_name, body.partial_approve, body.note),
             daemon=True
         ).start()
         
