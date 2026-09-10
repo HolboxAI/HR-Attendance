@@ -73,7 +73,11 @@ def bind(
 
     mine = active_binding(db, employee)
     if mine is not None and mine.install_id != install_id:
-        return BindResult(False, None, ALREADY_BOUND)
+        # If both the existing and incoming are web sessions, retire the old web session to allow the new one
+        if (mine.platform == "web" or mine.install_id.startswith("web-")) and (platform == "web" or install_id.startswith("web-")):
+            mine.is_active = False
+        else:
+            return BindResult(False, None, ALREADY_BOUND)
 
     if existing is None:
         existing = MobileDevice(
@@ -100,12 +104,28 @@ def check(db: Session, *, employee: Employee, install_id: str | None) -> BindRes
             MobileDevice.is_active.is_(True),
         )
     )
-    if device is None:
-        return BindResult(False, None, NOT_BOUND)
-    if device.employee_id != employee.id:
-        return BindResult(False, None, OTHER_PERSONS_PHONE)
-    device.last_seen_at = datetime.now(timezone.utc)
-    return BindResult(True, device)
+    if device is not None:
+        if device.employee_id != employee.id:
+            return BindResult(False, None, OTHER_PERSONS_PHONE)
+        device.last_seen_at = datetime.now(timezone.utc)
+        return BindResult(True, device)
+
+    # If the punch is from a web browser (install_id starts with "web-"):
+    if install_id.startswith("web-"):
+        mine = active_binding(db, employee)
+        if mine is None or mine.platform == "web" or mine.install_id.startswith("web-"):
+            if mine is not None:
+                mine.is_active = False
+            return bind(db, employee=employee, install_id=install_id, platform="web", model="Dashboard browser")
+        else:
+            return BindResult(
+                False,
+                None,
+                "Your account is bound to your mobile phone. "
+                "Ask HR to unbind your handset before checking in from a web browser.",
+            )
+
+    return BindResult(False, None, NOT_BOUND)
 
 
 def clear(db: Session, employee: Employee) -> bool:
