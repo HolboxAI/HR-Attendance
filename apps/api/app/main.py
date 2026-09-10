@@ -51,10 +51,13 @@ async def _scheduler_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from app.db.base import Base
-    from app.db.session import engine
-    import app.models  # noqa: F401
-    Base.metadata.create_all(bind=engine)
+    try:
+        from app.db.base import Base
+        from app.db.session import engine
+        import app.models  # noqa: F401
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+    except Exception:
+        pass
 
     task = (
         asyncio.create_task(_scheduler_loop())
