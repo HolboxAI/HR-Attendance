@@ -27,7 +27,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.clock import org_today
@@ -122,14 +122,23 @@ def create(
         )
 
     dept_row = None
-    if department:
+    if department and department.strip():
+        dept_name = department.strip()
         dept_row = db.scalar(
             select(Department).where(
-                Department.org_id == org_id, Department.name == department
+                Department.org_id == org_id,
+                func.lower(Department.name) == func.lower(dept_name),
             )
         )
         if dept_row is None:
-            return EmployeeOutcome(False, reason=f"No department called '{department}'")
+            formatted_name = dept_name.title() if dept_name.islower() else dept_name
+            dept_row = Department(
+                id=uuid.uuid4(),
+                org_id=org_id,
+                name=formatted_name,
+            )
+            db.add(dept_row)
+            db.flush()
 
     manager = None
     if manager_code:
@@ -235,16 +244,30 @@ def update(
         recorded[field] = {"old": str(old) if old is not None else None, "new": str(new)}
 
     if department is not None:
-        dept_row = db.scalar(
-            select(Department).where(
-                Department.org_id == employee.org_id, Department.name == department
+        if not department.strip():
+            if employee.department_id is not None:
+                recorded["department"] = {"old": str(employee.department_id), "new": None}
+                employee.department_id = None
+        else:
+            dept_name = department.strip()
+            dept_row = db.scalar(
+                select(Department).where(
+                    Department.org_id == employee.org_id,
+                    func.lower(Department.name) == func.lower(dept_name),
+                )
             )
-        )
-        if dept_row is None:
-            return EmployeeOutcome(False, reason=f"No department called '{department}'")
-        if employee.department_id != dept_row.id:
-            recorded["department"] = {"old": str(employee.department_id), "new": department}
-            employee.department_id = dept_row.id
+            if dept_row is None:
+                formatted_name = dept_name.title() if dept_name.islower() else dept_name
+                dept_row = Department(
+                    id=uuid.uuid4(),
+                    org_id=employee.org_id,
+                    name=formatted_name,
+                )
+                db.add(dept_row)
+                db.flush()
+            if employee.department_id != dept_row.id:
+                recorded["department"] = {"old": str(employee.department_id), "new": dept_row.name}
+                employee.department_id = dept_row.id
 
     if manager_code is not None:
         manager = _by_code(db, employee.org_id, manager_code.strip().upper())

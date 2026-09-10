@@ -316,11 +316,20 @@ export function SignupPage() {
                           id="department"
                           name="department"
                           type="text"
-                          placeholder="e.g. Engineering"
+                          list="dept-options"
+                          placeholder="Select or enter department..."
                           value={department}
                           onChange={(e) => setDepartment(e.target.value)}
                           className="w-full rounded-2xl bg-white/5 border border-white/10 py-2.5 ps-9 pe-3 text-xs text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-body"
                         />
+                        <datalist id="dept-options">
+                          <option value="Engineering" />
+                          <option value="Marketing" />
+                          <option value="Design" />
+                          <option value="Sales" />
+                          <option value="Operations" />
+                          <option value="People" />
+                        </datalist>
                         <div className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3 text-white/40">
                           <Building2 className="size-3.5" aria-hidden="true" />
                         </div>

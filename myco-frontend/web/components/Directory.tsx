@@ -93,13 +93,26 @@ export function Directory({
   useEffect(() => {
     if (activeSignup) {
       setAssignCode(signupsData?.suggested_emp_code ?? 'BX012');
-      setAssignDept(activeSignup.desired_department ?? (signupsData?.departments?.[0] ?? ''));
-      setAssignShift(signupsData?.shifts?.[0] ?? 'Morning Shift');
+      const reqDept = activeSignup.desired_department?.trim() || '';
+      const matched = signupsData?.departments?.find(
+        (d) => d.toLowerCase() === reqDept.toLowerCase()
+      );
+      setAssignDept(matched || reqDept || signupsData?.departments?.[0] || '');
+      setAssignShift(signupsData?.shifts?.[0] ?? 'General');
       setAssignDesignation(activeSignup.desired_designation ?? '');
       setAssignRole('employee');
       setApprovalError(null);
     }
   }, [activeSignup, signupsData]);
+
+  const availableDepts = useMemo(() => {
+    const list = [...(signupsData?.departments ?? [])];
+    const req = activeSignup?.desired_department?.trim();
+    if (req && !list.some((d) => d.toLowerCase() === req.toLowerCase())) {
+      list.push(req);
+    }
+    return list;
+  }, [signupsData?.departments, activeSignup?.desired_department]);
 
   useEffect(() => {
     const d = dialogRef.current;
@@ -775,9 +788,14 @@ export function Directory({
                     className="w-full rounded-xl bg-surface border border-line px-3 py-2 text-xs font-semibold text-ink focus:outline-none focus:border-accent"
                   >
                     <option value="">Select Department...</option>
-                    {signupsData?.departments?.map((d) => (
+                    {availableDepts.map((d) => (
                       <option key={d} value={d}>
                         {d}
+                        {activeSignup?.desired_department &&
+                        d.toLowerCase() === activeSignup.desired_department.toLowerCase() &&
+                        !signupsData?.departments?.some((sd) => sd.toLowerCase() === d.toLowerCase())
+                          ? ' (Requested)'
+                          : ''}
                       </option>
                     ))}
                   </select>
@@ -815,9 +833,9 @@ export function Directory({
                 />
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[11px] leading-relaxed flex items-start gap-2">
-                <Sparkles className="size-4 shrink-0 text-emerald-500 mt-0.5" />
-                <span>
+              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 shadow-xs">
+                <Sparkles className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+                <span className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 leading-relaxed">
                   Password is already set by the candidate during registration. Once approved, they can sign in directly with their email and password, then enroll their face biometric.
                 </span>
               </div>
