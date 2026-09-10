@@ -31,6 +31,7 @@ export default async function DashboardLayout({
           email={me?.email ?? ''}
           role={me?.role ?? 'employee'}
           name={me?.full_name ?? null}
+          avatarUrl={me?.avatar_url ?? null}
           caps={caps}
         >
           {children}

@@ -58,6 +58,7 @@ class Identity(BaseModel):
     can_punch: bool
     is_admin: bool
     correction_limit: int = 5
+    avatar_url: str | None = None
 
 
 class LoginResponse(BaseModel):
@@ -98,6 +99,11 @@ def _identity(db: Session, user: User) -> Identity:
     emp = db.get(Employee, user.employee_id) if user.employee_id else None
     from app.api.deps import RANK
     from app.models.enums import UserRole
+    from app.services.enrolment import active_enrolment
+
+    enrol = active_enrolment(db, emp) if emp else None
+    avatar_url = f"/api/gateway/api/v1/employees/{emp.emp_code}/photo" if (emp and enrol) else None
+
     return Identity(
         user_id=user.id,
         email=user.email,
@@ -109,6 +115,7 @@ def _identity(db: Session, user: User) -> Identity:
         can_punch=emp is not None and emp.is_active,
         is_admin=RANK.get(user.role, -1) >= RANK[UserRole.HR_ADMIN],
         correction_limit=emp.correction_limit if emp and emp.correction_limit is not None else 5,
+        avatar_url=avatar_url,
     )
 
 

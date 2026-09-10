@@ -5,7 +5,7 @@ import { BoardRefusedTable } from '@/components/BoardRefusedTable';
 import { BoardToolbar } from '@/components/BoardToolbar';
 import { isFilterKey } from '@/lib/boardFilters';
 import { Tiles } from '@/components/Tiles';
-import { MyMonth } from '@/components/MyMonth';
+import { EmployeeBoardHistory } from '@/components/EmployeeBoardHistory';
 import { KineticTicker } from '@/components/ui/kinetic-ticker';
 import { getBoard, getMyMonth, getRejected, hhmm } from '@/lib/api';
 import { istYearMonth, proxy } from '@/lib/format';
@@ -30,8 +30,17 @@ export default async function BoardPage({
   // the thing they actually came for.
   if (!result.ok && result.reason === 'forbidden') {
     const ist = istYearMonth();
-    const mine = await getMyMonth(ist.year, ist.month);
-    return <MyMonth data={mine} name={me?.full_name ?? null} year={ist.year} month={ist.month} />;
+    let year = ist.year;
+    let month = ist.month;
+    if (on) {
+      const parts = on.split('-').map(Number);
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        year = parts[0];
+        month = parts[1];
+      }
+    }
+    const mine = await getMyMonth(year, month);
+    return <EmployeeBoardHistory data={mine} me={me} year={year} month={month} />;
   }
 
   if (!result.ok) {

@@ -101,7 +101,7 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
                 autoCorrect={false}
                 keyboardType="email-address"
                 textContentType="username"
-                placeholder="your.email@boxcode.ai"
+                placeholder="your.email@holbox.ai"
                 placeholderTextColor="rgba(255,255,255,0.3)"
                 editable={!busy}
                 accessibilityLabel="Email"
@@ -152,7 +152,7 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
             </View>
 
             <Text style={s.footerNote}>
-              By continuing, you agree to Boxcode's Security Policy and Privacy
+              By continuing, you agree to Holbox's Security Policy and Privacy
               Terms.
             </Text>
 

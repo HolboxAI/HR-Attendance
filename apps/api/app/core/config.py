@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # postgresql+psycopg:// URL. The models are dialect-portable, so nothing
     # else changes.
     database_url: str = f"sqlite:///{DATA_DIR / 'boxcode.db'}"
+    app_name: str = "Holbox HRMS"
+    org_name: str = "Holbox AI"
 
     jwt_secret: str = "dev-only-change-before-anyone-real-uses-this"
 

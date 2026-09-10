@@ -8,11 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     admin, admin_corrections,
     admin_employees, admin_jobs, admin_leave, admin_location, admin_history, admin_shifts, admin_signups, auth, corrections,
-    enrolment, health, ingest, leave, mobile, notifications, slack, wfh,
+    enrolment, health, ingest, leave, mobile, notifications, profile, slack, wfh,
 )
 from app.core.config import settings
 
-log = logging.getLogger("boxcode.scheduler")
+log = logging.getLogger("holbox.scheduler")
 
 
 async def _scheduler_loop() -> None:
@@ -70,7 +70,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Boxcode HRMS API",
+    title="Holbox HRMS API",
     version="0.1.0",
     description="Attendance-first HR platform. All capture methods converge on one punch event.",
     lifespan=lifespan,
@@ -94,6 +94,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix=settings.api_prefix)
 app.include_router(auth.router, prefix=settings.api_prefix)
+app.include_router(profile.router, prefix=settings.api_prefix)
 app.include_router(ingest.router, prefix=settings.api_prefix)
 app.include_router(mobile.router, prefix=settings.api_prefix)
 app.include_router(admin.router, prefix=settings.api_prefix)

@@ -45,6 +45,7 @@ class EmployeeOut(BaseModel):
     role: str | None
     has_login: bool
     correction_limit: int | None
+    avatar_url: str | None = None
 
 
 class CreateRequest(BaseModel):
@@ -73,7 +74,8 @@ class UpdateRequest(BaseModel):
     department: str | None = None
     manager_code: str | None = None
     role: UserRole | None = None
-    correction_limit: int | None = Field(default=None, ge=1, le=15)
+    shift: str | None = None
+    correction_limit: int | None = None
 
 
 class CreatedResponse(BaseModel):
@@ -90,6 +92,8 @@ def to_out(db: Session, emp: Employee) -> EmployeeOut:
     dept = db.get(Department, emp.department_id) if emp.department_id else None
     manager = db.get(Employee, emp.manager_id) if emp.manager_id else None
     user = db.scalar(select(User).where(User.employee_id == emp.id))
+    enrol = active_enrolment(db, emp)
+    avatar_url = f"/api/gateway/api/v1/employees/{emp.emp_code}/photo" if enrol else None
     return EmployeeOut(
         emp_code=emp.emp_code, full_name=emp.full_name, email=emp.email,
         phone=emp.phone, department=dept.name if dept else None,
@@ -99,6 +103,7 @@ def to_out(db: Session, emp: Employee) -> EmployeeOut:
         is_active=emp.is_active,
         role=user.role.value if user else None, has_login=user is not None,
         correction_limit=emp.correction_limit,
+        avatar_url=avatar_url,
     )
 
 

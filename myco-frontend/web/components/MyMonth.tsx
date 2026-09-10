@@ -339,10 +339,10 @@ export function MyMonth({
           <div className={`tnum mt-2 font-display text-3xl font-extrabold ${
             lateTodayMinutes > 0 ? 'text-amber-500' : 'text-emerald-500'
           }`}>
-            {lateTodayMinutes > 0 ? hours(lateTodayMinutes) : '0m'}
+            {lateTodayMinutes > 0 ? hours(lateTodayMinutes) : '0 hrs'}
           </div>
           <p className="mt-1.5 text-xs font-mono text-ink-3">
-            {lateTodayMinutes > 0 ? `${lateTodayMinutes}m after grace period` : 'On time today · Refreshes daily'}
+            {lateTodayMinutes > 0 ? `${lateTodayMinutes} minutes after grace period` : 'On time today · 0 hours late · Refreshes daily'}
           </p>
         </div>
 

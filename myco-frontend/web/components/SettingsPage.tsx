@@ -2,14 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   KeyRound, ShieldCheck, CheckCircle2, AlertCircle, Eye, EyeOff, Lock,
   UserCheck, Sparkles, Copy, Check, Laptop, Moon, Sun, SunMoon,
   Sliders, BellRing, Globe, Calendar, Clock, Building2, Server,
-  Radio, RefreshCw, Smartphone, ChevronRight, Fingerprint
+  Radio, RefreshCw, Smartphone, ChevronRight, Fingerprint, Camera, UploadCloud
 } from 'lucide-react';
 
 import { PageHeader } from '@/components/PageHeader';
+import { CameraCaptureModal } from '@/components/CameraCaptureModal';
 import { applyTheme } from '@/components/ThemeToggle';
 import type { Identity } from '@/lib/session';
 import { roleLabel } from '@/lib/capabilities';
@@ -19,8 +21,17 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ user }: SettingsPageProps) {
+  const router = useRouter();
   // Tabs
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'preferences' | 'notifications'>('profile');
+
+  // Profile Photo state
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    user?.avatar_url || (user?.employee_code ? `/api/gateway/api/v1/employees/${user.employee_code}/photo` : null)
+  );
 
   // Password Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -170,6 +181,33 @@ export function SettingsPage({ user }: SettingsPageProps) {
       setPasswordError('Network error connecting to authentication server.');
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleProfilePhotoCapture = async (file: File) => {
+    setUploadingPhoto(true);
+    setPhotoError(null);
+    try {
+      const formData = new FormData();
+      formData.append('photo', file, 'profile.jpg');
+      const res = await fetch('/api/gateway/api/v1/profile/photo', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPhotoError(data.detail || data.message || 'Failed to update photo');
+        return;
+      }
+      const updatedUrl = data.avatar_url || URL.createObjectURL(file);
+      setAvatarUrl(updatedUrl);
+      setPhotoModalOpen(false);
+      triggerToast('Profile photo updated successfully');
+      router.refresh();
+    } catch {
+      setPhotoError('Network error uploading profile photo');
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -460,9 +498,39 @@ export function SettingsPage({ user }: SettingsPageProps) {
       {activeTab === 'profile' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-1 rounded-2xl glass-panel border border-line p-6 shadow-sm flex flex-col items-center text-center space-y-4">
-            <div className="size-20 rounded-2xl bg-surface-2 border border-line flex items-center justify-center font-display text-2xl font-bold text-ink shadow-sm">
-              {user?.full_name ? user.full_name.slice(0, 2).toUpperCase() : 'BX'}
+            {/* Interactive Profile Avatar */}
+            <div
+              className="relative group cursor-pointer"
+              onClick={() => setPhotoModalOpen(true)}
+              title="Click to change profile picture"
+            >
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={user?.full_name || 'Profile'}
+                  onError={() => setAvatarUrl(null)}
+                  className="size-24 rounded-2xl object-cover border-2 border-line shadow-md group-hover:border-blue-500 transition-colors"
+                />
+              ) : (
+                <div className="size-24 rounded-2xl bg-surface-2 border-2 border-line flex items-center justify-center font-display text-2xl font-bold text-ink shadow-md group-hover:border-blue-500 transition-colors">
+                  {user?.full_name ? user.full_name.slice(0, 2).toUpperCase() : 'HB'}
+                </div>
+              )}
+              <div className="absolute inset-0 rounded-2xl bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white text-[11px] font-semibold gap-1 backdrop-blur-[2px]">
+                <Camera className="size-5 text-white" />
+                <span>Change Photo</span>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setPhotoModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-line bg-surface-2 hover:bg-surface-2/80 text-xs font-semibold text-ink cursor-pointer transition-colors shadow-xs"
+            >
+              <Camera className="size-3.5 text-blue-500" />
+              <span>Change Profile Photo</span>
+            </button>
+
             <div className="space-y-1">
               <h3 className="font-display text-base font-bold text-ink">
                 {user?.full_name || 'System Administrator'}
@@ -481,11 +549,11 @@ export function SettingsPage({ user }: SettingsPageProps) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Employee Code</span>
-                <p className="font-semibold text-ink font-mono">{user?.employee_code || 'BX001'}</p>
+                <p className="font-semibold text-ink font-mono">{user?.employee_code || 'HB001'}</p>
               </div>
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Organization</span>
-                <p className="font-semibold text-ink">Boxcode Technologies / IIMA Ventures</p>
+                <p className="font-semibold text-ink">Holbox AI / IIMA Ventures</p>
               </div>
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Attendance Punch</span>
@@ -501,6 +569,26 @@ export function SettingsPage({ user }: SettingsPageProps) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Camera Capture / Upload Modal for Profile Photo */}
+      {photoModalOpen && (
+        <CameraCaptureModal
+          open={photoModalOpen}
+          employeeName={user?.full_name || 'Profile'}
+          employeeCode={user?.employee_code || 'USER'}
+          title="Update Profile Photo"
+          subject="Taking or uploading face profile photo for"
+          confirmLabel="Save Profile Photo"
+          busyLabel="Updating profile photo…"
+          busy={uploadingPhoto}
+          error={photoError}
+          onCapture={handleProfilePhotoCapture}
+          onClose={() => {
+            setPhotoModalOpen(false);
+            setPhotoError(null);
+          }}
+        />
       )}
 
       {/* TAB 4: DISPLAY & PREFERENCES */}

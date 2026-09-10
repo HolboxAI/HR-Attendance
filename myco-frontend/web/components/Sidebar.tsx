@@ -40,7 +40,7 @@ export const SECTIONS: Section[] = [
   {
     title: 'Attendance',
     items: [
-      { href: '/board', label: 'Board', icon: CalendarRange, show: all },
+      { href: '/board', label: 'History & Board', icon: CalendarRange, show: all },
       { href: '/checkin', label: 'Check in', icon: Camera, show: all },
       { href: '/corrections', label: 'Corrections', icon: ClipboardList, show: all },
     ],

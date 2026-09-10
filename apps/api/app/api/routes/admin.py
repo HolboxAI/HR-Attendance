@@ -31,6 +31,7 @@ from app.services.attendance import (
     next_direction, policy_for, recompute_day, record_punch,
 )
 from app.services import devices, export
+from app.services.enrolment import active_enrolment
 from app.services.resolver import shift_date_for
 
 router = APIRouter(
@@ -79,6 +80,7 @@ class BoardRow(BaseModel):
     exception_note: str | None
     is_regularized: bool = False
     is_wfh_enabled: bool = False
+    avatar_url: str | None = None
 
 
 class BoardSummary(BaseModel):
@@ -156,6 +158,7 @@ def board(
             if wfh_req:
                 is_wfh = True
 
+        enrol = active_enrolment(db, emp)
         rows.append(BoardRow(
             employee_code=emp.emp_code,
             full_name=emp.full_name,
@@ -173,6 +176,7 @@ def board(
             has_exception=record.has_exception,
             exception_note=record.exception_note,
             is_regularized=record.is_regularized,
+            avatar_url=f"/api/gateway/api/v1/employees/{emp.emp_code}/photo" if enrol else None,
         ))
 
         if record.status.value in counts:

@@ -4,8 +4,8 @@ import Script from 'next/script';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Boxcode · HRMS',
-  description: 'Attendance, leave and people - Boxcode HRMS',
+  title: 'Holbox · HRMS',
+  description: 'Attendance, leave and people - Holbox HRMS',
 };
 
 /**

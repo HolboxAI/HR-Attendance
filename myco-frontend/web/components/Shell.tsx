@@ -29,11 +29,12 @@ function initialsFor(name: string | null, email: string): string {
  * and a high-fidelity auto-hiding glass topbar on scroll with independent content scrolling.
  */
 export function Shell({
-  email, role, name, caps, children,
+  email, role, name, avatarUrl, caps, children,
 }: {
   email: string;
   role: string;
   name: string | null;
+  avatarUrl?: string | null;
   caps: Capabilities;
   children: React.ReactNode;
 }) {
@@ -220,9 +221,17 @@ export function Shell({
               className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-line/60 hover:opacity-80 transition-opacity group"
               title="Settings & Profile"
             >
-              <div className="size-8 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink font-bold font-mono text-xs shadow-sm group-hover:border-ink/40 transition-colors">
-                {initials}
-              </div>
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt={name ?? email}
+                  className="size-8 rounded-full object-cover border border-line shadow-sm group-hover:border-ink/40 transition-colors"
+                />
+              ) : (
+                <div className="size-8 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink font-bold font-mono text-xs shadow-sm group-hover:border-ink/40 transition-colors">
+                  {initials}
+                </div>
+              )}
               <div className="flex flex-col text-left">
                 <span className="max-w-36 truncate text-xs font-semibold text-ink" title={email}>
                   {name ?? email}
@@ -282,5 +291,5 @@ function titleFor(pathname: string): string {
   if (pathname.startsWith('/devices')) return 'Device Handsets';
   if (pathname.startsWith('/settings')) return 'Settings & Preferences';
   if (pathname.startsWith('/notifications')) return 'Notifications Center';
-  return 'Boxcode HRMS';
+  return 'Holbox HRMS';
 }

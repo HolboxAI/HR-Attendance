@@ -181,7 +181,7 @@ export function AuthPage() {
                   required
                   autoFocus
                   autoComplete="username"
-                  placeholder="your.email@boxcode.ai"
+                  placeholder="your.email@holbox.ai"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-2xl bg-white/5 border border-white/10 py-3 ps-10 pe-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-body"
@@ -260,7 +260,7 @@ export function AuthPage() {
           </div>
 
           <p className="text-center text-[11px] text-white/40 font-mono pt-1">
-            By continuing, you agree to Boxcode's{' '}
+            By continuing, you agree to Holbox's{' '}
             <Link href="#" className="underline text-white/50 hover:text-white transition-colors">
               Security Policy
             </Link>{' '}
