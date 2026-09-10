@@ -353,6 +353,7 @@ def delete_permanently(
     from app.models.notification import Notification
     from app.models.wfh_request import WFHRequest
     from app.models.auth import RefreshSession
+    from app.models.signup_request import SignupRequest
 
     emp_id = employee.id
     emp_code = employee.emp_code
@@ -418,7 +419,6 @@ def delete_permanently(
         db.delete(user)
         db.flush()
 
-    from app.models.signup_request import SignupRequest
     db.execute(delete(SignupRequest).where(SignupRequest.created_employee_id == emp_id))
 
     # 4. Cascade delete all employee operational tables
