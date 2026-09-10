@@ -185,7 +185,7 @@ def approve_signup(
 @router.post("/{signup_id}/reject", response_model=DecisionResponse)
 def reject_signup(
     signup_id: str,
-    body: RejectSignupIn,
+    body: RejectSignupIn | None = None,
     db: Session = Depends(get_db),
     actor: User = hr_only,
 ) -> DecisionResponse:
@@ -208,7 +208,7 @@ def reject_signup(
     req.status = SignupStatus.REJECTED
     req.decided_by_id = actor.id
     req.decided_at = datetime.now(timezone.utc)
-    req.rejection_reason = body.reason
+    req.rejection_reason = body.reason if body else None
     db.flush()
 
     # Clear matching admin notifications
