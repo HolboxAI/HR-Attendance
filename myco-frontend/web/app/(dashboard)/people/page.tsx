@@ -54,7 +54,11 @@ export default async function PeoplePage() {
         />
         {caps.canManagePeople && <AddEmployeeButton />}
       </div>
-      <Directory rows={rows} />
+      <Directory
+        rows={rows}
+        canDelete={caps.canManagePeople}
+        currentEmployeeCode={me?.employee_code}
+      />
     </div>
   );
 }

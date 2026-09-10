@@ -231,3 +231,27 @@ def get_directory_photo(code_or_email: str, db: Session = Depends(get_db)):
         raise HTTPException(404, "The reference photo file is missing from storage")
         
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@router.delete("/{employee_code}")
+def delete_employee(
+    employee_code: str,
+    db: Session = Depends(get_db),
+    actor: User = hr_only,
+):
+    """Permanently delete an employee and all their associated data, history, and files."""
+    emp = _find(db, employee_code)
+    if actor.employee_id == emp.id:
+        raise HTTPException(400, "You cannot delete your own employee record.")
+
+    result = employee_service.delete_permanently(db, actor=actor, employee=emp)
+    if not result.ok:
+        db.rollback()
+        raise HTTPException(409, result.reason or f"Could not delete {employee_code}")
+
+    return {
+        "ok": True,
+        "message": f"Employee {emp.full_name} ({emp.emp_code}) and all related data have been permanently deleted.",
+        "employee_code": emp.emp_code,
+    }
+

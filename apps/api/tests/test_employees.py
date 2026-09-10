@@ -294,6 +294,29 @@ check("employee cannot list", client.get(
 check("unknown code is 404", client.get(
     "/api/v1/admin/employees/BX999", headers=HIMESH).status_code, 404)
 
+print("16. Permanent employee deletion with cascade cleanup")
+# Employee cannot delete
+check("employee cannot delete", client.delete(
+    "/api/v1/admin/employees/BX012", headers=DAKSH).status_code, 403)
+# Admin cannot delete own account
+check("cannot delete self", client.delete(
+    "/api/v1/admin/employees/BX008", headers=HIMESH).status_code, 400)
+# Admin deletes employee BX012 (Priya)
+del_res = client.delete("/api/v1/admin/employees/BX012", headers=HIMESH)
+check("admin delete succeeds", del_res.status_code, 200)
+check("delete returned ok", del_res.json()["ok"], True)
+# Verify BX012 is completely gone
+check("deleted employee returns 404", client.get(
+    "/api/v1/admin/employees/BX012", headers=HIMESH).status_code, 404)
+check("not in list even with inactive", "BX012" not in {
+    e["emp_code"] for e in client.get("/api/v1/admin/employees?include_inactive=true", headers=HIMESH).json()
+}, True)
+# Verify DB record is gone
+db.expire_all()
+check("employee row is gone", db.scalar(select(Employee).where(Employee.emp_code == "BX012")), None)
+check("user row is gone", db.scalar(select(User).where(User.email == "priya.new@test.local")), None)
+
 db.close()
 print("\n" + ("ALL PASS" if ok else "FAILURES ABOVE"))
 sys.exit(0 if ok else 1)
+

@@ -304,3 +304,125 @@ def reset_password(db: Session, *, actor: User, employee: Employee) -> EmployeeO
           note="temporary password issued")
 
     return EmployeeOutcome(True, employee=employee, temporary_password=password)
+
+
+def delete_permanently(
+    db: Session, *, actor: User, employee: Employee
+) -> EmployeeOutcome:
+    """Permanently delete an employee and all associated data, history, and files."""
+    if employee.id == actor.employee_id:
+        return EmployeeOutcome(False, reason="You cannot delete your own employee record")
+
+    from sqlalchemy import delete, update
+    from app.services.storage import storage
+    from app.models.attendance import (
+        AttendanceDay, DeviceEnrollment, PunchEvent,
+        ShiftAssignment, ShiftGroupMember,
+    )
+    from app.models.correction import CorrectionRequest
+    from app.models.face import EnrolmentRequest, FaceEnrollment, MobileDevice
+    from app.models.leave import (
+        AccrualRun, AuditLog, CarryForwardRun, LeaveBalance, LeaveRequest,
+    )
+    from app.models.notification import Notification
+    from app.models.wfh_request import WFHRequest
+    from app.models.auth import RefreshSession
+
+    emp_id = employee.id
+    emp_code = employee.emp_code
+    emp_name = employee.full_name
+    org_id = employee.org_id
+
+    # 1. Clean up stored files (punch selfies, reference photos, medical documents)
+    try:
+        punches = db.scalars(select(PunchEvent).where(PunchEvent.employee_id == emp_id)).all()
+        for p in punches:
+            if p.photo_key:
+                try:
+                    storage.delete(p.photo_key)
+                except Exception:
+                    pass
+
+        faces = db.scalars(select(FaceEnrollment).where(FaceEnrollment.employee_id == emp_id)).all()
+        for f in faces:
+            if f.photo_key:
+                try:
+                    storage.delete(f.photo_key)
+                except Exception:
+                    pass
+
+        enrol_reqs = db.scalars(select(EnrolmentRequest).where(EnrolmentRequest.employee_id == emp_id)).all()
+        for er in enrol_reqs:
+            if er.photo_key:
+                try:
+                    storage.delete(er.photo_key)
+                except Exception:
+                    pass
+
+        leaves = db.scalars(select(LeaveRequest).where(LeaveRequest.employee_id == emp_id)).all()
+        for l in leaves:
+            if l.medical_document_url:
+                try:
+                    storage.delete(l.medical_document_url)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 2. Unlink any other employees who have this person as their manager
+    db.execute(
+        update(Employee).where(Employee.manager_id == emp_id).values(manager_id=None)
+    )
+
+    # 3. If there is a linked User login account, unlink decider/approver references and remove sessions/notifications
+    user = db.scalar(select(User).where(User.employee_id == emp_id))
+    if user is not None:
+        user_id = user.id
+        db.execute(update(AuditLog).where(AuditLog.actor_user_id == user_id).values(actor_user_id=None))
+        db.execute(update(CorrectionRequest).where(CorrectionRequest.decided_by == user_id).values(decided_by=None))
+        db.execute(update(EnrolmentRequest).where(EnrolmentRequest.decided_by == user_id).values(decided_by=None))
+        db.execute(update(FaceEnrollment).where(FaceEnrollment.enrolled_by == user_id).values(enrolled_by=None))
+        db.execute(update(LeaveRequest).where(LeaveRequest.approver_id == user_id).values(approver_id=None))
+        db.execute(update(WFHRequest).where(WFHRequest.decided_by_id == user_id).values(decided_by_id=None))
+
+        db.execute(delete(RefreshSession).where(RefreshSession.user_id == user_id))
+        db.execute(delete(Notification).where(Notification.user_id == user_id))
+
+        db.delete(user)
+        db.flush()
+
+    # 4. Cascade delete all employee operational tables
+    db.execute(delete(CorrectionRequest).where(CorrectionRequest.employee_id == emp_id))
+    db.execute(delete(WFHRequest).where(WFHRequest.employee_id == emp_id))
+    db.execute(delete(LeaveRequest).where(LeaveRequest.employee_id == emp_id))
+    db.execute(delete(LeaveBalance).where(LeaveBalance.employee_id == emp_id))
+    db.execute(delete(AccrualRun).where(AccrualRun.employee_id == emp_id))
+    db.execute(delete(CarryForwardRun).where(CarryForwardRun.employee_id == emp_id))
+    db.execute(delete(AttendanceDay).where(AttendanceDay.employee_id == emp_id))
+    db.execute(delete(PunchEvent).where(PunchEvent.employee_id == emp_id))
+    db.execute(delete(DeviceEnrollment).where(DeviceEnrollment.employee_id == emp_id))
+    db.execute(delete(MobileDevice).where(MobileDevice.employee_id == emp_id))
+    db.execute(delete(FaceEnrollment).where(FaceEnrollment.employee_id == emp_id))
+    db.execute(delete(EnrolmentRequest).where(EnrolmentRequest.employee_id == emp_id))
+    db.execute(delete(ShiftAssignment).where(ShiftAssignment.employee_id == emp_id))
+    db.execute(delete(ShiftGroupMember).where(ShiftGroupMember.employee_id == emp_id))
+
+    # 5. Delete the Employee record itself
+    db.delete(employee)
+
+    # 6. Audit log entry
+    audit(
+        db,
+        org_id=org_id,
+        actor=actor,
+        entity="employee",
+        entity_id=emp_id,
+        action="deleted",
+        changes={"emp_code": emp_code, "full_name": emp_name},
+        note=f"Permanently deleted employee {emp_code} and all related history and data",
+    )
+
+    db.commit()
+
+    return EmployeeOutcome(True, employee=None)
+
