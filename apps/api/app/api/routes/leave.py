@@ -302,22 +302,62 @@ def cancel(
 def email_decide(token: str, db: Session = Depends(get_db)):
     """Process a leave decision via an email link."""
     from app.core.security import decode_action_token
-    def _glassy_html(title: str, message: str, status_code: int = 200) -> HTMLResponse:
-        content = f"""
-        <html>
+    def _glassy_html(title: str, message: str, status_code: int = 200, is_success: bool = True) -> HTMLResponse:
+        accent_color = "#10b981" if is_success else "#ef4444"
+        icon_svg = (
+            '<svg viewBox="0 0 24 24" width="36" height="36" stroke="#10b981" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+            if is_success else
+            '<svg viewBox="0 0 24 24" width="36" height="36" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
+        )
+        auto_close_script = """
+        <p id="countdown-text" style="font-size: 12px; color: rgba(255, 255, 255, 0.4); margin-top: 24px; font-family: ui-monospace, monospace;">
+          Closing window in <span id="sec" style="color: #ffffff; font-weight: bold;">3</span>s...
+        </p>
+        <script>
+          var sec = 3;
+          var t = setInterval(function() {
+            sec--;
+            var el = document.getElementById('sec');
+            if (el) el.innerText = sec;
+            if (sec <= 0) {
+              clearInterval(t);
+              window.close();
+            }
+          }, 1000);
+        </script>
+        """ if is_success else ""
+
+        content = f"""<!DOCTYPE html>
+        <html lang="en">
         <head>
+            <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>{title} · Holbox HRMS</title>
             <style>
-                body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }}
-                .card {{ background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 40px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); text-align: center; max-width: 400px; width: 100%; }}
-                h1 {{ color: #ffffff; font-weight: 700; margin-top: 0; margin-bottom: 16px; font-size: 24px; }}
-                p {{ font-size: 15px; margin-bottom: 0; color: #c9d1d9; line-height: 1.5; }}
+                * {{ box-sizing: border-box; }}
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #000000; color: #ffffff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; }}
+                .card {{ background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 36px 32px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); text-align: center; max-width: 440px; width: 100%; }}
+                .icon-wrap {{ width: 68px; height: 68px; margin: 0 auto 20px; border-radius: 50%; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); display: flex; align-items: center; justify-content: center; }}
+                h1 {{ color: #ffffff; font-weight: 800; margin: 0 0 12px; font-size: 22px; letter-spacing: -0.02em; }}
+                p.lead {{ font-size: 14px; margin: 0 0 24px; color: rgba(255, 255, 255, 0.7); line-height: 1.5; }}
+                .btn-group {{ display: flex; gap: 10px; justify-content: center; margin-top: 20px; }}
+                .btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 10px 20px; border-radius: 9999px; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; transition: all 0.2s; }}
+                .btn-primary {{ background: #ffffff; color: #000000; border: none; }}
+                .btn-primary:hover {{ background: rgba(255, 255, 255, 0.85); }}
+                .btn-secondary {{ background: rgba(255, 255, 255, 0.08); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.15); }}
+                .btn-secondary:hover {{ background: rgba(255, 255, 255, 0.15); }}
             </style>
         </head>
         <body>
             <div class="card">
+                <div class="icon-wrap">{icon_svg}</div>
                 <h1>{title}</h1>
-                <p>{message}</p>
+                <p class="lead">{message}</p>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="window.close()">Close Tab</button>
+                    <a class="btn btn-secondary" href="https://attendance.holbox.ai">Dashboard</a>
+                </div>
+                {auto_close_script}
             </div>
         </body>
         </html>
@@ -326,8 +366,8 @@ def email_decide(token: str, db: Session = Depends(get_db)):
 
     try:
         claims = decode_action_token(token, "leave_decide")
-    except Exception as e:
-        return _glassy_html("Link Expired", "This action link is invalid or has expired.", 400)
+    except Exception:
+        return _glassy_html("Link Expired", "This action link is invalid or has expired.", 400, is_success=False)
     
     request_id = claims["sub"]
     approve = claims["approve"]
@@ -335,23 +375,33 @@ def email_decide(token: str, db: Session = Depends(get_db)):
     
     row = db.get(LeaveRequest, uuid.UUID(request_id))
     if not row or row.deleted_at is not None:
-        return _glassy_html("Not Found", "Leave request not found.", 404)
+        return _glassy_html("Not Found", "Leave request was not found or was cancelled.", 404, is_success=False)
         
     approver = db.get(User, approver_id)
     if not approver:
-        return _glassy_html("Not Found", "Approver not found.", 404)
+        return _glassy_html("Not Found", "Approver account not found.", 404, is_success=False)
         
     # Process decision
+    actor_label = approver.email.split('@')[0] if approver.email else "Admin"
     result = leave_service.decide(
-        db, request=row, approver=approver, approve=approve,
+        db,
+        request=row,
+        approver=approver,
+        approve=approve,
+        note=f"Decided via Email by @{actor_label}",
     )
     if not result.ok:
         db.rollback()
-        return _glassy_html("Error", f"Could not process decision: {result.reason}", 409)
+        return _glassy_html("Already Decided", f"{result.reason}", 409, is_success=False)
         
     db.commit()
     action = "Approved" if approve else "Rejected"
-    return _glassy_html(f"Leave {action}", f"You have successfully {action.lower()} this request. The employee has been notified.")
+    return _glassy_html(
+        f"Leave Request {action}",
+        f"You have successfully {action.lower()} this request. Slack and all platform records have been synced automatically.",
+        200,
+        is_success=True,
+    )
 
 
 @router.post("/{request_id}/document", response_model=RequestOut)

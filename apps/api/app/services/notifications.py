@@ -146,7 +146,7 @@ def notify(
                 approve_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": True, "approver_id": str(user.id)})
                 reject_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": False, "approver_id": str(user.id)})
                 
-                api_url = getattr(settings, "api_url", "http://attendance.holbox.ai/api/v1")
+                api_url = getattr(settings, "api_url", "https://attendance.holbox.ai/api/v1")
                 approve_url = f"{api_url}/leave/email-decide?token={approve_token}"
                 reject_url = f"{api_url}/leave/email-decide?token={reject_token}"
                 

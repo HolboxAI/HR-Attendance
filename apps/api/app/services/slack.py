@@ -148,6 +148,59 @@ def update_leave_request(
         logger.error(f"Failed to update Slack message: {e}")
 
 
+def sync_leave_decision_to_slack(
+    channel_id: str,
+    message_ts: str,
+    employee_name: str,
+    leave_type_name: str,
+    from_date: date,
+    to_date: date,
+    days: float,
+    reason: str,
+    approved: bool,
+    actor_name: str,
+    source: str = "Email",
+) -> None:
+    """Sync a decision made outside of Slack (e.g. Email or Portal) to Slack."""
+    if not settings.slack_bot_token:
+        return
+
+    icon = "✅" if approved else "❌"
+    action = "Approved" if approved else "Rejected"
+    status_text = f"{icon} {action} via {source} by @{actor_name}"
+
+    original_text = (
+        f"🌴 *Leave Request: {employee_name}*\n"
+        f"Requested *{days:g} days* of {leave_type_name} from {from_date} to {to_date}.\n"
+        f"> \"{reason}\""
+    )
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"{original_text}\n\n_{status_text}_"
+            }
+        }
+    ]
+
+    try:
+        httpx.post(
+            "https://slack.com/api/chat.update",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": channel_id,
+                "ts": message_ts,
+                "text": f"Leave Request {action}",
+                "blocks": blocks,
+            },
+            timeout=5.0,
+        )
+    except Exception as e:
+        logger.error(f"Failed to sync leave decision to Slack: {e}")
+
+
 def post_absence_alert(employee_name: str, shift_start: str) -> None:
     """Post an absence alert to Slack."""
     if not settings.slack_bot_token or not settings.slack_channel_id:

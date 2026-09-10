@@ -538,18 +538,37 @@ def decide(
     if approve:
         _recompute_range(db, employee, request.from_date, request.to_date)
 
-    # An employee with no login yet has nowhere to receive this.
+    # An employee with a login receives a notification that their request was decided.
     owner = db.scalar(select(User).where(User.employee_id == employee.id))
+    lt_obj = db.get(LeaveType, request.leave_type_id)
+    lt_name = lt_obj.name if lt_obj else "Leave"
     if owner is not None:
-        leave_type_name = db.get(LeaveType, request.leave_type_id).name
         title = "Leave partially approved" if partial_approve else ("Leave approved" if approve else "Leave rejected")
         notifications.notify(
             db, org_id=request.org_id, user=owner,
             category=f"leave.{request.status.value}",
             title=title,
-            body=note or (f"{leave_type_name}, {request.from_date} to {request.to_date}"),
+            body=note or (f"{lt_name}, {request.from_date} to {request.to_date}"),
             data={"leave_request_id": str(request.id)},
         )
+
+    # Sync decision back to Slack if this request was posted to Slack
+    if request.slack_channel_id and request.slack_message_ts:
+        from app.services.slack import sync_leave_decision_to_slack
+        from threading import Thread
+        actor_name = approver.email.split("@")[0] if approver and approver.email else "Admin"
+        if approver and approver.employee_id:
+            emp_rec = db.get(Employee, approver.employee_id)
+            if emp_rec and emp_rec.full_name:
+                actor_name = emp_rec.full_name
+        
+        source = "Slack" if (note and "via Slack" in note) else ("Email" if (note and "via Email" in note) else "Portal")
+        if source != "Slack":  # Slack interactions update the card directly
+            Thread(
+                target=sync_leave_decision_to_slack,
+                args=(request.slack_channel_id, request.slack_message_ts, employee.full_name, lt_name, request.from_date, request.to_date, float(request.days_consumed), request.reason or "No reason provided", approve, actor_name, source),
+                daemon=True,
+            ).start()
 
     return LeaveOutcome(True, request=request)
 
