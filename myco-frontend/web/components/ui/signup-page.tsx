@@ -23,7 +23,7 @@ import HeroText from './hero-shutter-text';
 import { SpotlightCursor } from './spotlight-cursor';
 import { CanvasRevealEffect } from './sign-in-flow-1';
 import { SparklesCore } from './sparkles';
-import { ParticleTextEffect } from './particle-text-effect';
+import { LiquidMetalButton } from './liquid-metal-button';
 
 export function SignupPage() {
   const [fullName, setFullName] = useState('');
@@ -93,39 +93,41 @@ export function SignupPage() {
       {/* Left Brand Showcase Column (Desktop only) */}
       <div className="relative isolate hidden h-full flex-col justify-between border-r border-white/10 p-10 lg:flex z-10">
         <div className="flex items-center gap-3">
-          <div className="size-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2 backdrop-blur-md shadow-lg">
+          <div className="size-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5 backdrop-blur-md shadow-xs">
             <BoxcodeLogo className="size-full text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="font-display text-base font-bold tracking-tight text-white">Holbox</span>
+            <span className="font-display text-sm font-bold tracking-tight text-white">Holbox</span>
             <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
           </div>
         </div>
 
-        {/* The welcome block with enlarged Holbox symbol & particle effect */}
-        <div className="my-auto flex flex-col items-center gap-6 text-center w-full max-w-xl">
+        <div className="my-auto flex flex-col items-center gap-6 text-center">
           <HeroText
             text="JOIN THE TEAM"
             size="text-[clamp(1.1rem,2vw,1.6rem)]"
             className="gap-[0.3em] opacity-90"
           />
+          <HeroText text="HOLBOX" />
 
-          {/* Prominent Particle Text Effect Canvas */}
-          <div className="w-full max-w-[540px]">
-            <ParticleTextEffect
-              words={["HOLBOX", "JOIN", "TEAM"]}
-              width={800}
-              height={320}
-              showInfo={true}
-              className="flex flex-col items-center justify-center w-full"
+          <div className="pointer-events-none relative -mt-4 h-40 w-full max-w-[34rem]">
+            <div className="absolute inset-x-20 top-0 h-[2px] w-3/4 bg-gradient-to-r from-transparent via-emerald-500 to-transparent blur-sm" />
+            <div className="absolute inset-x-20 top-0 h-px w-3/4 bg-gradient-to-r from-transparent via-emerald-500 to-transparent" />
+            <div className="absolute inset-x-60 top-0 h-[5px] w-1/4 bg-gradient-to-r from-transparent via-teal-400 to-transparent blur-sm" />
+            <div className="absolute inset-x-60 top-0 h-px w-1/4 bg-gradient-to-r from-transparent via-teal-400 to-transparent" />
+
+            <SparklesCore
+              background="transparent"
+              minSize={0.4}
+              maxSize={1}
+              particleDensity={1200}
+              className="h-full w-full"
+              particleColor="#FFFFFF"
             />
+            <div className="absolute inset-0 h-full w-full bg-black [mask-image:radial-gradient(350px_200px_at_top,transparent_20%,white)]" />
           </div>
 
-          {/* Enlarged Holbox symbol directly below */}
-          <div className="relative group flex flex-col items-center justify-center mt-2">
-            <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-emerald-600/30 via-teal-500/25 to-blue-600/30 blur-3xl pointer-events-none" />
-            <HolboxMark className="relative size-36 sm:size-44 drop-shadow-[0_0_35px_rgba(16,185,129,0.5)] transition-transform duration-500 hover:scale-105" />
-          </div>
+          <HolboxMark className="size-16 -mt-6" />
         </div>
       </div>
 
@@ -137,38 +139,11 @@ export function SignupPage() {
           transition={{ duration: 0.5, ease: 'easeOut' }}
           className="w-full max-w-md space-y-6 rounded-3xl glass-panel p-8 sm:p-10 border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl"
         >
-          {/* Mobile Brand & Particle Showcase */}
-          <div className="flex flex-col items-center gap-3 lg:hidden my-2 w-full">
-            <div className="flex items-center gap-3 self-start">
-              <div className="size-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2">
-                <BoxcodeLogo className="size-full text-white" />
-              </div>
-              <div className="flex flex-col">
-                <span className="font-display text-base font-bold text-white">Holbox</span>
-                <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
-              </div>
+          <div className="flex items-center gap-3 lg:hidden">
+            <div className="size-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5">
+              <BoxcodeLogo className="size-full text-white" />
             </div>
-
-            <HeroText
-              text="JOIN THE TEAM"
-              size="text-base"
-              className="gap-[0.3em] opacity-90 mt-2"
-            />
-
-            <div className="w-full max-w-[340px]">
-              <ParticleTextEffect
-                words={["JOIN", "HOLBOX", "TEAM"]}
-                width={500}
-                height={200}
-                showInfo={false}
-                className="w-full flex flex-col items-center justify-center"
-              />
-            </div>
-
-            <div className="relative group flex flex-col items-center justify-center mt-1">
-              <div className="absolute -inset-4 rounded-full bg-emerald-600/30 blur-2xl pointer-events-none" />
-              <HolboxMark className="relative size-24 drop-shadow-[0_0_25px_rgba(16,185,129,0.5)]" />
-            </div>
+            <span className="font-display text-sm font-bold text-white">Holbox</span>
           </div>
 
           <AnimatePresence mode="wait">
@@ -394,20 +369,22 @@ export function SignupPage() {
                     </motion.div>
                   )}
 
-                  <button
+                  <LiquidMetalButton
                     type="submit"
                     disabled={busy}
-                    className="w-full rounded-full bg-white text-black font-semibold py-3 px-6 hover:bg-white/90 transition-all active:scale-98 cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-white/10 disabled:opacity-50 disabled:cursor-not-allowed mt-3"
+                    width="100%"
+                    height={48}
+                    className="mt-3"
                   >
                     {busy ? (
-                      <span>Submitting Request...</span>
+                      <span className="text-white text-sm font-semibold tracking-wide">Submitting Request...</span>
                     ) : (
-                      <>
+                      <div className="flex items-center justify-center gap-2 text-white text-sm font-semibold tracking-wide">
                         <span>Submit Registration</span>
-                        <ArrowRightIcon className="size-4" />
-                      </>
+                        <ArrowRightIcon className="size-4 text-white" />
+                      </div>
                     )}
-                  </button>
+                  </LiquidMetalButton>
                 </form>
 
                 <div className="pt-2 text-center text-xs text-white/60">

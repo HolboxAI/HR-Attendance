@@ -1,28 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform,
-  Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
+  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
 import { BoxcodeLogo } from './BoxcodeLogo';
-import { MobileParticleEffect } from './MobileParticleEffect';
+import { MobileLiquidMetalButton } from './MobileLiquidMetalButton';
 import { apiBase, setApiBaseOverride } from './config';
 import { signIn, requestSignup } from './session';
 import type { Identity } from './auth';
 
 /**
  * Mobile authentication screen featuring:
- * 1. Split layout (Left: Welcome to Holbox, Particle Text Effect canvas, enlarged Holbox logo;
- *    Right: Sign-in / Sign-up form and controls).
- * 2. Responsive stacked layout for narrow mobile screens.
- * 3. Sign-in mode with email/password
- * 4. Sign-up / Request to join mode for onboarding new team members awaiting admin approval
- * 5. Confirmation screen for submitted signup applications
+ * 1. The official Holbox branding & shutter animation
+ * 2. Sign-in mode with email/password
+ * 3. Sign-up / Request to join mode for onboarding new team members awaiting admin approval
+ * 4. Confirmation screen for submitted signup applications
  */
 export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) => void }) {
-  const { width: windowWidth } = useWindowDimensions();
-  const isSplit = windowWidth >= 768;
-
   const [mode, setMode] = useState<'signin' | 'signup' | 'submitted'>('signin');
 
   // Sign-in state
@@ -76,412 +71,311 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
     }
   }
 
-  const renderCard = () => {
-    if (mode === 'signin') {
-      return (
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Sign in to Holbox</Text>
-          <Text style={s.cardSub}>Attendance, leave and approvals for your team.</Text>
-
-          <View style={s.googleBtn}>
-            <Text style={s.googleG}>G</Text>
-            <Text style={s.googleText}>Continue with Google</Text>
-          </View>
-          <Text style={s.googleNote}>
-            Google sign-in is not enabled yet — use your email and password.
-          </Text>
-
-          <View style={s.dividerRow}>
-            <View style={s.dividerLine} />
-            <Text style={s.dividerText}>OR CREDENTIALS</Text>
-            <View style={s.dividerLine} />
-          </View>
-
-          <View style={s.form}>
-            <Text style={s.label}>Email Address</Text>
-            <TextInput
-              style={s.input}
-              value={email}
-              onChangeText={(t) => { setEmail(t); setError(null); }}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              textContentType="username"
-              placeholder="your.email@holbox.ai"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              editable={!busy}
-              accessibilityLabel="Email"
-            />
-
-            <Text style={s.label}>Password</Text>
-            <View style={s.passwordRow}>
-              <TextInput
-                style={[s.input, s.passwordInput]}
-                value={password}
-                onChangeText={(t) => { setPassword(t); setError(null); }}
-                secureTextEntry={!showPassword}
-                textContentType="password"
-                placeholder="••••••••••••"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-                onSubmitEditing={submit}
-                returnKeyType="go"
-                editable={!busy}
-                accessibilityLabel="Password"
-              />
-              <Pressable
-                onPress={() => setShowPassword((v) => !v)}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                style={s.showBtn}
-              >
-                <Text style={s.showText}>{showPassword ? 'Hide' : 'Show'}</Text>
-              </Pressable>
-            </View>
-
-            {error && (
-              <View style={s.errorBox} accessibilityLiveRegion="polite">
-                <Text style={s.errorText}>{error}</Text>
-              </View>
-            )}
-
-            <Pressable
-              style={[s.submitBtn, busy && s.submitBtnBusy]}
-              onPress={submit}
-              disabled={busy}
-              accessibilityRole="button"
-            >
-              {busy
-                ? <ActivityIndicator color="#000000" />
-                : <Text style={s.submitBtnText}>Sign in  →</Text>}
-            </Pressable>
-
-            {/* Sign up toggle button */}
-            <View style={s.signupPromptRow}>
-              <Text style={s.signupPromptText}>New employee or joiner? </Text>
-              <Pressable
-                onPress={() => {
-                  setError(null);
-                  setMode('signup');
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-              >
-                <Text style={s.signupPromptLink}>Request to join / Sign up</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <Text style={s.footerNote}>
-            By continuing, you agree to Holbox's Security Policy and Privacy
-            Terms.
-          </Text>
-
-          <Pressable onPress={() => { setServerDraft(serverNow); setServerOpen((v) => !v); }}>
-            <Text style={s.serverRow}>Server · {serverNow.replace(/^https?:\/\//, '')}</Text>
-          </Pressable>
-          {serverOpen && (
-            <View style={s.serverEdit}>
-              <TextInput
-                style={s.input}
-                value={serverDraft}
-                onChangeText={setServerDraft}
-                autoCapitalize="none"
-                autoCorrect={false}
-                placeholder="http://192.168.x.x:8000"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-                accessibilityLabel="Server address"
-              />
-              <Pressable
-                style={s.serverSave}
-                onPress={async () => {
-                  const applied = await setApiBaseOverride(serverDraft);
-                  setServerNow(applied);
-                  setServerOpen(false);
-                }}
-              >
-                <Text style={s.serverSaveText}>Save</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      );
-    }
-
-    if (mode === 'signup') {
-      return (
-        <View style={s.card}>
-          <Text style={s.cardTitle}>Request to Join</Text>
-          <Text style={s.cardSub}>Submit your details for HR and administrator approval.</Text>
-
-          <View style={s.form}>
-            <Text style={s.label}>Full Name *</Text>
-            <TextInput
-              style={s.input}
-              value={signupName}
-              onChangeText={(t) => { setSignupName(t); setError(null); }}
-              autoCapitalize="words"
-              placeholder="e.g. Rahul Sharma"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              editable={!busy}
-            />
-
-            <Text style={s.label}>Work Email Address *</Text>
-            <TextInput
-              style={s.input}
-              value={signupEmail}
-              onChangeText={(t) => { setSignupEmail(t); setError(null); }}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              placeholder="your.email@holbox.ai"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              editable={!busy}
-            />
-
-            <Text style={s.label}>Create Password * (min 8 characters)</Text>
-            <View style={s.passwordRow}>
-              <TextInput
-                style={[s.input, s.passwordInput]}
-                value={signupPassword}
-                onChangeText={(t) => { setSignupPassword(t); setError(null); }}
-                secureTextEntry={!signupShowPass}
-                placeholder="••••••••••••"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-                editable={!busy}
-              />
-              <Pressable
-                onPress={() => setSignupShowPass((v) => !v)}
-                hitSlop={10}
-                style={s.showBtn}
-              >
-                <Text style={s.showText}>{signupShowPass ? 'Hide' : 'Show'}</Text>
-              </Pressable>
-            </View>
-
-            <Text style={s.label}>Phone Number (optional)</Text>
-            <TextInput
-              style={s.input}
-              value={signupPhone}
-              onChangeText={setSignupPhone}
-              keyboardType="phone-pad"
-              placeholder="+91 98765 43210"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              editable={!busy}
-            />
-
-            <Text style={s.label}>Department (optional)</Text>
-            <TextInput
-              style={s.input}
-              value={signupDept}
-              onChangeText={setSignupDept}
-              placeholder="e.g. Engineering, Design, Sales"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              editable={!busy}
-            />
-
-            <Text style={s.label}>Designation (optional)</Text>
-            <TextInput
-              style={s.input}
-              value={signupDesig}
-              onChangeText={setSignupDesig}
-              placeholder="e.g. Full Stack Developer"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              editable={!busy}
-            />
-
-            {error && (
-              <View style={s.errorBox} accessibilityLiveRegion="polite">
-                <Text style={s.errorText}>{error}</Text>
-              </View>
-            )}
-
-            <Pressable
-              style={[s.submitBtn, busy && s.submitBtnBusy]}
-              onPress={handleSignup}
-              disabled={busy}
-              accessibilityRole="button"
-            >
-              {busy ? (
-                <ActivityIndicator color="#000000" />
-              ) : (
-                <Text style={s.submitBtnText}>Submit Application  →</Text>
-              )}
-            </Pressable>
-
-            {/* Back to sign in */}
-            <View style={s.signupPromptRow}>
-              <Text style={s.signupPromptText}>Already have an account? </Text>
-              <Pressable
-                onPress={() => {
-                  setError(null);
-                  setMode('signin');
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-              >
-                <Text style={s.signupPromptLink}>Sign in</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      );
-    }
-
-    return (
-      <View style={s.card}>
-        <View style={s.successIconWrap}>
-          <View style={s.successCheckCircle}>
-            <Text style={s.successCheckText}>✓</Text>
-          </View>
-        </View>
-
-        <Text style={[s.cardTitle, { textAlign: 'center' }]}>Application Received!</Text>
-        <Text style={[s.cardSub, { textAlign: 'center' }]}>
-          Your details have been submitted to the HR & administration team.
-        </Text>
-
-        <View style={s.approvalNotice}>
-          <Text style={s.approvalNoticeTitle}>⏳ Awaiting Admin Approval</Text>
-          <Text style={s.approvalNoticeBody}>
-            An administrator will review your application and assign your official Employee Code. Once approved, you will be able to log in immediately using your email and password.
-          </Text>
-        </View>
-
-        <Pressable
-          style={[s.submitBtn, { marginTop: 22 }]}
-          onPress={() => {
-            setError(null);
-            setMode('signin');
-          }}
-          accessibilityRole="button"
-        >
-          <Text style={s.submitBtnText}>Back to Sign In  →</Text>
-        </Pressable>
-      </View>
-    );
-  };
-
   return (
     <View style={s.root}>
       <DotGridBackground />
       <View style={s.vignette} pointerEvents="none" />
 
       <KeyboardAvoidingView style={s.keyboardView} behavior="padding">
-        {isSplit ? (
-          /* ============================================================ */
-          /* SPLIT LAYOUT (Desktop browser / Tablets / Wide viewports)     */
-          /* Left: Welcome to Holbox + Particle Text Effect + Large Logo   */
-          /* Right: Sign-in / Sign-up form and actions                     */
-          /* ============================================================ */
-          <View style={s.splitContainer}>
-            {/* LEFT COLUMN */}
-            <View style={s.leftCol}>
-              {/* Corner brand at top-left */}
-              <View style={s.cornerBrand}>
-                <View style={s.cornerLogoBox}>
-                  <BoxcodeLogo size={32} />
-                </View>
-                <View>
-                  <Text style={s.cornerName}>Holbox</Text>
-                  <Text style={s.cornerSub}>Attendance Portal</Text>
-                </View>
-              </View>
-
-              {/* Centered Showcase */}
-              <View style={s.leftShowcase}>
-                <ShutterText
-                  text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'}
-                  fontSize={20}
-                  gap={5}
-                />
-                <View style={{ height: 12 }} />
-                <ShutterText text="HOLBOX" fontSize={58} gap={2} />
-                <View style={{ height: 16 }} />
-
-                {/* Particle Text Effect Canvas */}
-                <MobileParticleEffect
-                  words={['HOLBOX', 'ATTENDANCE', 'PORTAL']}
-                  width={Math.min(520, Math.floor(windowWidth * 0.42))}
-                  height={210}
-                />
-
-                {/* Enlarged Holbox symbol directly below */}
-                <View style={s.enlargedLogoContainer}>
-                  <View style={s.enlargedLogoGlow} />
-                  <BoxcodeLogo size={130} />
-                </View>
-              </View>
-
-              {/* Bottom spacer to balance layout */}
-              <View style={{ height: 32 }} />
+        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+          {/* Corner brand */}
+          <View style={s.cornerBrand}>
+            <View style={s.cornerLogoBox}>
+              <BoxcodeLogo size={22} />
             </View>
-
-            {/* RIGHT COLUMN */}
-            <View style={s.rightCol}>
-              <ScrollView
-                contentContainerStyle={s.rightScroll}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                {renderCard()}
-              </ScrollView>
+            <View>
+              <Text style={s.cornerName}>Holbox</Text>
+              <Text style={s.cornerSub}>Attendance Portal</Text>
             </View>
           </View>
-        ) : (
-          /* ============================================================ */
-          /* SINGLE-COLUMN RESPONSIVE LAYOUT (Narrow Mobile Phones)       */
-          /* ============================================================ */
-          <ScrollView
-            contentContainerStyle={s.scroll}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {/* Corner brand */}
-            <View style={s.cornerBrand}>
-              <View style={s.cornerLogoBox}>
-                <BoxcodeLogo size={28} />
+
+          {/* Welcome block */}
+          <View style={s.hero}>
+            <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={17} gap={5} />
+            <View style={{ height: 14 }} />
+            <ShutterText text="HOLBOX" fontSize={54} gap={2} />
+            <View style={{ height: 22 }} />
+            <BoxcodeLogo size={68} />
+          </View>
+
+          {/* Card: Mode-driven */}
+          {mode === 'signin' && (
+            <View style={s.card}>
+              <Text style={s.cardTitle}>Sign in to Holbox</Text>
+              <Text style={s.cardSub}>Attendance, leave and approvals for your team.</Text>
+
+              <View style={s.googleBtn}>
+                <Text style={s.googleG}>G</Text>
+                <Text style={s.googleText}>Continue with Google</Text>
               </View>
-              <View>
-                <Text style={s.cornerName}>Holbox</Text>
-                <Text style={s.cornerSub}>Attendance Portal</Text>
+              <Text style={s.googleNote}>
+                Google sign-in is not enabled yet — use your email and password.
+              </Text>
+
+              <View style={s.dividerRow}>
+                <View style={s.dividerLine} />
+                <Text style={s.dividerText}>OR CREDENTIALS</Text>
+                <View style={s.dividerLine} />
+              </View>
+
+              <View style={s.form}>
+                <Text style={s.label}>Email Address</Text>
+                <TextInput
+                  style={s.input}
+                  value={email}
+                  onChangeText={(t) => { setEmail(t); setError(null); }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="username"
+                  placeholder="your.email@holbox.ai"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                  accessibilityLabel="Email"
+                />
+
+                <Text style={s.label}>Password</Text>
+                <View style={s.passwordRow}>
+                  <TextInput
+                    style={[s.input, s.passwordInput]}
+                    value={password}
+                    onChangeText={(t) => { setPassword(t); setError(null); }}
+                    secureTextEntry={!showPassword}
+                    textContentType="password"
+                    placeholder="••••••••••••"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    onSubmitEditing={submit}
+                    returnKeyType="go"
+                    editable={!busy}
+                    accessibilityLabel="Password"
+                  />
+                  <Pressable
+                    onPress={() => setShowPassword((v) => !v)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    style={s.showBtn}
+                  >
+                    <Text style={s.showText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                  </Pressable>
+                </View>
+
+                {error && (
+                  <View style={s.errorBox} accessibilityLiveRegion="polite">
+                    <Text style={s.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <MobileLiquidMetalButton
+                  label="Sign in  →"
+                  onPress={submit}
+                  busy={busy}
+                  variant="silver"
+                />
+
+                {/* Sign up toggle button */}
+                <View style={s.signupPromptRow}>
+                  <Text style={s.signupPromptText}>New employee or joiner? </Text>
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setMode('signup');
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.signupPromptLink}>Request to join / Sign up</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <Text style={s.footerNote}>
+                By continuing, you agree to Holbox's Security Policy and Privacy
+                Terms.
+              </Text>
+
+              <Pressable onPress={() => { setServerDraft(serverNow); setServerOpen((v) => !v); }}>
+                <Text style={s.serverRow}>Server · {serverNow.replace(/^https?:\/\//, '')}</Text>
+              </Pressable>
+              {serverOpen && (
+                <View style={s.serverEdit}>
+                  <TextInput
+                    style={s.input}
+                    value={serverDraft}
+                    onChangeText={setServerDraft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="http://192.168.x.x:8000"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    accessibilityLabel="Server address"
+                  />
+                  <Pressable
+                    style={s.serverSave}
+                    onPress={async () => {
+                      const applied = await setApiBaseOverride(serverDraft);
+                      setServerNow(applied);
+                      setServerOpen(false);
+                      setError(null);
+                    }}
+                  >
+                    <Text style={s.serverSaveText}>Save server address</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          )}
+
+          {mode === 'signup' && (
+            <View style={s.card}>
+              <Text style={s.cardTitle}>Request to Join</Text>
+              <Text style={s.cardSub}>Submit your details for HR and administrator approval.</Text>
+
+              <View style={s.form}>
+                <Text style={s.label}>Full Name *</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupName}
+                  onChangeText={(t) => { setSignupName(t); setError(null); }}
+                  autoCapitalize="words"
+                  placeholder="e.g. Rahul Sharma"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Work Email Address *</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupEmail}
+                  onChangeText={(t) => { setSignupEmail(t); setError(null); }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  placeholder="your.email@holbox.ai"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Create Password * (min 8 characters)</Text>
+                <View style={s.passwordRow}>
+                  <TextInput
+                    style={[s.input, s.passwordInput]}
+                    value={signupPassword}
+                    onChangeText={(t) => { setSignupPassword(t); setError(null); }}
+                    secureTextEntry={!signupShowPass}
+                    placeholder="••••••••••••"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    editable={!busy}
+                  />
+                  <Pressable
+                    onPress={() => setSignupShowPass((v) => !v)}
+                    hitSlop={10}
+                    style={s.showBtn}
+                  >
+                    <Text style={s.showText}>{signupShowPass ? 'Hide' : 'Show'}</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={s.label}>Phone Number (optional)</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupPhone}
+                  onChangeText={setSignupPhone}
+                  keyboardType="phone-pad"
+                  placeholder="+91 98765 43210"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Department (optional)</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupDept}
+                  onChangeText={setSignupDept}
+                  placeholder="e.g. Engineering, Design, Sales"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Designation (optional)</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupDesig}
+                  onChangeText={setSignupDesig}
+                  placeholder="e.g. Full Stack Developer"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                {error && (
+                  <View style={s.errorBox} accessibilityLiveRegion="polite">
+                    <Text style={s.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <MobileLiquidMetalButton
+                  label="Submit Application  →"
+                  onPress={handleSignup}
+                  busy={busy}
+                  variant="silver"
+                />
+
+                {/* Back to sign in */}
+                <View style={s.signupPromptRow}>
+                  <Text style={s.signupPromptText}>Already have an account? </Text>
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setMode('signin');
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.signupPromptLink}>Sign in</Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
+          )}
 
-            {/* Welcome block with particle effect and enlarged logo */}
-            <View style={s.hero}>
-              <ShutterText
-                text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'}
-                fontSize={16}
-                gap={4}
-              />
-              <View style={{ height: 10 }} />
-              <ShutterText text="HOLBOX" fontSize={46} gap={2} />
-              <View style={{ height: 12 }} />
-
-              <MobileParticleEffect
-                words={['HOLBOX', 'ATTENDANCE', 'PORTAL']}
-                width={Math.min(360, windowWidth - 48)}
-                height={160}
-              />
-
-              <View style={[s.enlargedLogoContainer, { marginTop: 12 }]}>
-                <View style={[s.enlargedLogoGlow, { width: 120, height: 120 }]} />
-                <BoxcodeLogo size={90} />
+          {mode === 'submitted' && (
+            <View style={s.card}>
+              <View style={s.successIconWrap}>
+                <View style={s.successCheckCircle}>
+                  <Text style={s.successCheckText}>✓</Text>
+                </View>
               </View>
-            </View>
 
-            {/* Form Card */}
-            {renderCard()}
-          </ScrollView>
-        )}
+              <Text style={[s.cardTitle, { textAlign: 'center' }]}>Application Received!</Text>
+              <Text style={[s.cardSub, { textAlign: 'center' }]}>
+                Your details have been submitted to the HR & administration team.
+              </Text>
+
+              <View style={s.approvalNotice}>
+                <Text style={s.approvalNoticeTitle}>⏳ Awaiting Admin Approval</Text>
+                <Text style={s.approvalNoticeBody}>
+                  An administrator will review your application and assign your official Employee Code. Once approved, you will be able to log in immediately using your email and password.
+                </Text>
+              </View>
+
+              <MobileLiquidMetalButton
+                label="Back to Sign In  →"
+                onPress={() => {
+                  setError(null);
+                  setMode('signin');
+                }}
+                variant="silver"
+                style={{ marginTop: 22 }}
+              />
+            </View>
+          )}
+        </ScrollView>
       </KeyboardAvoidingView>
     </View>
   );
 }
 
 /* ------------------------------------------------------------------------ */
-/* Shutter text - animated letter slices                                    */
+/* Shutter text - the web effect, in Animated                               */
 /* ------------------------------------------------------------------------ */
 
 const SLICES = [
@@ -491,163 +385,193 @@ const SLICES = [
 ] as const;
 
 const SWEEP_MS = 700;
-const PERIOD_MS = 2000;
+const PERIOD_MS = 2000; // "repeats every 2 seconds" is the whole loop
 
-function LetterSlice({
-  char,
-  fontSize,
-  lineH,
-  slice,
-  phase,
-}: {
-  char: string;
-  fontSize: number;
-  lineH: number;
-  slice: (typeof SLICES)[number];
-  phase: Animated.Value;
-}) {
-  const sliceH = lineH * slice.h;
-  const sliceTop = lineH * slice.top;
+/**
+ * Per-character slice shutter. Each character carries three clipped copies
+ * of itself (purple / light / purple thirds) that sweep across on a 2s
+ * loop, staggered per character and per slice - the same recipe as the
+ * CSS keyframes in the web app's globals.css.
+ *
+ * ONE clock per word, not one timer per slice. The first version ran a
+ * separate Animated loop for every slice of every character - 48 timers
+ * for these two words - which the JS driver (what Animated falls back to
+ * on Expo web) visibly choked on. Now a single 0->1 clock ticks the whole
+ * 2s period and every slice reads its own window out of it through
+ * interpolate(), which the native driver runs entirely off-thread on a
+ * real phone.
+ */
+function ShutterText({
+  text, fontSize, gap = 2,
+}: { text: string; fontSize: number; gap?: number }) {
+  const chars = text.split('');
+  const clock = useRef(new Animated.Value(0)).current;
 
-  const translateX = phase.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, slice.dir * (fontSize * 0.22), 0],
-  });
+  useEffect(() => {
+    // The reset is an explicit zero-duration timing, not loop()'s own
+    // resetBeforeIteration - react-native-web failed to restart the latter,
+    // leaving the clock parked at 1 and the word permanently at rest.
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(clock, {
+          toValue: 1, duration: PERIOD_MS,
+          easing: Easing.linear, useNativeDriver: true, isInteraction: false,
+        }),
+        Animated.timing(clock, {
+          toValue: 0, duration: 0, useNativeDriver: true, isInteraction: false,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [clock]);
 
   return (
     <View
-      style={{
-        position: 'absolute',
-        top: sliceTop,
-        left: 0,
-        right: 0,
-        height: sliceH,
-        overflow: 'hidden',
-      }}
-      pointerEvents="none"
+      style={[s.shutterRow, { columnGap: gap }]}
+      accessibilityLabel={text}
+      accessibilityRole="image"
     >
-      <Animated.Text
-        style={{
-          color: slice.color,
-          fontSize,
-          lineHeight: lineH,
-          fontWeight: '900',
-          letterSpacing: -0.5,
-          position: 'absolute',
-          top: -sliceTop,
-          left: 0,
-          right: 0,
-          transform: [{ translateX }],
-        }}
-      >
-        {char}
-      </Animated.Text>
-    </View>
-  );
-}
-
-function AnimatedLetter({
-  char,
-  fontSize,
-  index,
-  total,
-}: {
-  char: string;
-  fontSize: number;
-  index: number;
-  total: number;
-}) {
-  const phase = useRef(new Animated.Value(0)).current;
-  const lineH = Math.round(fontSize * 1.15);
-
-  useEffect(() => {
-    const fraction = total > 1 ? index / (total - 1) : 0;
-    const letterDelay = fraction * (SWEEP_MS - 200);
-
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const fire = () => {
-      if (!active) return;
-      phase.setValue(0);
-      Animated.timing(phase, {
-        toValue: 1,
-        duration: 350,
-        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
-        useNativeDriver: true,
-      }).start(() => {
-        if (!active) return;
-        timer = setTimeout(fire, Math.max(0, PERIOD_MS - 350));
-      });
-    };
-
-    timer = setTimeout(fire, letterDelay);
-
-    return () => {
-      active = false;
-      if (timer) clearTimeout(timer);
-      phase.stopAnimation();
-    };
-  }, [index, total, phase]);
-
-  if (char === ' ') {
-    return <View style={{ width: fontSize * 0.4 }} />;
-  }
-
-  return (
-    <View style={{ width: fontSize * 0.65, height: lineH, position: 'relative' }}>
-      <Text
-        style={{
-          color: '#FFFFFF',
-          fontSize,
-          lineHeight: lineH,
-          fontWeight: '900',
-          letterSpacing: -0.5,
-        }}
-      >
-        {char}
-      </Text>
-      {SLICES.map((sDef, sI) => (
-        <LetterSlice
-          key={sI}
-          char={char}
-          fontSize={fontSize}
-          lineH={lineH}
-          slice={sDef}
-          phase={phase}
-        />
-      ))}
-    </View>
-  );
-}
-
-function ShutterText({
-  text,
-  fontSize = 38,
-  gap = 2,
-}: {
-  text: string;
-  fontSize?: number;
-  gap?: number;
-}) {
-  const chars = text.split('');
-  return (
-    <View style={[s.shutterRow, { gap }]}>
       {chars.map((ch, i) => (
-        <AnimatedLetter
-          key={`${ch}-${i}`}
-          char={ch}
-          fontSize={fontSize}
-          index={i}
-          total={chars.length}
-        />
+        <ShutterChar key={`${i}-${ch}`} char={ch} index={i} fontSize={fontSize} clock={clock} />
       ))}
+    </View>
+  );
+}
+
+function ShutterChar({
+  char, index, fontSize, clock,
+}: { char: string; index: number; fontSize: number; clock: Animated.Value }) {
+  const lineH = Math.round(fontSize * 1.06);
+  const [w, setW] = useState(Math.ceil(fontSize * 0.8));
+
+  const baseStyle = {
+    fontSize, lineHeight: lineH, fontWeight: '900' as const,
+    letterSpacing: -0.5, color: '#FAFAFA',
+  };
+
+  if (char === ' ') return <View style={{ width: fontSize * 0.5 }} />;
+
+  return (
+    <View
+      style={{ height: lineH, overflow: 'hidden' }}
+      onLayout={(e) => setW(Math.max(4, Math.round(e.nativeEvent.layout.width)))}
+    >
+      <Text style={baseStyle} allowFontScaling={false}>{char}</Text>
+      {SLICES.map((slice, n) => {
+        // This slice's window on the shared 2s clock: 50ms base + 40ms per
+        // character + 100ms per layer, sweeping for 700ms, resting after -
+        // the web's animation-delay arithmetic, as interpolation ranges.
+        const start = (50 + index * 40 + slice.shift) / PERIOD_MS;
+        const end = start + SWEEP_MS / PERIOD_MS;
+        return (
+          <View
+            key={n}
+            pointerEvents="none"
+            style={{
+              position: 'absolute', left: 0, right: 0,
+              top: slice.top * lineH, height: slice.h * lineH,
+              overflow: 'hidden',
+            }}
+          >
+            <Animated.Text
+              allowFontScaling={false}
+              style={[
+                baseStyle,
+                {
+                  position: 'absolute', left: 0, top: -slice.top * lineH,
+                  color: slice.color,
+                  opacity: clock.interpolate({
+                    inputRange: [0, start, (start + end) / 2, end, 1],
+                    outputRange: [0, 0, 1, 0, 0],
+                  }),
+                  transform: [{
+                    translateX: clock.interpolate({
+                      inputRange: [0, start, end, 1],
+                      outputRange: [
+                        -w * slice.dir, -w * slice.dir,
+                        w * slice.dir, w * slice.dir,
+                      ],
+                    }),
+                  }],
+                },
+              ]}
+            >
+              {char}
+            </Animated.Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
 
 /* ------------------------------------------------------------------------ */
-/* Dot-matrix ground                                                        */
+/* The Holbox cube, in Views - no SVG dependency                            */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The brand cube from the web's HolboxMark, built from transformed Views:
+ * a scaled-rotated square for the dark top face, skewed rectangles for the
+ * white and blue side faces, and a rotated bordered square for the ring.
+ * Brand colours are fixed hex - a logo does not re-theme.
+ */
+function HolboxCube({ size }: { size: number }) {
+  // Derived from the web SVG's coordinates (viewBox 0 0 100 100), scaled by
+  // k. Each face slopes 23.5 units over 45 of width -> skew 27.6deg, and
+  // because skewY pivots a View around its own centre, the pre-skew rect
+  // top is the wanted top plus half the total shear (11.75 units).
+  const k = size / 100;
+  const skew = '27.6deg';
+  const face = { w: 45 * k, h: 47 * k, top: 38.25 * k };
+  const diamondSide = 63.6 * k;                   // 90k wide after rotation
+  const ringSide = 23.3 * k;
+
+  return (
+    <View style={{ width: 100 * k, height: 100 * k }} accessibilityLabel="Holbox logo">
+      {/* left face - white, top edge sloping DOWN towards the centre seam */}
+      <View
+        style={{
+          position: 'absolute', left: 5 * k, top: face.top,
+          width: face.w, height: face.h, backgroundColor: '#FFFFFF',
+          transform: [{ skewY: skew }],
+        }}
+      />
+      {/* right face - vivid blue, mirrored slope */}
+      <View
+        style={{
+          position: 'absolute', left: 50 * k, top: face.top,
+          width: face.w, height: face.h, backgroundColor: '#2E5BFF',
+          transform: [{ skewY: `-${skew}` }],
+        }}
+      />
+      {/* top face: a square squashed and rotated into the isometric diamond,
+          drawn LAST so its lower edges sit cleanly over the face tops */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 50 * k - diamondSide / 2, top: 26.5 * k - diamondSide / 2,
+          width: diamondSide, height: diamondSide, backgroundColor: '#141BC8',
+          transform: [{ scaleY: 0.522 }, { rotate: '45deg' }],
+        }}
+      />
+      {/* diamond ring set into the lower front */}
+      <View
+        style={{
+          position: 'absolute',
+          left: 50 * k - ringSide / 2, top: 71 * k - ringSide / 2,
+          width: ringSide, height: ringSide,
+          borderWidth: Math.max(1.5, 5 * k), borderColor: '#2E5BFF',
+          backgroundColor: 'transparent',
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
+/* Dot-matrix ground - the web canvas effect's honest native cousin         */
 /* ------------------------------------------------------------------------ */
 
 function DotGridBackground() {
@@ -657,16 +581,12 @@ function DotGridBackground() {
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, {
-          toValue: 0.55,
-          duration: 3500,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          toValue: 0.55, duration: 3500,
+          easing: Easing.inOut(Easing.quad), useNativeDriver: true,
         }),
         Animated.timing(pulse, {
-          toValue: 0.25,
-          duration: 3500,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
+          toValue: 0.25, duration: 3500,
+          easing: Easing.inOut(Easing.quad), useNativeDriver: true,
         }),
       ]),
     );
@@ -681,9 +601,7 @@ function DotGridBackground() {
     <Animated.View style={[s.dotGrid, { opacity: pulse }]} pointerEvents="none">
       {rows.map((_, r) => (
         <View key={r} style={s.dotRow}>
-          {cols.map((_, cI) => (
-            <View key={cI} style={s.dot} />
-          ))}
+          {cols.map((_, cI) => <View key={cI} style={s.dot} />)}
         </View>
       ))}
     </Animated.View>
@@ -691,52 +609,10 @@ function DotGridBackground() {
 }
 
 /* ------------------------------------------------------------------------ */
-/* Styles                                                                   */
-/* ------------------------------------------------------------------------ */
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
   keyboardView: { flex: 1, zIndex: 10 },
-
-  // Split view styles
-  splitContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    width: '100%',
-    height: '100%',
-  },
-  leftCol: {
-    flex: 1,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 36,
-    paddingTop: Platform.OS === 'ios' ? 58 : 34,
-    paddingBottom: 32,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
-  },
-  leftShowcase: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '100%',
-    marginVertical: 'auto',
-  },
-  rightCol: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  rightScroll: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 32,
-    width: '100%',
-  },
-
-  // Single-column mobile styles
   scroll: {
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 58 : 34,
@@ -763,44 +639,22 @@ const s = StyleSheet.create({
   },
 
   cornerBrand: {
-    alignSelf: 'flex-start',
+    alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   cornerLogoBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36, height: 36, borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
   },
-  cornerName: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
-  cornerSub: { color: 'rgba(255, 255, 255, 0.5)', fontSize: 11 },
+  cornerName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', letterSpacing: -0.3 },
+  cornerSub: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
 
-  hero: { alignItems: 'center', marginTop: 24, marginBottom: 24 },
+  hero: { alignItems: 'center', marginTop: 34, marginBottom: 34 },
   shutterRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
-
-  enlargedLogoContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-    position: 'relative',
-  },
-  enlargedLogoGlow: {
-    position: 'absolute',
-    width: 170,
-    height: 170,
-    borderRadius: 85,
-    backgroundColor: 'rgba(59, 130, 246, 0.25)',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 45,
-  },
 
   card: {
     width: '100%',
@@ -812,78 +666,55 @@ const s = StyleSheet.create({
     padding: 26,
   },
   cardTitle: { color: '#FFFFFF', fontSize: 26, fontWeight: '900', letterSpacing: -0.6 },
-  cardSub: { color: 'rgba(255, 255, 255, 0.6)', fontSize: 13, marginTop: 4, marginBottom: 18 },
+  cardSub: { color: 'rgba(255,255,255,0.6)', fontSize: 13, marginTop: 4, marginBottom: 18 },
 
   googleBtn: {
     width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+    borderRadius: 999, paddingVertical: 12,
     opacity: 0.6,
   },
-  googleG: { color: 'rgba(255, 255, 255, 0.6)', fontSize: 14, fontWeight: '800' },
-  googleText: { color: 'rgba(255, 255, 255, 0.5)', fontSize: 12, fontWeight: '600' },
+  googleG: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '800' },
+  googleText: { color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '600' },
   googleNote: {
-    color: 'rgba(255, 255, 255, 0.4)',
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 15,
+    color: 'rgba(255,255,255,0.4)', fontSize: 11, textAlign: 'center',
+    marginTop: 8, lineHeight: 15,
   },
 
   dividerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginVertical: 18,
-    width: '100%',
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    marginVertical: 18, width: '100%',
   },
-  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255, 255, 255, 0.1)' },
-  dividerText: { color: 'rgba(255, 255, 255, 0.4)', fontSize: 11, letterSpacing: 1.5 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
+  dividerText: { color: 'rgba(255,255,255,0.4)', fontSize: 11, letterSpacing: 1.5 },
 
   form: { width: '100%' },
   label: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 10,
-    marginBottom: 6,
+    color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600',
+    marginTop: 10, marginBottom: 6,
   },
   input: {
     width: '100%',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
     borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#FFFFFF',
-    fontSize: 14,
+    paddingHorizontal: 14, paddingVertical: 12,
+    color: '#FFFFFF', fontSize: 14,
   },
   passwordRow: { position: 'relative', width: '100%' },
   passwordInput: { paddingRight: 60 },
   showBtn: {
-    position: 'absolute',
-    right: 14,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute', right: 14, top: 0, bottom: 0,
+    justifyContent: 'center', alignItems: 'center',
   },
-  showText: { color: 'rgba(255, 255, 255, 0.45)', fontSize: 12, fontWeight: '600' },
+  showText: { color: 'rgba(255,255,255,0.45)', fontSize: 12, fontWeight: '600' },
 
   errorBox: {
-    marginTop: 14,
-    padding: 10,
+    marginTop: 14, padding: 10,
     backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)', borderWidth: 1,
     borderRadius: 12,
   },
   errorText: { color: '#FCA5A5', fontSize: 12 },
@@ -907,7 +738,7 @@ const s = StyleSheet.create({
     flexWrap: 'wrap',
   },
   signupPromptText: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: 'rgba(255,255,255,0.6)',
     fontSize: 12,
   },
   signupPromptLink: {
@@ -958,28 +789,18 @@ const s = StyleSheet.create({
   },
 
   footerNote: {
-    marginTop: 16,
-    fontSize: 11,
-    lineHeight: 16,
-    textAlign: 'center',
-    color: 'rgba(255, 255, 255, 0.4)',
+    marginTop: 16, fontSize: 11, lineHeight: 16, textAlign: 'center',
+    color: 'rgba(255,255,255,0.4)',
   },
 
   serverRow: {
-    marginTop: 14,
-    fontSize: 11,
-    textAlign: 'center',
-    color: 'rgba(255, 255, 255, 0.3)',
-    textDecorationLine: 'underline',
+    marginTop: 14, fontSize: 11, textAlign: 'center',
+    color: 'rgba(255,255,255,0.3)', textDecorationLine: 'underline',
   },
   serverEdit: { marginTop: 10, gap: 8 },
   serverSave: {
-    alignSelf: 'center',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    alignSelf: 'center', borderRadius: 999, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)', paddingVertical: 8, paddingHorizontal: 16,
   },
-  serverSaveText: { color: 'rgba(255, 255, 255, 0.7)', fontSize: 12, fontWeight: '600' },
+  serverSaveText: { color: 'rgba(255,255,255,0.7)', fontSize: 12, fontWeight: '600' },
 });
