@@ -139,7 +139,21 @@ def _issue(db: Session, user: User, install_id: str | None) -> LoginResponse:
 
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
-    user = db.scalar(select(User).where(User.email == body.email.lower()))
+    email_clean = body.email.strip().lower()
+    user = db.scalar(select(User).where(User.email == email_clean))
+    if user is None:
+        if email_clean.endswith("@boxcode.ai"):
+            alt = email_clean.replace("@boxcode.ai", "@holbox.ai")
+            user = db.scalar(select(User).where(User.email == alt))
+        elif email_clean.endswith("@holbox.ai"):
+            alt = email_clean.replace("@holbox.ai", "@boxcode.ai")
+            user = db.scalar(select(User).where(User.email == alt))
+        else:
+            emp = db.scalar(select(Employee).where(
+                (Employee.email == email_clean) | (Employee.emp_code == email_clean.upper())
+            ))
+            if emp is not None:
+                user = db.scalar(select(User).where(User.employee_id == emp.id))
 
     # Verify even when the user is missing, against a throwaway hash, so a
     # wrong email and a wrong password take the same time to answer.
