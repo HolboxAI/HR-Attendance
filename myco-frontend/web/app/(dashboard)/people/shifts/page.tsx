@@ -1795,7 +1795,7 @@ export default function ShiftManagementPage() {
         <ConfirmDialog
           open={confirmResetOverride.open}
           title="Reset Shift Override"
-          consequence={`Reset direct shift override for ${confirmResetOverride.employee.full_name}? They will inherit their assigned shift group or the organization default shift.`}
+          consequence={`Reset direct shift override for ${confirmResetOverride.employee.full_name}? They will inherit group or organization default.`}
           confirmLabel="Reset Override"
           tone="danger"
           busy={confirmResetOverride.busy}

@@ -24,7 +24,6 @@ import { Avatar } from '@/components/Avatar';
 import { HoverProfile } from '@/components/HoverProfile';
 import { HolboxSearch } from '@/components/HolboxSearch';
 import { Status } from '@/components/Status';
-import { ConfirmDialog } from '@/components/ConfirmDialog';
 import type { PendingSignup, SignupsData } from '@/lib/api';
 
 export type DirectoryRow = {
@@ -80,7 +79,6 @@ export function Directory({
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [rejectingSignup, setRejectingSignup] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     setLocalRows(rows);
@@ -244,8 +242,24 @@ export function Directory({
     }
   }
 
-  function handleRejectSignup(signupId: string, name: string) {
-    setRejectingSignup({ id: signupId, name });
+  async function handleRejectSignup(signupId: string, name: string) {
+    if (!confirm(`Are you sure you want to decline registration for ${name}?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/gateway/api/v1/admin/signups/${signupId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'Declined by administrator' }),
+      });
+      if (res.ok) {
+        setPendingSignups((prev) => prev.filter((s) => s.id !== signupId));
+        setActionSuccess(`Registration request for ${name} was declined.`);
+        setTimeout(() => setActionSuccess(null), 4000);
+      }
+    } catch {
+      // ignore
+    }
   }
 
   return (
@@ -855,36 +869,6 @@ export function Directory({
           </form>
         )}
       </dialog>
-
-      {rejectingSignup && (
-        <ConfirmDialog
-          open={!!rejectingSignup}
-          title="Decline Registration Request"
-          consequence={`Are you sure you want to decline the registration request for ${rejectingSignup.name}?`}
-          confirmLabel="Decline Registration"
-          tone="danger"
-          onClose={() => setRejectingSignup(null)}
-          onConfirm={async () => {
-            const signupId = rejectingSignup.id;
-            const name = rejectingSignup.name;
-            setRejectingSignup(null);
-            try {
-              const res = await fetch(`/api/gateway/api/v1/admin/signups/${signupId}/reject`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ reason: 'Declined by administrator' }),
-              });
-              if (res.ok) {
-                setPendingSignups((prev) => prev.filter((s) => s.id !== signupId));
-                setActionSuccess(`Registration request for ${name} was declined.`);
-                setTimeout(() => setActionSuccess(null), 4000);
-              }
-            } catch {
-              // ignore
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

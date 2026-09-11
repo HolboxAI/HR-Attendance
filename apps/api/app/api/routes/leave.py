@@ -17,9 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from fastapi.security import HTTPAuthorizationCredentials
-from app.api.deps import RANK, _as_uuid, bearer, get_current_employee, get_current_user
-from app.core.security import ACCESS, decode_token
+from app.api.deps import get_current_employee, get_current_user
 from app.core.clock import org_today
 from app.core.config import settings
 from app.db.session import get_db
@@ -510,36 +508,16 @@ def upload_document(
 @router.get("/{request_id}/document/view")
 def view_document_with_token(
     request_id: uuid.UUID,
-    token: str | None = Query(None, description="Action token for secure viewing without session"),
-    creds: HTTPAuthorizationCredentials | None = Depends(bearer),
+    token: str = Query(..., description="Action token for secure viewing without session"),
     db: Session = Depends(get_db),
 ):
-    """Direct inline viewing of leave document with action token or active session (for Slack, Email, and Web)."""
-    authorised = False
-    if token:
-        from app.core.security import decode_action_token
-        try:
-            claims = decode_action_token(token, "leave_document_view")
-            if claims.get("sub") == str(request_id):
-                authorised = True
-        except Exception:
-            pass
-
-    if not authorised and creds:
-        try:
-            claims = decode_token(creds.credentials, expect=ACCESS)
-            user = db.get(User, _as_uuid(claims["sub"]))
-            if user and user.is_active:
-                row_check = db.get(LeaveRequest, request_id)
-                if row_check and (
-                    row_check.employee_id == user.employee_id
-                    or RANK.get(user.role, -1) >= RANK[UserRole.MANAGER]
-                ):
-                    authorised = True
-        except Exception:
-            pass
-
-    if not authorised:
+    """Direct inline viewing of leave document with action token (for Slack & Email)."""
+    from app.core.security import decode_action_token
+    try:
+        claims = decode_action_token(token, "leave_document_view")
+        if claims.get("sub") != str(request_id):
+            raise HTTPException(403, "Invalid token for this document")
+    except Exception:
         raise HTTPException(403, "Invalid or expired document link")
 
     row = db.get(LeaveRequest, request_id)
@@ -583,9 +561,4 @@ def download_document(
         raise HTTPException(404, "Document file not found in storage")
         
     ext, media_type = kind_from_storage_key(row.medical_document_url, data)
-    filename = f"medical_doc_{row.id}.{ext}"
-    return Response(
-        content=data,
-        media_type=media_type,
-        headers={"Content-Disposition": f'inline; filename="{filename}"'},
-    )
+    return Response(content=data, media_type=media_type)
