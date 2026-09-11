@@ -1,0 +1,113 @@
+name: 🚀 Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'myco-frontend/web/**'
+      - 'apps/api/**'
+
+  # Also allows manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to EC2 (98.84.138.15)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── SSH setup ────────────────────────────────────────────────────────
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || \
+          ssh-keyscan -H 98.84.138.15 >> ~/.ssh/known_hosts 2>/dev/null
+
+      # ── Find where the app lives & deploy ────────────────────────────────
+      - name: Deploy to server
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST || '98.84.138.15' }}
+          EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              -o StrictHostKeyChecking=no \
+              -o ConnectTimeout=30 \
+              $EC2_USER@$EC2_HOST << 'ENDSSH'
+
+            set -e
+            echo "==> Finding app directory"
+            for d in /opt/boxcode-hrms ~/boxcode-hrms ~/app /home/ubuntu/boxcode-hrms; do
+              if [[ -d "$d/myco-frontend/web" ]]; then
+                APP_DIR="$d"
+                break
+              fi
+            done
+
+            if [[ -z "$APP_DIR" ]]; then
+              echo "ERROR: Cannot find app directory. Is the repo cloned on the server?"
+              exit 1
+            fi
+
+            WEB_DIR="$APP_DIR/myco-frontend/web"
+            echo "==> App found at: $APP_DIR"
+
+            echo "==> Pulling latest code"
+            cd "$APP_DIR"
+            git fetch --all
+            git reset --hard origin/main
+
+            echo "==> Installing npm dependencies"
+            cd "$WEB_DIR"
+            npm install --no-audit --no-fund
+
+            echo "==> Building Next.js"
+            npm run build
+
+            echo "==> Restarting server"
+            if command -v pm2 &>/dev/null; then
+              PM2_NAME=$(pm2 jlist 2>/dev/null | python3 -c "
+          import sys, json
+          try:
+            procs = json.load(sys.stdin)
+            for p in procs:
+              name = p.get('name','')
+              if 'next' in name.lower() or 'web' in name.lower() or 'holbox' in name.lower():
+                print(name); break
+          except: pass
+          " 2>/dev/null || true)
+              if [[ -n "$PM2_NAME" ]]; then
+                pm2 restart "$PM2_NAME"
+                echo "Restarted pm2: $PM2_NAME"
+              else
+                pm2 start "npm -- start" --name next-web --cwd "$WEB_DIR" 2>/dev/null || pm2 restart next-web
+                echo "Started pm2: next-web"
+              fi
+            elif systemctl is-active --quiet boxcode-web 2>/dev/null; then
+              sudo systemctl restart boxcode-web
+              echo "Restarted systemd: boxcode-web"
+            else
+              fuser -k 3000/tcp 2>/dev/null || true
+              sleep 1
+              cd "$WEB_DIR"
+              nohup npm start >> /tmp/next.log 2>&1 &
+              echo "Started nohup on port 3000"
+            fi
+
+            echo ""
+            echo "✅ Deploy complete!"
+          ENDSSH
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "🚀 Deployed successfully to http://${{ secrets.EC2_HOST || '98.84.138.15' }}"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ Deploy failed! Check the logs above."
