@@ -18,7 +18,7 @@ import { ACCESS_COOKIE, API, REFRESH_COOKIE } from '@/lib/session';
  * the response, so an expiring token is renewed here rather than each page
  * having to cope with a 401.
  */
-const PUBLIC = ['/login', '/signup', '/api/signup'];
+const PUBLIC = ['/login', '/signup', '/api/signup', '/holbox-logo.png', '/icon.png', '/favicon.ico'];
 
 function expired(token: string): boolean {
   try {
@@ -104,7 +104,6 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next's own assets and the session endpoint itself -
-  // /api/session must stay reachable while signed out or nobody can sign in.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/session).*)'],
+  // Everything except Next's own assets, static media/icons, and the session endpoint
+  matcher: ['/((?!_next/static|_next/image|.*\\.(?:png|jpg|jpeg|svg|ico|webp|json)$|api/session).*)'],
 };
