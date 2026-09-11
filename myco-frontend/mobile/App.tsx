@@ -16,7 +16,8 @@ import MonthScreen from './src/MonthScreen';
 import ProfileScreen from './src/ProfileScreen';
 import PunchScreen from './src/PunchScreen';
 import WFHRequestScreen from './src/WFHRequestScreen';
-import { getUnreadCount } from './src/api';
+import { getUnreadCount, getEnrolmentStatus } from './src/api';
+import OnboardingGuideModal from './src/OnboardingGuideModal';
 import type { Identity } from './src/auth';
 import { loadApiBaseOverride } from './src/config';
 import { registerForPush } from './src/push';
@@ -60,6 +61,7 @@ function AppInner() {
   const [me, setMe] = useState<Identity | null>(null);
   const [checking, setChecking] = useState(true);
   const [unread, setUnread] = useState(0);
+  const [showGuide, setShowGuide] = useState(false);
 
   // Reopening the app must not ask for a password. This silently renews the
   // session from the refresh token in the Keychain; it only lands on the login
@@ -79,6 +81,21 @@ function AppInner() {
   // swallowed on purpose; a banner is a courtesy, the Inbox is the truth.
   useEffect(() => {
     if (me) registerForPush();
+  }, [me]);
+
+  // First-time onboarding guide: if employee has no face enrolled yet,
+  // guide them with blurred backdrop and auto-approval.
+  useEffect(() => {
+    if (!me || !me.employee_id) return;
+    if (me.face_enrolled === false) {
+      setShowGuide(true);
+      return;
+    }
+    getEnrolmentStatus()
+      .then((st) => {
+        if (!st.enrolled) setShowGuide(true);
+      })
+      .catch(() => {});
   }, [me]);
 
   const out = useCallback(async () => {
@@ -185,6 +202,16 @@ function AppInner() {
           bottomInset={insets.bottom}
         />
       </KeyboardAvoidingView>
+
+      <OnboardingGuideModal
+        visible={showGuide}
+        employeeName={me.full_name}
+        employeeCode={me.employee_code}
+        onCompleted={() => {
+          setShowGuide(false);
+          setMe((prev) => (prev ? { ...prev, face_enrolled: true } : prev));
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -59,6 +59,7 @@ class Identity(BaseModel):
     is_admin: bool
     correction_limit: int = 5
     avatar_url: str | None = None
+    face_enrolled: bool = False
 
 
 class LoginResponse(BaseModel):
@@ -116,6 +117,7 @@ def _identity(db: Session, user: User) -> Identity:
         is_admin=RANK.get(user.role, -1) >= RANK[UserRole.HR_ADMIN],
         correction_limit=emp.correction_limit if emp and emp.correction_limit is not None else 5,
         avatar_url=avatar_url,
+        face_enrolled=bool(enrol is not None),
     )
 
 

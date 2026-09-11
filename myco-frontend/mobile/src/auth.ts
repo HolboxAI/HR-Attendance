@@ -19,6 +19,7 @@ export type Identity = {
   can_punch: boolean;
   is_admin: boolean;
   correction_limit: number;
+  face_enrolled?: boolean;
 };
 
 export type Session = { access: string; refresh: string; identity: Identity };

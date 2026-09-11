@@ -12,6 +12,7 @@ import { SidebarBrand, SidebarFooter, SidebarNav } from '@/components/Sidebar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SpotlightCursor } from '@/components/ui/spotlight-cursor';
 import { ParticleWave } from '@/components/ui/particle-wave';
+import { OnboardingGuide } from '@/components/OnboardingGuide';
 import type { Capabilities } from '@/lib/capabilities';
 import { roleLabel } from '@/lib/capabilities';
 
@@ -29,22 +30,27 @@ function initialsFor(name: string | null, email: string): string {
  * and a high-fidelity auto-hiding glass topbar on scroll with independent content scrolling.
  */
 export function Shell({
-  email, role, name, avatarUrl, caps, children,
+  email, role, name, avatarUrl, caps, employeeCode, faceEnrolled, children,
 }: {
   email: string;
   role: string;
   name: string | null;
   avatarUrl?: string | null;
   caps: Capabilities;
+  employeeCode?: string | null;
+  faceEnrolled?: boolean;
   children: React.ReactNode;
 }) {
   const [drawer, setDrawer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
+  const [guideDismissed, setGuideDismissed] = useState(false);
   const lastScrollY = useRef(0);
   const router = useRouter();
   const pathname = usePathname();
+
+  const needsEnrolment = (!avatarUrl && !faceEnrolled) && !guideDismissed;
 
   useEffect(() => {
     setDrawer(false);
@@ -272,6 +278,17 @@ export function Shell({
           <div className="mx-auto max-w-[1360px] space-y-6 pb-12">{children}</div>
         </main>
       </div>
+
+      {needsEnrolment && (
+        <OnboardingGuide
+          employeeName={name}
+          employeeCode={employeeCode || null}
+          onCompleted={() => {
+            setGuideDismissed(true);
+            router.refresh();
+          }}
+        />
+      )}
     </div>
   );
 }

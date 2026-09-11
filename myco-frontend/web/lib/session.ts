@@ -26,6 +26,7 @@ export type Identity = {
   is_admin: boolean;
   correction_limit: number;
   avatar_url?: string | null;
+  face_enrolled?: boolean;
 };
 
 export async function accessToken(): Promise<string | null> {

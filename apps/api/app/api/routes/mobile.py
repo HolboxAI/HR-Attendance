@@ -401,16 +401,41 @@ async def submit_enrolment_photo(
     emp: Employee = Depends(get_current_employee),
     photo: UploadFile = File(...),
 ) -> EnrolmentStatusResponse:
-    """Offer your own photo as your next reference photo.
+    """Offer your own photo as reference photo.
 
-    Quality-gated NOW (so a blurry photo bounces with its reason instead of
-    wasting HR's tap), but never live until an admin vouches that the face is
-    yours - the one property self-service must not remove, because the
-    reference photo is what every future punch is compared against.
+    First-time enrolments for new employees are verified for biometric quality and
+    auto-approved immediately so the employee does not have to wait for admin approval
+    to start punching. Subsequent changes submit a replacement request for HR review.
     """
-    from app.services.enrolment import submit_request
+    from datetime import datetime, timezone
+    import uuid
+    from app.models.face import EnrolmentRequest
+    from app.services.enrolment import active_enrolment, enrol, submit_request
 
     image = await photo.read()
+    current = active_enrolment(db, emp)
+
+    if current is None:
+        # First-time enrolment: Auto-approve & immediately activate!
+        record, quality = enrol(db, employee=emp, image=image)
+        if record is None:
+            raise HTTPException(422, quality.reason or "That photo cannot be used")
+
+        # Record in EnrolmentRequest audit log as auto-approved
+        req = EnrolmentRequest(
+            id=uuid.uuid4(),
+            org_id=emp.org_id,
+            employee_id=emp.id,
+            photo_key=record.photo_key,
+            status="approved",
+            decided_at=datetime.now(timezone.utc),
+            note="Initial self-enrolment on onboarding (auto-approved)",
+        )
+        db.add(req)
+        db.commit()
+        return my_enrolment(db=db, emp=emp)
+
+    # Existing enrollment: Submit replacement request for HR vouching
     request, quality = submit_request(db, employee=emp, image=image)
     if request is None:
         raise HTTPException(422, quality.reason or "That photo cannot be used")
