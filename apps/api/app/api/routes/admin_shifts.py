@@ -16,13 +16,15 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_role
 from app.core.clock import org_today
 from app.db.session import get_db
 from app.models.attendance import (
+    AttendanceDay,
     ShiftAssignment,
     ShiftGroup,
     ShiftGroupMember,
@@ -383,26 +385,64 @@ def delete_shift(
         raise HTTPException(400, "Cannot delete organization default shift. Please set another shift as default first.")
 
     # Check shift groups
-    groups_count = db.scalar(
-        select(ShiftGroup.id).where(
+    group_names = db.scalars(
+        select(ShiftGroup.name).where(
             and_(
                 ShiftGroup.shift_template_id == shift_id,
                 ShiftGroup.deleted_at.is_(None),
             )
         )
-    )
-    if groups_count:
-        raise HTTPException(409, "Cannot delete shift template because it is assigned to one or more shift groups.")
+    ).all()
+    if group_names:
+        listed = ", ".join(f'"{n}"' for n in group_names[:3])
+        extra = f" (+{len(group_names) - 3} more)" if len(group_names) > 3 else ""
+        raise HTTPException(
+            409,
+            f"Cannot delete this shift while it is used by group(s): {listed}{extra}. Delete those groups first.",
+        )
 
-    # Check direct assignments
-    assignments_count = db.scalar(
-        select(ShiftAssignment.id).where(ShiftAssignment.shift_template_id == shift_id)
-    )
-    if assignments_count:
-        raise HTTPException(409, "Cannot delete shift template because it has employee assignments.")
+    today = org_today()
+    assigned_names = db.scalars(
+        select(Employee.full_name)
+        .join(ShiftAssignment, ShiftAssignment.employee_id == Employee.id)
+        .where(
+            and_(
+                ShiftAssignment.shift_template_id == shift_id,
+                ShiftAssignment.effective_from <= today,
+                or_(
+                    ShiftAssignment.effective_to.is_(None),
+                    ShiftAssignment.effective_to >= today,
+                ),
+            )
+        )
+    ).all()
+    if assigned_names:
+        listed = ", ".join(assigned_names[:3])
+        extra = f" (+{len(assigned_names) - 3} more)" if len(assigned_names) > 3 else ""
+        raise HTTPException(
+            409,
+            f"Cannot delete this shift while it is assigned to {listed}{extra}. Clear those direct overrides first.",
+        )
 
-    db.delete(template)
-    db.commit()
+    # Expired overrides and derived attendance rows must not pin a test
+    # template forever. attendance_day is recomputed from punches; the FK is
+    # only a snapshot of which template was in force that day.
+    db.execute(delete(ShiftAssignment).where(ShiftAssignment.shift_template_id == shift_id))
+    db.execute(
+        update(AttendanceDay)
+        .where(AttendanceDay.shift_template_id == shift_id)
+        .values(shift_template_id=None)
+    )
+
+    try:
+        db.delete(template)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            409,
+            "Cannot delete this shift because historical records still reference it.",
+        )
     return {"message": "Shift template deleted successfully."}
 
 

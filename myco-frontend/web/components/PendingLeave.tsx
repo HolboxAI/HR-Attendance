@@ -99,7 +99,7 @@ export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
               {r.reason && <p className="text-sm text-ink-2">{r.reason}</p>}
             </div>
             
-            {r.status === 'partially_approved' && r.medical_document_url && (
+            {r.medical_document_url && (
               <div className="mt-3 p-3.5 rounded-xl border border-line bg-surface-2/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2">

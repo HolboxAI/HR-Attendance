@@ -12,6 +12,43 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def upload_document_to_slack(
+    *,
+    filename: str,
+    data: bytes,
+    channel: str,
+    thread_ts: str | None = None,
+    title: str = "Medical document",
+) -> None:
+    """Put the actual file in Slack so HR does not depend on the API link.
+
+    The chat message still carries a view URL; this is the copy that opens
+    inside Slack even when API_URL is wrong, HTTP-only, or the token expired.
+    """
+    if not settings.slack_bot_token:
+        return
+    payload: dict[str, str] = {
+        "channels": channel,
+        "filename": filename,
+        "title": title,
+    }
+    if thread_ts:
+        payload["thread_ts"] = thread_ts
+    try:
+        resp = httpx.post(
+            "https://slack.com/api/files.upload",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            data=payload,
+            files={"file": (filename, data)},
+            timeout=20.0,
+        )
+        body = resp.json()
+        if not body.get("ok"):
+            logger.warning("Slack file upload failed: %s", body.get("error"))
+    except Exception as e:
+        logger.warning("Slack file upload error: %s", e)
+
+
 def verify_slack_signature(
     signature: str, timestamp: str, body: bytes, signing_secret: str
 ) -> bool:
@@ -41,6 +78,8 @@ def post_leave_request(
     days: float,
     reason: str,
     document_url: str | None = None,
+    document_bytes: bytes | None = None,
+    document_filename: str | None = None,
     is_sick_leave: bool = False,
 ) -> tuple[str, str] | None:
     """Post an interactive leave request message to Slack. Returns (ts, channel_id)."""
@@ -125,8 +164,17 @@ def post_leave_request(
         if not res_data.get("ok"):
             logger.error(f"Slack API error: {res_data.get('error')}")
             return None
-            
-        return res_data.get("ts"), res_data.get("channel")
+
+        ts, channel = res_data.get("ts"), res_data.get("channel")
+        if document_bytes and document_filename and channel:
+            upload_document_to_slack(
+                filename=document_filename,
+                data=document_bytes,
+                channel=channel,
+                thread_ts=ts,
+                title=f"Medical document — {employee_name}",
+            )
+        return ts, channel
     except Exception as e:
         logger.error(f"Failed to post leave request to Slack: {e}")
         return None
@@ -252,6 +300,8 @@ def post_document_uploaded_alert(
     from_date: date,
     to_date: date,
     document_url: str,
+    document_bytes: bytes | None = None,
+    document_filename: str | None = None,
     original_channel_id: str | None = None,
     original_thread_ts: str | None = None,
 ) -> None:
@@ -307,6 +357,14 @@ def post_document_uploaded_alert(
             },
             timeout=5.0,
         )
+        if document_bytes and document_filename:
+            upload_document_to_slack(
+                filename=document_filename,
+                data=document_bytes,
+                channel=channel,
+                thread_ts=original_thread_ts,
+                title=f"Medical document — {employee_name}",
+            )
     except Exception as e:
         logger.error(f"Failed to post document uploaded alert to Slack: {e}")
 

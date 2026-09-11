@@ -184,8 +184,9 @@ def notify(
                         lr = db.get(LeaveRequest, uuid.UUID(req_id))
                         if lr and lr.medical_document_url:
                             from app.services.storage import storage
+                            from app.services.documents import kind_from_storage_key
                             attachment_bytes = storage.get(lr.medical_document_url)
-                            ext = "pdf" if lr.medical_document_url.endswith(".pdf") else "jpg"
+                            ext, _media = kind_from_storage_key(lr.medical_document_url, attachment_bytes)
                             attachment_filename = f"medical_doc_{lr.id}.{ext}"
                     except Exception:
                         pass
@@ -262,8 +263,10 @@ def _send_email_task(
 
     if attachment_bytes and attachment_filename:
         from email.mime.application import MIMEApplication
-        part = MIMEApplication(attachment_bytes, Name=attachment_filename)
-        part['Content-Disposition'] = f'attachment; filename="{attachment_filename}"'
+        from app.services.documents import email_subtype
+        ext = attachment_filename.rsplit(".", 1)[-1] if "." in attachment_filename else "bin"
+        part = MIMEApplication(attachment_bytes, _subtype=email_subtype(ext), Name=attachment_filename)
+        part.add_header("Content-Disposition", "attachment", filename=attachment_filename)
         msg.attach(part)
 
     try:

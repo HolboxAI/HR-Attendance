@@ -13,6 +13,7 @@ import {
   type ShiftGroupMemberRow,
 } from '@/lib/format';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ModalPortal } from '@/components/ModalPortal';
 
 const DAYS_MAP = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -127,6 +128,12 @@ export default function ShiftManagementPage() {
     type: 'group' | 'shift';
     id: string;
     name: string;
+    busy: boolean;
+  } | null>(null);
+
+  const [confirmResetOverride, setConfirmResetOverride] = useState<{
+    open: boolean;
+    employee: ShiftRosterRow;
     busy: boolean;
   } | null>(null);
 
@@ -538,22 +545,12 @@ export default function ShiftManagementPage() {
     }
   };
 
-  const handleClearDirectAssign = async (employee: ShiftRosterRow) => {
-    if (!confirm(`Reset direct shift override for ${employee.full_name}? They will inherit group or organization default.`)) return;
-    try {
-      const res = await fetch(proxy(`/api/v1/admin/shifts/assign/${employee.employee_id}`), {
-        method: 'DELETE',
-      });
-      if (res.ok) {
-        showToast(`Override cleared for ${employee.full_name}`);
-        fetchRoster();
-      } else {
-        const err = await res.json();
-        showToast(err.detail || 'Could not clear shift override', 'error');
-      }
-    } catch {
-      showToast('Network error clearing shift override', 'error');
-    }
+  const handleClearDirectAssign = (employee: ShiftRosterRow) => {
+    setConfirmResetOverride({
+      open: true,
+      employee,
+      busy: false,
+    });
   };
 
   // -------------------------------------------------------------------------
@@ -788,7 +785,16 @@ export default function ShiftManagementPage() {
                         >
                           <Edit2 className="size-3.5" />
                         </button>
-                        {!isDefault && (
+                        {isDefault ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="p-1.5 rounded-lg border border-line bg-surface-2 text-ink-3/40 cursor-not-allowed"
+                            title="This is the organization default. Set another shift as default first, then you can delete this one."
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        ) : (
                           <button
                             onClick={() => handleDeleteShift(shift.id, shift.name)}
                             className="p-1.5 rounded-lg border border-line bg-surface-2 text-ink-3 hover:text-rose-400 hover:border-rose-500/40 transition-all"
@@ -1083,7 +1089,8 @@ export default function ShiftManagementPage() {
       {/* MODAL: CREATE / EDIT SHIFT TEMPLATE                                 */}
       {/* ------------------------------------------------------------------- */}
       {shiftModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ground/80 backdrop-blur-sm">
+        <ModalPortal>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ground/80 backdrop-blur-sm">
           <div className="w-full max-w-lg rounded-3xl glass-panel border border-line bg-surface p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 className="font-display text-lg font-black uppercase tracking-tight text-ink">
@@ -1221,14 +1228,16 @@ export default function ShiftManagementPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ------------------------------------------------------------------- */}
       {/* MODAL: CREATE / EDIT SHIFT GROUP                                    */}
       {/* ------------------------------------------------------------------- */}
       {groupModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ground/80 backdrop-blur-sm">
-          <div className="w-full max-w-xl rounded-3xl glass-panel border border-line bg-surface p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+        <ModalPortal>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ground/80 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-3xl glass-panel border border-line bg-surface p-6 shadow-2xl space-y-4 max-h-[90vh] min-h-0 flex flex-col">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <h3 className="font-display text-lg font-black uppercase tracking-tight text-ink">
                 {editingGroupId ? 'Edit Shift Group' : 'Create New Shift Group'}
@@ -1247,7 +1256,7 @@ export default function ShiftManagementPage() {
               </div>
             )}
 
-            <form onSubmit={handleSaveGroup} className="space-y-4 text-xs flex-1 flex flex-col overflow-y-auto bx-scroll pr-1">
+            <form onSubmit={handleSaveGroup} className="space-y-4 text-xs flex-1 min-h-0 flex flex-col overflow-y-auto bx-scroll pr-1">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="font-mono text-ink-2 uppercase text-[10px] block mb-1">
@@ -1416,7 +1425,7 @@ export default function ShiftManagementPage() {
               </div>
 
               {/* Multi-Employee Checkbox Selection (PRD §8.4) */}
-              <div className="flex-1 flex flex-col border border-line rounded-2xl p-3 bg-surface-2/30 overflow-hidden">
+              <div className="flex-1 min-h-0 flex flex-col border border-line rounded-2xl p-3 bg-surface-2/30 overflow-hidden">
                 <div className="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-line">
                   <span className="font-mono text-ink text-[10px] uppercase font-bold">
                     Select Member Employees ({groupForm.employee_ids.length} selected)
@@ -1504,13 +1513,15 @@ export default function ShiftManagementPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ------------------------------------------------------------------- */}
       {/* MODAL: DIRECT SHIFT ASSIGNMENT OVERRIDE                             */}
       {/* ------------------------------------------------------------------- */}
       {assignModalOpen && assignTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ground/80 backdrop-blur-sm">
+        <ModalPortal>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ground/80 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-3xl glass-panel border border-line bg-surface p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-line pb-3">
               <div>
@@ -1716,6 +1727,7 @@ export default function ShiftManagementPage() {
             </form>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* Sleek in-app deletion confirmation dialog (replaces browser confirm) */}
@@ -1773,6 +1785,40 @@ export default function ShiftManagementPage() {
                 showToast('Network error deleting shift', 'error');
                 setConfirmDelete(null);
               }
+            }
+          }}
+        />
+      )}
+
+      {/* Sleek in-app reset confirmation dialog (replaces browser confirm) */}
+      {confirmResetOverride && (
+        <ConfirmDialog
+          open={confirmResetOverride.open}
+          title="Reset Shift Override"
+          consequence={`Reset direct shift override for ${confirmResetOverride.employee.full_name}? They will inherit their assigned shift group or the organization default shift.`}
+          confirmLabel="Reset Override"
+          tone="danger"
+          busy={confirmResetOverride.busy}
+          onClose={() => setConfirmResetOverride(null)}
+          onConfirm={async () => {
+            setConfirmResetOverride((prev) => (prev ? { ...prev, busy: true } : null));
+            try {
+              const res = await fetch(
+                proxy(`/api/v1/admin/shifts/assign/${confirmResetOverride.employee.employee_id}`),
+                { method: 'DELETE' }
+              );
+              if (res.ok) {
+                showToast(`Override cleared for ${confirmResetOverride.employee.full_name}`);
+                fetchRoster();
+                setConfirmResetOverride(null);
+              } else {
+                const err = await res.json().catch(() => null);
+                showToast(formatErrorDetail(err?.detail || 'Could not clear shift override'), 'error');
+                setConfirmResetOverride(null);
+              }
+            } catch {
+              showToast('Network error clearing shift override', 'error');
+              setConfirmResetOverride(null);
             }
           }}
         />

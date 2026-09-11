@@ -38,7 +38,7 @@ export function ConfirmDialog({
       ref={ref}
       onClose={onClose}
       onCancel={onClose}
-      className="bx-pop m-auto w-full max-w-md rounded-2xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/10 backdrop:backdrop-blur-xl overflow-hidden"
+      className="bx-pop m-auto w-full max-w-md rounded-2xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/60 backdrop:backdrop-blur-md overflow-hidden"
     >
       <div className="p-6">
         <h2 className="font-display text-base font-bold text-ink">{title}</h2>
@@ -56,7 +56,7 @@ export function ConfirmDialog({
           type="button" onClick={onConfirm} disabled={busy}
           className={`rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider disabled:opacity-50 active:scale-95 transition-all cursor-pointer ${
             tone === 'danger'
-              ? 'bg-ink text-ground hover:opacity-90'
+              ? 'bg-rose-600 text-white hover:bg-rose-500'
               : 'bg-ink text-ground hover:opacity-90'
           }`}
         >

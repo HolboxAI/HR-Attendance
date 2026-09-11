@@ -17,7 +17,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_employee, get_current_user
+from fastapi.security import HTTPAuthorizationCredentials
+from app.api.deps import RANK, _as_uuid, bearer, get_current_employee, get_current_user
+from app.core.security import ACCESS, decode_token
 from app.core.clock import org_today
 from app.core.config import settings
 from app.db.session import get_db
@@ -25,6 +27,7 @@ from app.models.employee import Employee, User
 from app.models.enums import LeaveStatus, UserRole
 from app.models.leave import LeaveRequest, LeaveType
 from app.services import leave as leave_service
+from app.services.documents import infer_document_kind, kind_from_storage_key
 from app.services.storage import storage
 
 logger = logging.getLogger(__name__)
@@ -206,7 +209,12 @@ async def apply(
             file_data = await file.read()
             if len(file_data) > 5 * 1024 * 1024:
                 raise HTTPException(400, "File too large. Maximum 5MB.")
-            file_ext = "pdf" if getattr(file, "content_type", "") == "application/pdf" else "jpg"
+            orig_name = getattr(file, "filename", None)
+            file_ext, _media = infer_document_kind(
+                file_data,
+                content_type=getattr(file, "content_type", None),
+                filename=str(orig_name) if orig_name else None,
+            )
 
     if category is not None:
         category = str(category).strip()
@@ -283,6 +291,8 @@ async def apply(
             days=float(result.request.days_consumed),
             reason=result.request.reason or "No reason provided",
             document_url=doc_view_url,
+            document_bytes=file_data,
+            document_filename=f"medical_doc_{emp.emp_code}.{file_ext}" if file_data and file_ext else None,
             is_sick_leave=is_sick,
         )
         if slack_resp:
@@ -436,9 +446,13 @@ def upload_document(
     if row.status != LeaveStatus.PARTIALLY_APPROVED:
         raise HTTPException(409, "Cannot upload document: request is not partially approved")
         
-    ext = "pdf" if file.content_type == "application/pdf" else "jpg"
-    key = f"medical_docs/{row.id}/doc.{ext}"
     data = file.file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large. Maximum 5MB.")
+    ext, _media = infer_document_kind(
+        data, content_type=file.content_type, filename=file.filename,
+    )
+    key = f"medical_docs/{row.id}/doc.{ext}"
     storage.put(key, data)
     
     row.medical_document_url = key
@@ -460,6 +474,8 @@ def upload_document(
             from_date=row.from_date,
             to_date=row.to_date,
             document_url=doc_view_url,
+            document_bytes=data,
+            document_filename=f"medical_doc_{emp.emp_code}.{ext}",
             original_channel_id=row.slack_channel_id,
             original_thread_ts=row.slack_message_ts,
         )
@@ -494,16 +510,36 @@ def upload_document(
 @router.get("/{request_id}/document/view")
 def view_document_with_token(
     request_id: uuid.UUID,
-    token: str = Query(..., description="Action token for secure viewing without session"),
+    token: str | None = Query(None, description="Action token for secure viewing without session"),
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: Session = Depends(get_db),
 ):
-    """Direct inline viewing of leave document with action token (for Slack & Email)."""
-    from app.core.security import decode_action_token
-    try:
-        claims = decode_action_token(token, "leave_document_view")
-        if claims.get("sub") != str(request_id):
-            raise HTTPException(403, "Invalid token for this document")
-    except Exception:
+    """Direct inline viewing of leave document with action token or active session (for Slack, Email, and Web)."""
+    authorised = False
+    if token:
+        from app.core.security import decode_action_token
+        try:
+            claims = decode_action_token(token, "leave_document_view")
+            if claims.get("sub") == str(request_id):
+                authorised = True
+        except Exception:
+            pass
+
+    if not authorised and creds:
+        try:
+            claims = decode_token(creds.credentials, expect=ACCESS)
+            user = db.get(User, _as_uuid(claims["sub"]))
+            if user and user.is_active:
+                row_check = db.get(LeaveRequest, request_id)
+                if row_check and (
+                    row_check.employee_id == user.employee_id
+                    or RANK.get(user.role, -1) >= RANK[UserRole.MANAGER]
+                ):
+                    authorised = True
+        except Exception:
+            pass
+
+    if not authorised:
         raise HTTPException(403, "Invalid or expired document link")
 
     row = db.get(LeaveRequest, request_id)
@@ -515,14 +551,11 @@ def view_document_with_token(
     if not data:
         raise HTTPException(404, "Document file not found in storage")
 
-    content_type = "application/pdf" if row.medical_document_url.endswith(".pdf") else "image/jpeg"
-    if row.medical_document_url.endswith(".png"):
-        content_type = "image/png"
-
-    filename = f"medical_doc_{row.id}.{'pdf' if content_type == 'application/pdf' else 'jpg'}"
+    ext, media_type = kind_from_storage_key(row.medical_document_url, data)
+    filename = f"medical_doc_{row.id}.{ext}"
     return Response(
         content=data,
-        media_type=content_type,
+        media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
@@ -549,11 +582,10 @@ def download_document(
     if not data:
         raise HTTPException(404, "Document file not found in storage")
         
-    from fastapi.responses import Response
-    
-    # Very basic content type inference
-    content_type = "application/pdf" if row.medical_document_url.endswith(".pdf") else "image/jpeg"
-    if row.medical_document_url.endswith(".png"):
-        content_type = "image/png"
-        
-    return Response(content=data, media_type=content_type)
+    ext, media_type = kind_from_storage_key(row.medical_document_url, data)
+    filename = f"medical_doc_{row.id}.{ext}"
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
