@@ -1,7 +1,7 @@
 'use client';
 
 import { liquidMetalFragmentShader, ShaderMount } from '@paper-design/shaders';
-import { useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
 
 const UNIFORMS = {
   u_repetition: 4,
@@ -34,7 +34,7 @@ export function useLiquidMetalShader(speed = 0.6) {
     if (!el || typeof ResizeObserver === 'undefined') return;
     const apply = () => {
       const r = el.getBoundingClientRect();
-      const w = Math.max(1, Math.round(r.width * (window.devicePixelRatio > 1 ? 1 : 1)));
+      const w = Math.max(1, Math.round(r.width));
       const h = Math.max(1, Math.round(r.height));
       setBox((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
     };
@@ -75,7 +75,7 @@ export function LiquidMetalCanvasFill({
   className = '',
   radius = 100,
 }: {
-  shaderRef: React.RefObject<HTMLDivElement | null>;
+  shaderRef: RefObject<HTMLDivElement | null>;
   className?: string;
   radius?: number;
 }) {
