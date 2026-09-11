@@ -21,7 +21,7 @@ import { Platform } from 'react-native';
 
 const env = (process.env as Record<string, string | undefined>).EXPO_PUBLIC_API_BASE;
 
-const BUILT_IN = (env ?? 'http://127.0.0.1:8000').replace(/\/+$/, '');
+const BUILT_IN = (env ?? 'https://attendance.holbox.ai').replace(/\/+$/, '');
 
 const OVERRIDE_KEY = 'bx.api_base_override';
 
@@ -37,7 +37,13 @@ export const API_BASE_DEFAULT = BUILT_IN;
 /** Call once at startup, before anything fetches. */
 export async function loadApiBaseOverride(): Promise<void> {
   try {
-    if (Platform.OS === 'web') return; // web preview always reaches 127.0.0.1
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = window.localStorage.getItem(OVERRIDE_KEY);
+        if (saved) current = saved.replace(/\/+$/, '');
+      }
+      return;
+    }
     const saved = await SecureStore.getItemAsync(OVERRIDE_KEY);
     if (saved) current = saved.replace(/\/+$/, '');
   } catch {
@@ -51,10 +57,22 @@ export async function setApiBaseOverride(url: string | null): Promise<string> {
   try {
     if (cleaned) {
       current = cleaned.startsWith('http') ? cleaned : `http://${cleaned}`;
-      await SecureStore.setItemAsync(OVERRIDE_KEY, current);
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(OVERRIDE_KEY, current);
+        }
+      } else {
+        await SecureStore.setItemAsync(OVERRIDE_KEY, current);
+      }
     } else {
       current = BUILT_IN;
-      await SecureStore.deleteItemAsync(OVERRIDE_KEY);
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.removeItem(OVERRIDE_KEY);
+        }
+      } else {
+        await SecureStore.deleteItemAsync(OVERRIDE_KEY);
+      }
     }
   } catch {
     /* storage refused (web) - the in-memory value still applies this run */

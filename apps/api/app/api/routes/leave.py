@@ -261,17 +261,22 @@ async def apply(
     # Exclude user if they are an HR Admin themselves
     try:
         emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
-        days_str = f"{float(result.request.days_consumed):g}"
+        days_consumed = float(result.request.days_consumed)
+        days_badge = "1 Day" if days_consumed == 1.0 else (f"{int(days_consumed)} Days" if days_consumed.is_integer() else f"{days_consumed:g} Days")
+        if result.request.from_date == result.request.to_date or days_consumed == 1.0:
+            date_display = result.request.from_date.strftime('%B %d, %Y')
+        else:
+            date_display = f"{result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}"
+
         leave_body = (
-            f"{emp.full_name} requested {days_str} day(s) of {lt.name} for the dates: "
-            f"{result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.\n\n"
+            f"{emp.full_name} ({emp.emp_code}) requested {days_badge} of {lt.name} for {date_display}.\n\n"
             f"Reason: {clean_reason}"
         )
         notifications.notify_hr(
             db,
             org_id=emp.org_id,
             category="leave.pending",
-            title=f"Leave Request: {emp.full_name}",
+            title=f"Leave Request: {emp.full_name} ({days_badge})",
             body=leave_body,
             exclude_user_id=emp_user.id if emp_user and emp_user.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN) else None,
             data={
@@ -279,8 +284,9 @@ async def apply(
                 "reason": clean_reason,
                 "category": category,
                 "employee_name": emp.full_name,
+                "employee_code": emp.emp_code,
                 "leave_type": lt.name,
-                "days": float(result.request.days_consumed),
+                "days": days_consumed,
                 "from_date": result.request.from_date.strftime('%B %d, %Y'),
                 "to_date": result.request.to_date.strftime('%B %d, %Y'),
                 "doc_view_url": doc_view_url,

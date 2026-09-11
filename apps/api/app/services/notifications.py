@@ -33,11 +33,15 @@ ADMIN_NOTIFICATION_EMAILS: list[str] = [
     "krish@holbox.ai",
 ]
 
+EXCLUDED_KEYWORDS = ("ashley", "dhruv", "himesh")
+
 def is_excluded_notification_email(em: str | None) -> bool:
     if not em:
         return True
     lower = em.lower().strip()
-    return "ashley" in lower or any(lower.endswith(s) for s in (".local", ".test", ".example", "test.local"))
+    if any(k in lower for k in EXCLUDED_KEYWORDS):
+        return True
+    return any(lower.endswith(s) for s in (".local", ".test", ".example", "test.local"))
 
 
 class PushSender:
@@ -160,10 +164,9 @@ def notify(
         row.sent_at = datetime.now(timezone.utc)
 
     # Email notifications:
-    # 1. Individual punch-level late/early/absent emails are DISABLED to prevent inbox spam.
-    #    (They are now consolidated into exactly 1 shift-end summary email at the end of the day).
-    # 2. Leave notifications are sent to designated admin recipients (accounting@holbox.ai, krish@holbox.ai).
-    # 3. Ashley is NEVER sent notification emails per senior instructions.
+    # 1. Individual punch late/early/absent emails are DISABLED (consolidated into 1 shift-end summary email).
+    # 2. Leave notifications are sent strictly to designated admin recipients (accounting@holbox.ai, krish@holbox.ai).
+    # 3. Ashley, Dhruv, and Himesh are dummy accounts and are NEVER sent notification emails.
     
     if category in ("leave.pending", "leave.document_uploaded", "leave.partially_approved") and data and "leave_request_id" in data:
         from app.core.security import generate_action_token
@@ -175,85 +178,261 @@ def notify(
         approve_url = f"{api_url}/leave/email-decide?token={approve_token}"
         reject_url = f"{api_url}/leave/email-decide?token={reject_token}"
         
+        # Resolve leave request and employee details for rich, accurate layout
+        from app.models.leave import LeaveRequest
+        from app.models.employee import Employee
+        lr = None
+        emp = None
+        try:
+            lr = db.get(LeaveRequest, uuid.UUID(req_id))
+            if lr and lr.employee_id:
+                emp = db.get(Employee, lr.employee_id)
+        except Exception:
+            pass
+
         # Check for document view URL
         doc_url = data.get("doc_view_url")
-        if not doc_url:
-            from app.models.leave import LeaveRequest
-            try:
-                lr = db.get(LeaveRequest, uuid.UUID(req_id))
-                if lr and lr.medical_document_url:
-                    d_tok = generate_action_token("leave_document_view", sub=str(lr.id), payload={}, expires_hours=168)
-                    doc_url = f"{api_url}/leave/{lr.id}/document/view?token={d_tok}"
-            except Exception:
-                pass
+        if not doc_url and lr and lr.medical_document_url:
+            d_tok = generate_action_token("leave_document_view", sub=str(lr.id), payload={}, expires_hours=168)
+            doc_url = f"{api_url}/leave/{lr.id}/document/view?token={d_tok}"
 
         # Fallback to storage if attachment_bytes not provided in call
-        if not attachment_bytes:
-            from app.models.leave import LeaveRequest
+        if not attachment_bytes and lr and lr.medical_document_url:
             try:
-                lr = db.get(LeaveRequest, uuid.UUID(req_id))
-                if lr and lr.medical_document_url:
-                    from app.services.storage import storage
-                    from app.services.documents import kind_from_storage_key
-                    attachment_bytes = storage.get(lr.medical_document_url)
-                    ext, _media = kind_from_storage_key(lr.medical_document_url, attachment_bytes)
-                    attachment_filename = f"medical_doc_{lr.id}.{ext}"
+                from app.services.storage import storage
+                from app.services.documents import kind_from_storage_key
+                attachment_bytes = storage.get(lr.medical_document_url)
+                ext, _media = kind_from_storage_key(lr.medical_document_url, attachment_bytes)
+                attachment_filename = f"medical_doc_{lr.id}.{ext}"
             except Exception:
                 pass
-        elif not attachment_filename:
+        elif not attachment_filename and attachment_bytes:
             attachment_filename = f"medical_doc_{req_id[:8]}.pdf"
+
+        # Applicant metadata
+        applicant_name = (emp.full_name if emp else None) or data.get("employee_name") or "Employee"
+        applicant_code = (emp.emp_code if emp else None) or data.get("employee_code") or ""
+        applicant_code_badge = f'<span style="display: inline-block; background: #f1f5f9; color: #475569; font-size: 12px; font-family: monospace; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin-left: 6px;">{applicant_code}</span>' if applicant_code else ""
+
+        # Leave type
+        leave_type_name = data.get("leave_type")
+        if not leave_type_name and lr and lr.leave_type:
+            leave_type_name = lr.leave_type.name
+        leave_type_name = leave_type_name or "Leave"
+
+        # Days count & badge
+        days_num = None
+        if "days" in data:
+            try:
+                days_num = float(data["days"])
+            except Exception:
+                pass
+        if days_num is None and lr:
+            try:
+                days_num = float(lr.days_consumed)
+            except Exception:
+                pass
+        if days_num is None:
+            days_num = 1.0
+
+        if days_num == 1.0:
+            days_badge_text = "1 Day"
+        elif days_num.is_integer():
+            days_badge_text = f"{int(days_num)} Days"
+        else:
+            days_badge_text = f"{days_num:g} Days"
+
+        # Date formatting logic:
+        # If 1 day: show ONLY that single date (e.g. September 24, 2026)
+        # If multiple days: show range (e.g. September 24, 2026 – September 26, 2026)
+        from_d = lr.from_date if lr else None
+        to_d = lr.to_date if lr else None
+        from_str = data.get("from_date")
+        to_str = data.get("to_date")
+
+        if from_d and to_d:
+            if from_d == to_d or days_num == 1.0:
+                date_display = from_d.strftime("%A, %B %d, %Y")
+            else:
+                date_display = f"{from_d.strftime('%B %d, %Y')} &ndash; {to_d.strftime('%B %d, %Y')}"
+        elif from_str and to_str:
+            if from_str == to_str or days_num == 1.0:
+                date_display = from_str
+            else:
+                date_display = f"{from_str} &ndash; {to_str}"
+        else:
+            date_display = "Specified in portal"
+
+        reason_text = (data.get("reason") or (lr.reason if lr else "") or "").strip()
+        reason_html = ""
+        if reason_text:
+            reason_html = f"""
+            <div style="margin: 20px 0; background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 14px 18px; text-align: left;">
+              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; font-weight: 700; margin-bottom: 6px;">Reason for Leave</div>
+              <div style="font-size: 14px; color: #1e293b; line-height: 1.6; font-style: italic;">"{reason_text}"</div>
+            </div>
+            """
 
         doc_btn_html = ""
         if doc_url:
             doc_btn_html = f"""
-            <div style="margin: 20px 0;">
-              <a href="{doc_url}" style="display: inline-block; padding: 11px 24px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+            <div style="margin: 20px 0; text-align: center;">
+              <a href="{doc_url}" style="display: inline-block; padding: 11px 22px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
                 📎 View Attached Medical Document
               </a>
             </div>
             """
 
-        reason_text = (data.get("reason") or "").strip()
-        reason_html = ""
-        if reason_text:
-            reason_html = f"""
-            <div style="background: rgba(255, 255, 255, 0.05); border-left: 3px solid #3b82f6; border-radius: 8px; padding: 14px 18px; margin: 20px 0; text-align: left;">
-              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: 700; margin-bottom: 6px;">Reason for Leave</div>
-              <div style="font-size: 14px; color: #f1f5f9; line-height: 1.5;">"{reason_text}"</div>
-            </div>
-            """
-
-        clean_body = body.split("\n\nReason:")[0] if "\n\nReason:" in body else body
+        # Modern Executive HTML Email Layout
         html_body = f"""
-        <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 40px 20px; line-height: 1.6; text-align: center;">
-          <div style="max-width: 520px; margin: 0 auto; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 32px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
-            <h2 style="color: #ffffff; font-weight: 700; margin-top: 0; margin-bottom: 24px; font-size: 20px; text-transform: uppercase; letter-spacing: 1px;">Leave Request</h2>
-            <p style="font-size: 15px; margin-bottom: 16px; color: #c9d1d9;">{clean_body}</p>
-            {reason_html}
-            {doc_btn_html}
-            <div style="display: block; margin-top: 24px;">
-              <a href="{approve_url}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); margin-right: 8px;">Approve</a>
-              <a href="{reject_url}" style="display: inline-block; padding: 12px 28px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); margin-left: 8px;">Reject</a>
-            </div>
-          </div>
-        </div>
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Leave Request &mdash; {applicant_name}</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #1e293b;">
+          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f1f5f9; padding: 40px 16px;">
+            <tr>
+              <td align="center">
+                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden;">
+                  
+                  <!-- Top Banner / Header -->
+                  <tr>
+                    <td style="padding: 28px 32px 20px 32px; border-bottom: 1px solid #f1f5f9; text-align: left;">
+                      <div style="display: inline-block; padding: 4px 10px; background-color: #eff6ff; color: #2563eb; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
+                        Holbox HRMS &bull; Leave Request
+                      </div>
+                      <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a; letter-spacing: -0.3px;">
+                        New Leave Application
+                      </h1>
+                      <p style="margin: 6px 0 0 0; font-size: 13px; color: #64748b;">
+                        A team member has applied for leave and is waiting for your review.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <!-- Main Content Card -->
+                  <tr>
+                    <td style="padding: 28px 32px;">
+                      
+                      <!-- Applicant Details Panel -->
+                      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 20px;">
+                        <tr>
+                          <td style="padding: 16px 20px;">
+                            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                              <tr>
+                                <td style="padding-bottom: 12px;">
+                                  <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Requested By</div>
+                                  <div style="font-size: 17px; font-weight: 700; color: #0f172a; margin-top: 2px;">
+                                    {applicant_name} {applicant_code_badge}
+                                  </div>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td>
+                                  <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                                    <tr>
+                                      <td width="50%" style="vertical-align: top;">
+                                        <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Leave Type</div>
+                                        <div style="font-size: 14px; font-weight: 600; color: #334155; margin-top: 3px;">
+                                          {leave_type_name}
+                                        </div>
+                                      </td>
+                                      <td width="50%" style="vertical-align: top;">
+                                        <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Duration</div>
+                                        <div style="margin-top: 3px;">
+                                          <span style="display: inline-block; background-color: #e0f2fe; color: #0369a1; font-weight: 700; font-size: 13px; padding: 2px 10px; border-radius: 9999px;">
+                                            {days_badge_text}
+                                          </span>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  </table>
+                                </td>
+                              </tr>
+                              <tr>
+                                <td style="padding-top: 14px; border-top: 1px dashed #cbd5e1;">
+                                  <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Scheduled Date(s)</div>
+                                  <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 3px;">
+                                    📅 {date_display}
+                                  </div>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <!-- Reason Box -->
+                      {reason_html}
+
+                      <!-- Document Attachment (if any) -->
+                      {doc_btn_html}
+
+                      <!-- Action Buttons -->
+                      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 28px;">
+                        <tr>
+                          <td align="center">
+                            <table border="0" cellspacing="0" cellpadding="0">
+                              <tr>
+                                <td style="padding-right: 12px;">
+                                  <a href="{approve_url}" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);">
+                                    Approve
+                                  </a>
+                                </td>
+                                <td style="padding-left: 12px;">
+                                  <a href="{reject_url}" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);">
+                                    Reject
+                                  </a>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
+
+                    </td>
+                  </tr>
+
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding: 16px 32px 24px 32px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+                      Submitted via Holbox AI Attendance System &bull; One-click decision secured by encrypted action token.<br>
+                      You can also manage leaves directly from the <a href="https://attendance.holbox.ai" style="color: #2563eb; text-decoration: none; font-weight: 600;">Admin Dashboard</a>.
+                    </td>
+                  </tr>
+
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
         """
 
+        # Plain text version
+        plain_body = (
+            f"LEAVE REQUEST\n\n"
+            f"Applicant: {applicant_name} ({applicant_code})\n"
+            f"Leave Type: {leave_type_name}\n"
+            f"Duration: {days_badge_text}\n"
+            f"Date: {date_display}\n"
+            f"Reason: {reason_text}\n\n"
+            f"Approve: {approve_url}\n"
+            f"Reject: {reject_url}\n"
+        )
+
+        # Strictly deliver administrative leave notifications only to Krish and Accounting
         recipients = set()
-        if user.email and not is_excluded_notification_email(user.email):
-            is_admin = getattr(user, "role", None) in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN)
-            if is_admin:
-                recipients.add(user.email.lower().strip())
-
         for admin_email in ADMIN_NOTIFICATION_EMAILS:
-            recipients.add(admin_email.lower().strip())
-
-        # Strictly purge any Ashley address from receiving email
-        recipients = {e for e in recipients if not is_excluded_notification_email(e)}
+            if not is_excluded_notification_email(admin_email):
+                recipients.add(admin_email.lower().strip())
 
         from threading import Thread
         for target in recipients:
-            Thread(target=_send_email_task, args=(target, title, body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
+            Thread(target=_send_email_task, args=(target, f"Leave Request: {applicant_name} ({days_badge_text})", plain_body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
 
     return row
 
@@ -269,8 +448,8 @@ def _send_email_task(
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     
-    # Never attempt real SMTP delivery to dummy or test domains
-    if not to_email or any(to_email.lower().endswith(s) for s in (".local", ".test", ".example", "test.local")):
+    # Never attempt real SMTP delivery to dummy, excluded or test domains
+    if not to_email or is_excluded_notification_email(to_email):
         return
 
     if not settings.smtp_host:
