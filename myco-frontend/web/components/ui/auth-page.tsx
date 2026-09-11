@@ -12,6 +12,7 @@ import { SpotlightCursor } from './spotlight-cursor';
 import { CanvasRevealEffect } from './sign-in-flow-1';
 import { SparklesCore } from './sparkles';
 import { LiquidMetalButton } from './liquid-metal-button';
+import { LiquidMetalText } from './liquid-metal-text';
 import Link from 'next/link';
 
 export function AuthPage() {
@@ -68,7 +69,7 @@ export function AuthPage() {
       {/* Left Brand Showcase Column (Desktop only) */}
       <div className="relative isolate hidden h-full flex-col justify-between border-r border-white/10 p-10 lg:flex z-10">
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5 backdrop-blur-md shadow-xs">
+          <div className="size-12 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-2 backdrop-blur-md shadow-xs">
             <BoxcodeLogo className="size-full text-white" />
           </div>
           <div className="flex flex-col">
@@ -114,7 +115,7 @@ export function AuthPage() {
             <div className="absolute inset-0 h-full w-full bg-black [mask-image:radial-gradient(350px_200px_at_top,transparent_20%,white)]" />
           </div>
 
-          <HolboxMark className="size-16 -mt-6" />
+          <HolboxMark className="size-28 -mt-4" />
         </div>
       </div>
 
@@ -133,7 +134,7 @@ export function AuthPage() {
           className="w-full max-w-md space-y-6 rounded-3xl glass-panel p-8 sm:p-10 border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl"
         >
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="size-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5">
+            <div className="size-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-2">
               <BoxcodeLogo className="size-full text-white" />
             </div>
             {/* The small-screen twin of the desktop corner brand - same name. */}
@@ -141,9 +142,7 @@ export function AuthPage() {
           </div>
 
           <div className="space-y-1">
-            <h1 className="font-display text-3xl font-black tracking-tight text-white">
-              Sign in to Holbox
-            </h1>
+            <LiquidMetalText className="text-3xl sm:text-4xl">Sign in to Holbox</LiquidMetalText>
             <p className="text-sm text-white/60 font-body">
               Attendance, leave and approvals for your team.
             </p>

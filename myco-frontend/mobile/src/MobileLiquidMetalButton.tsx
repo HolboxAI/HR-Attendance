@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -12,9 +12,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
-
-const AnimatedRect = Animated.createAnimatedComponent(Rect);
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 export interface MobileLiquidMetalButtonProps {
   label?: string;
@@ -27,11 +25,8 @@ export interface MobileLiquidMetalButtonProps {
 }
 
 /**
- * MobileLiquidMetalButton
- * Native liquid metal button for iOS/Android/Web matching the Liquid Metal shader design:
- * - Fluid metallic gradient sweeping reflections
- * - 3D inner capsule with specular highlights
- * - Interactive spring press response & ripple feedback
+ * Full-pill liquid metal — the shader/gradient is the button surface, not a
+ * 2px rim with a dark capsule covering the rest.
  */
 export function MobileLiquidMetalButton({
   label = 'Sign in  →',
@@ -44,6 +39,8 @@ export function MobileLiquidMetalButton({
 }: MobileLiquidMetalButtonProps) {
   const shimmerAnim = useRef(new Animated.Value(0)).current;
   const pressAnim = useRef(new Animated.Value(1)).current;
+  const shaderRef = useRef<View>(null);
+  const [box, setBox] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
     const loop = Animated.loop(
@@ -52,45 +49,71 @@ export function MobileLiquidMetalButton({
         duration: 2800,
         easing: Easing.linear,
         useNativeDriver: Platform.OS !== 'web',
-      })
+      }),
     );
     loop.start();
     return () => loop.stop();
   }, [shimmerAnim]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || box.w < 2) return;
+    const node = shaderRef.current as unknown as HTMLDivElement | null;
+    if (!node) return;
+    let mount: { destroy?: () => void; setSpeed?: (n: number) => void } | null = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { ShaderMount, liquidMetalFragmentShader } = await import('@paper-design/shaders');
+        if (cancelled) return;
+        mount = new ShaderMount(
+          node,
+          liquidMetalFragmentShader,
+          {
+            u_repetition: 4,
+            u_softness: 0.5,
+            u_shiftRed: 0.3,
+            u_shiftBlue: 0.3,
+            u_distortion: 0,
+            u_contour: 0,
+            u_angle: 45,
+            u_scale: 8,
+            u_shape: 1,
+            u_offsetX: 0.1,
+            u_offsetY: -0.1,
+          },
+          undefined,
+          0.6,
+        );
+      } catch {
+        /* keep the SVG metal fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      mount?.destroy?.();
+    };
+  }, [box.w, box.h]);
+
   const handlePressIn = () => {
     if (disabled || busy) return;
-    Animated.spring(pressAnim, {
-      toValue: 0.97,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(pressAnim, { toValue: 0.97, useNativeDriver: true }).start();
   };
-
   const handlePressOut = () => {
-    Animated.spring(pressAnim, {
-      toValue: 1,
-      friction: 4,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(pressAnim, { toValue: 1, friction: 4, tension: 40, useNativeDriver: true }).start();
   };
 
   const translateX = shimmerAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-160, 260],
+    outputRange: [-160, 280],
   });
-
-  const isSilver = variant === 'silver';
-  const isDark = variant === 'dark';
 
   return (
     <Animated.View
-      style={[
-        s.container,
-        { transform: [{ scale: pressAnim }] },
-        disabled && s.disabled,
-        style,
-      ]}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setBox({ w: Math.round(width), h: Math.round(height) });
+      }}
+      style={[s.container, { transform: [{ scale: pressAnim }] }, disabled && s.disabled, style]}
     >
       <Pressable
         onPress={onPress}
@@ -100,60 +123,40 @@ export function MobileLiquidMetalButton({
         accessibilityRole="button"
         style={s.pressable}
       >
-        {/* Layer 1: Liquid metal metallic base gradient rim */}
-        <View style={s.shaderBorder} pointerEvents="none">
-          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+        <View style={s.metalFill} pointerEvents="none">
+          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="none">
             <Defs>
-              <LinearGradient id="liquidMetalRim" x1="0%" y1="0%" x2="100%" y2="100%">
+              <LinearGradient id="liquidMetalFill" x1="0%" y1="0%" x2="100%" y2="100%">
                 <Stop offset="0%" stopColor="#ffffff" stopOpacity={0.95} />
-                <Stop offset="25%" stopColor="#94a3b8" stopOpacity={0.8} />
-                <Stop offset="50%" stopColor="#38bdf8" stopOpacity={0.9} />
-                <Stop offset="75%" stopColor="#cbd5e1" stopOpacity={0.85} />
+                <Stop offset="22%" stopColor="#94a3b8" stopOpacity={0.9} />
+                <Stop offset="48%" stopColor="#38bdf8" stopOpacity={0.85} />
+                <Stop offset="72%" stopColor="#cbd5e1" stopOpacity={0.9} />
                 <Stop offset="100%" stopColor="#ffffff" stopOpacity={0.95} />
               </LinearGradient>
             </Defs>
-            <Rect x="0" y="0" width="100%" height="100%" rx={28} fill="url(#liquidMetalRim)" />
+            <Rect x="0" y="0" width="100%" height="100%" rx={24} fill="url(#liquidMetalFill)" />
           </Svg>
         </View>
 
-        {/* Layer 2: Inner capsule surface */}
-        <View
-          style={[
-            s.innerCapsule,
-            isSilver ? s.capsuleSilver : isDark ? s.capsuleDark : s.capsuleLiquid,
-          ]}
-        >
-          {/* Shimmering specular liquid sweep reflection */}
-          <Animated.View
-            style={[
-              s.shimmerSweep,
-              {
-                transform: [{ translateX }, { skewX: '-25deg' }],
-              },
-            ]}
-            pointerEvents="none"
-          />
+        {Platform.OS === 'web' && (
+          <View ref={shaderRef} pointerEvents="none" style={s.webShader} />
+        )}
 
-          {/* Top highlight glare */}
-          <View style={s.topGlare} pointerEvents="none" />
+        <View style={s.glass} pointerEvents="none" />
 
-          {/* Content layer */}
-          <View style={s.content}>
-            {busy ? (
-              <ActivityIndicator color={isSilver ? '#000000' : '#ffffff'} size="small" />
-            ) : children ? (
-              children
-            ) : (
-              <Text
-                style={[
-                  s.labelText,
-                  isSilver ? s.labelSilver : isDark ? s.labelDark : s.labelLiquid,
-                ]}
-              >
-                {label}
-              </Text>
-            )}
-          </View>
+        <Animated.View
+          style={[s.shimmerSweep, { transform: [{ translateX }, { skewX: '-25deg' }] }]}
+          pointerEvents="none"
+        />
+
+        <View style={s.content}>
+          {busy ? (
+            <ActivityIndicator color="#ffffff" size="small" />
+          ) : children ? (
+            children
+          ) : (
+            <Text style={s.labelText}>{label}</Text>
+          )}
         </View>
       </Pressable>
     </Animated.View>
@@ -166,10 +169,11 @@ const s = StyleSheet.create({
     height: 48,
     borderRadius: 100,
     marginTop: 18,
-    shadowColor: '#38bdf8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
+    overflow: 'hidden',
+    shadowColor: '#94a3b8',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
     elevation: 6,
   },
   pressable: {
@@ -182,54 +186,28 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  shaderBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  metalFill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 100,
+  },
+  webShader: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 100,
     overflow: 'hidden',
   },
-  innerCapsule: {
-    position: 'absolute',
-    top: 2,
-    left: 2,
-    right: 2,
-    bottom: 2,
-    borderRadius: 98,
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
+  glass: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 100,
+    backgroundColor: 'rgba(0,0,0,0.22)',
     borderWidth: 1,
-  },
-  capsuleLiquid: {
-    backgroundColor: '#0a0a0c',
-    borderColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  capsuleSilver: {
-    backgroundColor: '#f8fafc',
-    borderColor: 'rgba(255, 255, 255, 0.9)',
-  },
-  capsuleDark: {
-    backgroundColor: '#18181b',
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-  },
-  topGlare: {
-    position: 'absolute',
-    top: 0,
-    left: 20,
-    right: 20,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 1,
+    borderColor: 'rgba(255,255,255,0.32)',
   },
   shimmerSweep: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 60,
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    width: 70,
+    backgroundColor: 'rgba(255, 255, 255, 0.28)',
   },
   content: {
     flexDirection: 'row',
@@ -242,22 +220,12 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.2,
-  },
-  labelLiquid: {
     color: '#ffffff',
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  labelSilver: {
-    color: '#000000',
-  },
-  labelDark: {
-    color: '#ffffff',
-  },
-  disabled: {
-    opacity: 0.6,
-  },
+  disabled: { opacity: 0.6 },
 });
 
 export default MobileLiquidMetalButton;

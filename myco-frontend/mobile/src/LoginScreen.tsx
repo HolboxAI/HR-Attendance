@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform,
-  Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Animated, Easing, KeyboardAvoidingView, Platform,
+  Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View,
 } from 'react-native';
 
 import { BoxcodeLogo } from './BoxcodeLogo';
+import { LiquidMetalHeading } from './LiquidMetalHeading';
 import { MobileLiquidMetalButton } from './MobileLiquidMetalButton';
 import { apiBase, setApiBaseOverride } from './config';
 import { signIn, requestSignup } from './session';
@@ -40,6 +41,8 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
   const [serverOpen, setServerOpen] = useState(false);
   const [serverDraft, setServerDraft] = useState('');
   const [serverNow, setServerNow] = useState(apiBase());
+  const { width: windowWidth } = useWindowDimensions();
+  const splitLayout = windowWidth >= 760;
 
   async function submit() {
     if (busy) return;
@@ -77,31 +80,34 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
       <View style={s.vignette} pointerEvents="none" />
 
       <KeyboardAvoidingView style={s.keyboardView} behavior="padding">
-        <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-          {/* Corner brand */}
-          <View style={s.cornerBrand}>
-            <View style={s.cornerLogoBox}>
-              <BoxcodeLogo size={22} />
+        <ScrollView
+          contentContainerStyle={[s.scroll, splitLayout && s.scrollSplit]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={[s.leftCol, splitLayout && s.leftColSplit]}>
+            <View style={s.cornerBrand}>
+              <View style={s.cornerLogoBox}>
+                <BoxcodeLogo size={30} />
+              </View>
+              <View>
+                <Text style={s.cornerName}>Holbox</Text>
+                <Text style={s.cornerSub}>Attendance Portal</Text>
+              </View>
             </View>
-            <View>
-              <Text style={s.cornerName}>Holbox</Text>
-              <Text style={s.cornerSub}>Attendance Portal</Text>
+
+            <View style={s.hero}>
+              <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={splitLayout ? 20 : 17} gap={5} />
+              <View style={{ height: 14 }} />
+              <ShutterText text="HOLBOX" fontSize={splitLayout ? 64 : 54} gap={2} />
+              <View style={{ height: 22 }} />
+              <BoxcodeLogo size={splitLayout ? 112 : 96} />
             </View>
           </View>
 
-          {/* Welcome block */}
-          <View style={s.hero}>
-            <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={17} gap={5} />
-            <View style={{ height: 14 }} />
-            <ShutterText text="HOLBOX" fontSize={54} gap={2} />
-            <View style={{ height: 22 }} />
-            <BoxcodeLogo size={68} />
-          </View>
-
-          {/* Card: Mode-driven */}
+          <View style={[s.rightCol, splitLayout && s.rightColSplit]}>
           {mode === 'signin' && (
             <View style={s.card}>
-              <Text style={s.cardTitle}>Sign in to Holbox</Text>
+              <LiquidMetalHeading text="Sign in to Holbox" />
               <Text style={s.cardSub}>Attendance, leave and approvals for your team.</Text>
 
               <View style={s.googleBtn}>
@@ -170,7 +176,7 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
                   label="Sign in  →"
                   onPress={submit}
                   busy={busy}
-                  variant="silver"
+                  variant="liquid"
                 />
 
                 {/* Sign up toggle button */}
@@ -227,7 +233,7 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
 
           {mode === 'signup' && (
             <View style={s.card}>
-              <Text style={s.cardTitle}>Request to Join</Text>
+              <LiquidMetalHeading text="Request to Join" />
               <Text style={s.cardSub}>Submit your details for HR and administrator approval.</Text>
 
               <View style={s.form}>
@@ -316,7 +322,7 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
                   label="Submit Application  →"
                   onPress={handleSignup}
                   busy={busy}
-                  variant="silver"
+                  variant="liquid"
                 />
 
                 {/* Back to sign in */}
@@ -363,11 +369,12 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
                   setError(null);
                   setMode('signin');
                 }}
-                variant="silver"
+                variant="liquid"
                 style={{ marginTop: 22 }}
               />
             </View>
           )}
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -620,6 +627,37 @@ const s = StyleSheet.create({
     alignItems: 'center',
     minHeight: '100%',
   },
+  scrollSplit: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingHorizontal: 0,
+    paddingTop: 0,
+  },
+  leftCol: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  leftColSplit: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 36,
+    paddingVertical: 40,
+    borderRightWidth: 1,
+    borderRightColor: 'rgba(255,255,255,0.1)',
+    minHeight: '100%',
+  },
+  rightCol: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  rightColSplit: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 36,
+    paddingVertical: 40,
+    minHeight: '100%',
+  },
 
   dotGrid: {
     ...StyleSheet.absoluteFill,
@@ -645,7 +683,7 @@ const s = StyleSheet.create({
     gap: 10,
   },
   cornerLogoBox: {
-    width: 36, height: 36, borderRadius: 12,
+    width: 48, height: 48, borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
@@ -653,7 +691,7 @@ const s = StyleSheet.create({
   cornerName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', letterSpacing: -0.3 },
   cornerSub: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
 
-  hero: { alignItems: 'center', marginTop: 34, marginBottom: 34 },
+  hero: { alignItems: 'center', marginTop: 28, marginBottom: 28 },
   shutterRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
 
   card: {

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@paper-design/shaders": "^0.0.80",
     "expo": "~57.0.16",
     "expo-build-properties": "~57.0.15",
     "expo-camera": "~57.0.4",

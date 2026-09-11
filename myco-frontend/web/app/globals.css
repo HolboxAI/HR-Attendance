@@ -307,6 +307,11 @@ dialog {
 .bx-slice-ltr { animation: bx-slice-ltr 2s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
 .bx-slice-rtl { animation: bx-slice-rtl 2s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
 
+@keyframes bx-liquid-text {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 220% 50%; }
+}
+
 /* Live-presence dot: slow breathing ring */
 @keyframes bx-pulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--st-present) 50%, transparent); }
@@ -325,7 +330,7 @@ dialog {
 @media (prefers-reduced-motion: reduce) {
   .bx-rise, .bx-rise-i, .bx-pop, .fade-in-up { animation-duration: 0.01ms; animation-delay: 0ms; }
   /* Slices stay at their resting opacity 0: the word reads as plain text. */
-  .bx-pulse, .bx-skeleton, .bx-slice-ltr, .bx-slice-rtl { animation: none; }
+  .bx-pulse, .bx-skeleton, .bx-slice-ltr, .bx-slice-rtl, .lmb-metal-text :is(h1, h2, span) { animation: none; }
 }
 
 /* ---------------------------------------------------------------------------
