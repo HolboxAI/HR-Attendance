@@ -23,6 +23,7 @@ import HeroText from './hero-shutter-text';
 import { SpotlightCursor } from './spotlight-cursor';
 import { CanvasRevealEffect } from './sign-in-flow-1';
 import { SparklesCore } from './sparkles';
+import { ParticleTextEffect } from './particle-text-effect';
 
 export function SignupPage() {
   const [fullName, setFullName] = useState('');
@@ -92,11 +93,11 @@ export function SignupPage() {
       {/* Left Brand Showcase Column (Desktop only) */}
       <div className="relative isolate hidden h-full flex-col justify-between border-r border-white/10 p-10 lg:flex z-10">
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5 backdrop-blur-md shadow-xs">
+          <div className="size-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2 backdrop-blur-md shadow-lg">
             <BoxcodeLogo className="size-full text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="font-display text-sm font-bold tracking-tight text-white">Holbox</span>
+            <span className="font-display text-base font-bold tracking-tight text-white">Holbox</span>
             <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
           </div>
         </div>
@@ -126,7 +127,25 @@ export function SignupPage() {
             <div className="absolute inset-0 h-full w-full bg-black [mask-image:radial-gradient(350px_200px_at_top,transparent_20%,white)]" />
           </div>
 
-          <HolboxMark className="size-16 -mt-6" />
+          {/* Enlarged Holbox symbol with ambient aura & dynamic particle effect */}
+          <div className="relative group flex flex-col items-center justify-center -mt-6">
+            <div className="relative flex items-center justify-center">
+              <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-emerald-600/30 via-teal-500/25 to-blue-600/30 blur-3xl pointer-events-none" />
+              <HolboxMark className="relative size-36 sm:size-44 drop-shadow-[0_0_35px_rgba(16,185,129,0.5)] transition-transform duration-500 hover:scale-105" />
+            </div>
+
+            {/* Particle Canvas Effect cycling logo and typography */}
+            <div className="w-full max-w-[420px] -mt-2">
+              <ParticleTextEffect
+                words={["__LOGO__", "JOIN", "HOLBOX"]}
+                width={420}
+                height={150}
+                fontSize={64}
+                showInfo={false}
+                className="flex flex-col items-center justify-center"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -139,10 +158,17 @@ export function SignupPage() {
           className="w-full max-w-md space-y-6 rounded-3xl glass-panel p-8 sm:p-10 border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl"
         >
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="size-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5">
+            <div className="size-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2">
               <BoxcodeLogo className="size-full text-white" />
             </div>
-            <span className="font-display text-sm font-bold text-white">Holbox</span>
+            <div className="flex flex-col">
+              <span className="font-display text-base font-bold text-white">Holbox</span>
+              <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
+            </div>
+          </div>
+
+          <div className="flex justify-center my-2 lg:hidden">
+            <HolboxMark className="size-24 drop-shadow-[0_0_25px_rgba(16,185,129,0.4)]" />
           </div>
 
           <AnimatePresence mode="wait">

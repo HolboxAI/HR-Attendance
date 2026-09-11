@@ -80,7 +80,7 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
           {/* Corner brand */}
           <View style={s.cornerBrand}>
             <View style={s.cornerLogoBox}>
-              <BoxcodeLogo size={22} />
+              <BoxcodeLogo size={30} />
             </View>
             <View>
               <Text style={s.cornerName}>Holbox</Text>
@@ -88,13 +88,13 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
             </View>
           </View>
 
-          {/* Welcome block */}
+          {/* Welcome block with enlarged logo and particle effect */}
           <View style={s.hero}>
             <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={17} gap={5} />
             <View style={{ height: 14 }} />
             <ShutterText text="HOLBOX" fontSize={54} gap={2} />
-            <View style={{ height: 22 }} />
-            <BoxcodeLogo size={68} />
+            <View style={{ height: 16 }} />
+            <LogoParticleEffect logoSize={120} />
           </View>
 
           {/* Card: Mode-driven */}
@@ -517,6 +517,118 @@ function ShutterChar({
 }
 
 /* ------------------------------------------------------------------------ */
+/* Logo with particle ambiance effect                                      */
+/* ------------------------------------------------------------------------ */
+
+const PARTICLES = [
+  { angle: 0, dist: 78, size: 4, color: '#38BDF8' },
+  { angle: 25, dist: 94, size: 3, color: '#60A5FA' },
+  { angle: 55, dist: 86, size: 5, color: '#818CF8' },
+  { angle: 85, dist: 98, size: 3.5, color: '#38BDF8' },
+  { angle: 115, dist: 82, size: 4.5, color: '#FFFFFF' },
+  { angle: 145, dist: 95, size: 3, color: '#60A5FA' },
+  { angle: 175, dist: 88, size: 5, color: '#818CF8' },
+  { angle: 205, dist: 97, size: 3.5, color: '#38BDF8' },
+  { angle: 235, dist: 84, size: 4, color: '#FFFFFF' },
+  { angle: 265, dist: 92, size: 5, color: '#60A5FA' },
+  { angle: 295, dist: 85, size: 3, color: '#818CF8' },
+  { angle: 325, dist: 100, size: 4, color: '#38BDF8' },
+  { angle: 350, dist: 80, size: 3, color: '#93C5FD' },
+] as const;
+
+function LogoParticleEffect({ logoSize = 120 }: { logoSize?: number }) {
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 2600,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 2600,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
+  const scale = logoSize / 100;
+
+  return (
+    <View style={{ width: logoSize * 1.6, height: logoSize * 1.6, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Radiant ambient glow */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: logoSize * 1.3,
+          height: logoSize * 1.3,
+          borderRadius: (logoSize * 1.3) / 2,
+          backgroundColor: 'rgba(59, 130, 246, 0.22)',
+          transform: [
+            {
+              scale: pulse.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.9, 1.25],
+              }),
+            },
+          ],
+          opacity: pulse.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.35, 0.75],
+          }),
+        }}
+      />
+
+      {/* Dynamic particles hovering around the logo */}
+      {PARTICLES.map((p, idx) => {
+        const rad = (p.angle * Math.PI) / 180;
+        const x = Math.cos(rad) * p.dist * scale;
+        const y = Math.sin(rad) * p.dist * scale;
+
+        return (
+          <Animated.View
+            key={idx}
+            style={{
+              position: 'absolute',
+              width: p.size * scale,
+              height: p.size * scale,
+              borderRadius: (p.size * scale) / 2,
+              backgroundColor: p.color,
+              shadowColor: p.color,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0.9,
+              shadowRadius: 6,
+              elevation: 4,
+              transform: [
+                { translateX: x },
+                { translateY: y },
+                {
+                  scale: pulse.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [idx % 2 === 0 ? 0.7 : 1.3, idx % 2 === 0 ? 1.3 : 0.7],
+                  }),
+                },
+              ],
+            }}
+          />
+        );
+      })}
+
+      {/* Enlarged Holbox symbol */}
+      <BoxcodeLogo size={logoSize} />
+    </View>
+  );
+}
+
+/* ------------------------------------------------------------------------ */
 /* The Holbox cube, in Views - no SVG dependency                            */
 /* ------------------------------------------------------------------------ */
 
@@ -652,18 +764,18 @@ const s = StyleSheet.create({
     alignSelf: 'stretch',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   cornerLogoBox: {
-    width: 36, height: 36, borderRadius: 12,
+    width: 44, height: 44, borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.1)',
     borderColor: 'rgba(255,255,255,0.15)', borderWidth: 1,
     alignItems: 'center', justifyContent: 'center',
   },
-  cornerName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', letterSpacing: -0.3 },
-  cornerSub: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
+  cornerName: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: -0.3 },
+  cornerSub: { color: 'rgba(255,255,255,0.5)', fontSize: 11 },
 
-  hero: { alignItems: 'center', marginTop: 34, marginBottom: 34 },
+  hero: { alignItems: 'center', marginTop: 28, marginBottom: 28 },
   shutterRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
 
   card: {

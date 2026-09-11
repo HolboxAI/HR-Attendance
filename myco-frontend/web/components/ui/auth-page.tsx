@@ -11,6 +11,7 @@ import { Input } from './input';
 import { SpotlightCursor } from './spotlight-cursor';
 import { CanvasRevealEffect } from './sign-in-flow-1';
 import { SparklesCore } from './sparkles';
+import { ParticleTextEffect } from './particle-text-effect';
 import Link from 'next/link';
 
 export function AuthPage() {
@@ -67,20 +68,17 @@ export function AuthPage() {
       {/* Left Brand Showcase Column (Desktop only) */}
       <div className="relative isolate hidden h-full flex-col justify-between border-r border-white/10 p-10 lg:flex z-10">
         <div className="flex items-center gap-3">
-          <div className="size-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5 backdrop-blur-md shadow-xs">
+          <div className="size-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2 backdrop-blur-md shadow-lg">
             <BoxcodeLogo className="size-full text-white" />
           </div>
           <div className="flex flex-col">
-            {/* Plain text on purpose - the shutter treatment belongs to the
-                big product name in the centre, not the corner mark. */}
-            <span className="font-display text-sm font-bold tracking-tight text-white">Holbox</span>
+            <span className="font-display text-base font-bold tracking-tight text-white">Holbox</span>
             <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
           </div>
         </div>
 
-        {/* The welcome block: lead-in and product name BOTH under the shutter
-            treatment - same slices, two sizes, one 2s loop. */}
-        <div className="my-auto flex flex-col items-center gap-6 text-center">
+        {/* The welcome block with enlarged Holbox symbol & particle effect */}
+        <div className="my-auto flex flex-col items-center gap-5 text-center">
           <HeroText
             text="WELCOME TO"
             size="text-[clamp(1.1rem,2vw,1.6rem)]"
@@ -88,11 +86,8 @@ export function AuthPage() {
           />
           <HeroText text="HOLBOX" />
 
-          {/* Sparks falling off the name: the demo strip, sized to the
-              column. -mt pulls it up so the glow lines sit right under the
-              letters; pointer-events-none because it is decoration over a
-              page someone is trying to sign in to. */}
-          <div className="pointer-events-none relative -mt-4 h-40 w-full max-w-[34rem]">
+          {/* Sparks falling off the name */}
+          <div className="pointer-events-none relative -mt-4 h-28 w-full max-w-[34rem]">
             {/* Gradients */}
             <div className="absolute inset-x-20 top-0 h-[2px] w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent blur-sm" />
             <div className="absolute inset-x-20 top-0 h-px w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
@@ -113,30 +108,48 @@ export function AuthPage() {
             <div className="absolute inset-0 h-full w-full bg-black [mask-image:radial-gradient(350px_200px_at_top,transparent_20%,white)]" />
           </div>
 
-          <HolboxMark className="size-16 -mt-6" />
+          {/* Enlarged Holbox symbol with ambient aura & dynamic particle effect */}
+          <div className="relative group flex flex-col items-center justify-center -mt-6">
+            <div className="relative flex items-center justify-center">
+              <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-blue-600/30 via-sky-500/25 to-indigo-600/30 blur-3xl pointer-events-none" />
+              <HolboxMark className="relative size-36 sm:size-44 drop-shadow-[0_0_35px_rgba(59,130,246,0.6)] transition-transform duration-500 hover:scale-105" />
+            </div>
+
+            {/* Particle Canvas Effect cycling logo and typography */}
+            <div className="w-full max-w-[420px] -mt-2">
+              <ParticleTextEffect
+                words={["__LOGO__", "HOLBOX", "ATTENDANCE"]}
+                width={420}
+                height={150}
+                fontSize={64}
+                showInfo={false}
+                className="flex flex-col items-center justify-center"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Right Sign-in Form Column */}
       <div className="relative flex min-h-screen flex-col justify-center items-center p-6 z-10">
         <motion.div
-          // y only, NEVER opacity: this column is the login form, and a form
-          // that starts at opacity 0 exists only if the animation runs. With
-          // a full-screen WebGL canvas booting beside it, a stalled first
-          // frame left the right half of the page blank - rarely, and always
-          // for whoever was trying to sign in. Motion may decorate the form;
-          // it does not get to gate it.
           initial={{ y: 20 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: 'easeOut' }}
           className="w-full max-w-md space-y-6 rounded-3xl glass-panel p-8 sm:p-10 border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl"
         >
           <div className="flex items-center gap-3 lg:hidden">
-            <div className="size-8 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center p-1.5">
+            <div className="size-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2">
               <BoxcodeLogo className="size-full text-white" />
             </div>
-            {/* The small-screen twin of the desktop corner brand - same name. */}
-            <span className="font-display text-sm font-bold text-white">Holbox</span>
+            <div className="flex flex-col">
+              <span className="font-display text-base font-bold text-white">Holbox</span>
+              <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
+            </div>
+          </div>
+
+          <div className="flex justify-center my-2 lg:hidden">
+            <HolboxMark className="size-24 drop-shadow-[0_0_25px_rgba(59,130,246,0.5)]" />
           </div>
 
           <div className="space-y-1">
