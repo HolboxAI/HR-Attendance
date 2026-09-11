@@ -37,7 +37,7 @@ from app.services import devices
 from app.services.enrolment import reference_bytes
 from app.services.face import NOT_ENROLLED, FaceUnavailable, get_face_service
 from app.services.geofence import PresencePolicy, check_presence
-from app.services.resolver import shift_date_for
+from app.services.resolver import shift_bounds, shift_date_for
 from app.services.storage import punch_key, storage
 from app.services.attendance import policy_for
 
@@ -299,64 +299,66 @@ async def punch(
     day = recompute_day(db, emp, shift_date)
     db.commit()
 
-    local_tz = ZoneInfo(str(OFFICE["timezone"]))
-    if day.punch_count == 1 and day.late_minutes > 0:
-        from app.services.notifications import notify_hr
-        arrive_time = day.first_in.astimezone(local_tz).strftime('%I:%M %p') if day.first_in else "unknown time"
-        # Notify HR about the late arrival
-        notify_hr(
-            db,
-            org_id=emp.org_id,
-            category="attendance.late_arrival",
-            title=f"Late Arrival: {emp.full_name}",
-            body=f"{emp.full_name} arrived late at {arrive_time} ({day.late_minutes} minutes late) for their shift on {shift_date.isoformat()}.",
-            data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
-        )
-        # Notify Slack
-        from app.services.slack import post_late_arrival_alert
-        from threading import Thread
-        Thread(target=post_late_arrival_alert, args=(emp.full_name, arrive_time, day.late_minutes, shift_date.isoformat()), daemon=True).start()
-        
-        db.commit()
-
-    if direction == PunchDirection.OUT and day.early_out_minutes > 0:
-        from app.services.notifications import notify_hr
-        leave_time = day.last_out.astimezone(local_tz).strftime('%I:%M %p') if day.last_out else "unknown time"
-        notify_hr(
-            db,
-            org_id=emp.org_id,
-            category="attendance.early_leave",
-            title=f"Early Leave: {emp.full_name}",
-            body=f"{emp.full_name} left early at {leave_time} ({day.early_out_minutes} minutes early) for their shift on {shift_date.isoformat()}.",
-            data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
-        )
-        # Notify Slack
-        from app.services.slack import post_early_leave_alert
-        from threading import Thread
-        Thread(target=post_early_leave_alert, args=(emp.full_name, leave_time, day.early_out_minutes, shift_date.isoformat()), daemon=True).start()
-        
-        db.commit()
-
     if reason:
         return PunchResponse(
-            accepted=False, direction=direction, punched_at=event_ts,
+            accepted=False,
+            direction=direction,
+            punched_at=event_ts,
             distance_m=geo.distance_m,
             face_similarity=face.similarity if face else None,
             message=reason,
         )
 
-    # The ORG's timezone, never the server's. A UTC server would otherwise
-    # tell someone in Ahmedabad they checked in five and a half hours ago.
-    # Report the time it HAPPENED, not the time it synced. A punch taken in
-    # the basement at 9:34 and delivered at 11:00 must say 9:34, or the
-    # confirmation contradicts the record we just wrote.
-    local = event_ts.astimezone(ZoneInfo(str(OFFICE["timezone"])))
+    local_tz = ZoneInfo(str(OFFICE["timezone"]))
+    local = event_ts.astimezone(local_tz)
+    punch_time_str = local.strftime('%I:%M %p').replace(" 0", " ")
+
+    # Only fire Late Arrival alert on the FIRST accepted IN punch of the day
+    if direction == PunchDirection.IN and day.punch_count == 1 and day.late_minutes > 0:
+        from app.services.notifications import notify_hr
+        notify_hr(
+            db,
+            org_id=emp.org_id,
+            category="attendance.late_arrival",
+            title=f"Late Arrival: {emp.full_name}",
+            body=f"{emp.full_name} arrived late at {punch_time_str} ({day.late_minutes} minutes late) for their shift on {shift_date.isoformat()}.",
+            data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
+        )
+        from app.services.slack import post_late_arrival_alert
+        from threading import Thread
+        Thread(target=post_late_arrival_alert, args=(emp.full_name, punch_time_str, day.late_minutes, shift_date.isoformat()), daemon=True).start()
+        db.commit()
+
+    # Only fire Early Leave alert on an accepted OUT punch that occurs before shift end
+    elif direction == PunchDirection.OUT:
+        policy, _ = policy_for(db, emp, shift_date)
+        scheduled_start, scheduled_end = shift_bounds(policy, shift_date)
+        early_seconds = (scheduled_end - local).total_seconds()
+        early_minutes = max(0, int(early_seconds // 60))
+
+        if early_minutes > 0:
+            from app.services.notifications import notify_hr
+            notify_hr(
+                db,
+                org_id=emp.org_id,
+                category="attendance.early_leave",
+                title=f"Early Leave: {emp.full_name}",
+                body=f"{emp.full_name} left early at {punch_time_str} ({early_minutes} minutes early) for their shift on {shift_date.isoformat()}.",
+                data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
+            )
+            from app.services.slack import post_early_leave_alert
+            from threading import Thread
+            Thread(target=post_early_leave_alert, args=(emp.full_name, punch_time_str, early_minutes, shift_date.isoformat()), daemon=True).start()
+            db.commit()
+
     return PunchResponse(
-        accepted=True, direction=direction, punched_at=event_ts,
+        accepted=True,
+        direction=direction,
+        punched_at=event_ts,
         distance_m=geo.distance_m,
         face_similarity=face.similarity if face else None,
         message=("Checked in" if direction == PunchDirection.IN else "Checked out")
-                + f" at {local:%I:%M %p}".replace(" 0", " "),
+                + f" at {punch_time_str}",
         attendance_status=day.status.value,
         worked_minutes=day.worked_minutes,
     )

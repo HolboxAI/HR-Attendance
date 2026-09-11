@@ -196,7 +196,7 @@ def resolve_day(
         late = (day.first_in.astimezone(tz) - scheduled_start).total_seconds() / 60
         day.late_minutes = max(0, int(late) - policy.grace_minutes)
 
-    if day.last_out:
+    if day.last_out and open_in is None:
         early = (scheduled_end - day.last_out.astimezone(tz)).total_seconds() / 60
         day.early_out_minutes = max(0, int(early))
         over = (day.last_out.astimezone(tz) - scheduled_end).total_seconds() / 60
