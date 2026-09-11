@@ -19,14 +19,17 @@ export const dynamic = 'force-dynamic';
  */
 export default async function LeavePage() {
   const me = await currentIdentity();
-  const [balances, requests, types, pending] = await Promise.all([
-    getMyBalance(), getMyRequests(), getMyLeaveTypes(), getPending(),
+  const isHr = me?.is_admin ?? false;
+  const year = new Date().getUTCFullYear();
+  const [balances, requests, types, pending, holidays] = await Promise.all([
+    getMyBalance(),
+    getMyRequests(),
+    getMyLeaveTypes(),
+    getPending(),
+    getHolidays(year),
   ]);
 
   const isApprover = pending.ok;
-  const isHr = me?.is_admin ?? false;
-  const year = new Date().getUTCFullYear();
-  const holidays = isApprover ? await getHolidays(year) : null;
 
   return (
     <div className="space-y-10 fade-in-up">

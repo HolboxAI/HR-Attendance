@@ -50,6 +50,27 @@ export default function CheckinPage() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [currentMinuteOfDay, setCurrentMinuteOfDay] = useState(getIstMinutesNow);
+  const cachedCoordsRef = useRef<{ lat: number; lng: number; accuracy: number; ts: number } | null>(null);
+
+  const prefetchLocation = useCallback(() => {
+    if (typeof window === 'undefined' || !navigator?.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        cachedCoordsRef.current = {
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          accuracy: Math.round(pos.coords.accuracy || 15),
+          ts: Date.now(),
+        };
+      },
+      () => {},
+      { enableHighAccuracy: false, maximumAge: 120_000, timeout: 4000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    prefetchLocation();
+  }, [prefetchLocation]);
 
   // Update current time every 30 seconds for live shift tracker
   useEffect(() => {
@@ -153,25 +174,41 @@ export default function CheckinPage() {
     let lng = OFFICE.lng;
     let accuracy = 15;
     if (!useOfficeCoords) {
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10_000,
-          }),
-        );
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-        accuracy = Math.round(pos.coords.accuracy || 15);
-      } catch {
-        setFeedback({
-          type: 'error',
-          message: 'Location permission was denied or unavailable.',
-          details: 'Allow location for this site, or tick "Use office coordinates" for an off-site demo.',
-        });
-        setBusy(false);
-        setModalOpen(false);
-        return;
+      const cached = cachedCoordsRef.current;
+      const isFresh = cached && Date.now() - cached.ts < 120_000;
+      if (isFresh && cached) {
+        lat = cached.lat;
+        lng = cached.lng;
+        accuracy = cached.accuracy;
+      } else {
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              maximumAge: 60_000,
+              timeout: 2500,
+            }),
+          );
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+          accuracy = Math.round(pos.coords.accuracy || 15);
+          cachedCoordsRef.current = { lat, lng, accuracy, ts: Date.now() };
+        } catch {
+          if (cached) {
+            lat = cached.lat;
+            lng = cached.lng;
+            accuracy = cached.accuracy;
+          } else {
+            setFeedback({
+              type: 'error',
+              message: 'Location permission was denied or unavailable.',
+              details: 'Allow location for this site, or tick "Use office coordinates" for an off-site demo.',
+            });
+            setBusy(false);
+            setModalOpen(false);
+            return;
+          }
+        }
       }
     }
 
@@ -300,7 +337,10 @@ export default function CheckinPage() {
           <div className="absolute inset-0 flex items-center justify-center">
             <button
               type="button"
-              onClick={() => setModalOpen(true)}
+              onClick={() => {
+                prefetchLocation();
+                setModalOpen(true);
+              }}
               disabled={busy || !today}
               aria-label={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
               className={`size-40 sm:size-44 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-2xl border-2 ${

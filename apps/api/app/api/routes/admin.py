@@ -136,12 +136,13 @@ def board(
               "weekly_off": 0, "exceptions": 0, "currently_in": 0, "wfh": 0}
 
     employees = visible_employees(db, user)
+    departments = {d.id: d.name for d in db.scalars(select(Department)).all()}
 
     for emp in employees:
         policy, _ = policy_for(db, emp, day)
         record = recompute_day(db, emp, day)
         in_now = next_direction(db, emp, day) == PunchDirection.OUT
-        dept = db.get(Department, emp.department_id) if emp.department_id else None
+        dept_name = departments.get(emp.department_id) if emp.department_id else None
 
         is_wfh = emp.is_wfh_enabled
         if not is_wfh:
@@ -162,7 +163,7 @@ def board(
         rows.append(BoardRow(
             employee_code=emp.emp_code,
             full_name=emp.full_name,
-            department=dept.name if dept else None,
+            department=dept_name,
             is_wfh_enabled=is_wfh,
             shift_label=f"{policy.start_time:%H:%M}-{policy.end_time:%H:%M}",
             status=record.status.value,

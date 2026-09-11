@@ -825,9 +825,9 @@ export function Directory({
                 />
               </div>
 
-              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-2.5 shadow-xs">
-                <Sparkles className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400 mt-0.5" />
-                <span className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-slate-100 leading-relaxed">
+              <div className="p-3.5 rounded-xl bg-zinc-100 dark:bg-zinc-800/90 border-2 border-zinc-300 dark:border-zinc-600 flex items-start gap-2.5 shadow-sm">
+                <Sparkles className="size-4 shrink-0 text-black dark:text-white mt-0.5" />
+                <span className="text-xs sm:text-sm font-bold text-black dark:text-white leading-relaxed">
                   Password is already set by the candidate during registration. Once approved, they can sign in directly with their email and password, then enroll their face biometric.
                 </span>
               </div>

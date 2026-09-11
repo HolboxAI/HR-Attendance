@@ -70,32 +70,28 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
     // data- attribute on the element - a DOM attribute React never rendered
     // is one more thing for hydration to trip over, and the only reader of
     // this flag is this function.
-    const lit = new WeakSet<HTMLElement>();
+    let currentlyLitEl: HTMLElement | null = null;
 
     const updateBorderGlow = () => {
       borderRaf = 0;
-      if (!hydrated) return;
-      const els = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          '.glass-panel, .bx-card, [data-glow], aside, header',
-        ),
-      );
-      const rects = els.map((el) => el.getBoundingClientRect()); // all reads…
-      els.forEach((el, i) => {                                   // …then all writes
-        const r = rects[i];
-        const near =
-          targetX > r.left - GLOW_REACH && targetX < r.right + GLOW_REACH &&
-          targetY > r.top - GLOW_REACH && targetY < r.bottom + GLOW_REACH;
-        if (near) {
-          el.style.setProperty('--lx', `${targetX - r.left}px`);
-          el.style.setProperty('--ly', `${targetY - r.top}px`);
-          lit.add(el);
-        } else if (lit.has(el)) {
-          el.style.setProperty('--lx', '-1000px');
-          el.style.setProperty('--ly', '-1000px');
-          lit.delete(el);
-        }
-      });
+      if (!hydrated || targetX === -1000) return;
+
+      // Fast O(1) path: Find the element directly under cursor without querying the entire DOM
+      const hit = document.elementFromPoint(targetX, targetY);
+      const targetEl = hit?.closest<HTMLElement>('.glass-panel, .bx-card, [data-glow], aside, header') ?? null;
+
+      if (currentlyLitEl && currentlyLitEl !== targetEl) {
+        currentlyLitEl.style.setProperty('--lx', '-1000px');
+        currentlyLitEl.style.setProperty('--ly', '-1000px');
+      }
+
+      currentlyLitEl = targetEl;
+
+      if (currentlyLitEl) {
+        const r = currentlyLitEl.getBoundingClientRect();
+        currentlyLitEl.style.setProperty('--lx', `${targetX - r.left}px`);
+        currentlyLitEl.style.setProperty('--ly', `${targetY - r.top}px`);
+      }
     };
 
     const handleMouseMove = (event: MouseEvent) => {

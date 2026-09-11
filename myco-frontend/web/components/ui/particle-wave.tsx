@@ -97,9 +97,9 @@ export const ParticleWave: React.FC<ParticleWaveProps> = ({ className = '' }) =>
     renderer.setClearColor(getBackgroundColor(currentTheme), 0);
 
     // Particles
-    const gap = 0.35;
-    const amountX = 140;
-    const amountY = 140;
+    const gap = 0.9;
+    const amountX = 45;
+    const amountY = 45;
     const particleNum = amountX * amountY;
     const particlePositions = new Float32Array(particleNum * 3);
     const particleScales = new Float32Array(particleNum);

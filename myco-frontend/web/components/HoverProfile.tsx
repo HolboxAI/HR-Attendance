@@ -60,8 +60,12 @@ export function HoverProfileProvider({ children }: { children: React.ReactNode }
     setActiveProfileState(null);
   }, [pathname]);
 
+  const activeProfileRef = useRef<ProfileData | null>(null);
+  activeProfileRef.current = activeProfile;
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
+      if (!activeProfileRef.current) return;
       const cardW = 260;
       const cardH = 260;
       let x = e.clientX + 16;

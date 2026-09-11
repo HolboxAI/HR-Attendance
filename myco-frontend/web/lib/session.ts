@@ -67,6 +67,8 @@ export async function apiGet<T>(path: string): Promise<T | null> {
   return r.ok ? r.data : null;
 }
 
-export async function currentIdentity(): Promise<Identity | null> {
+import { cache } from 'react';
+
+export const currentIdentity = cache(async (): Promise<Identity | null> => {
   return apiGet<Identity>('/api/v1/auth/me');
-}
+});

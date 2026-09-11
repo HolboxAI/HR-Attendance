@@ -17,7 +17,12 @@ export const dynamic = 'force-dynamic';
 export default async function PeoplePage() {
   const me = await currentIdentity();
   const caps = capabilitiesFor(me?.role);
-  const board = await getBoard();
+  const [board, enrolments, devices, signupsRes] = await Promise.all([
+    getBoard(),
+    getEnrolments(),
+    getDevices(),
+    caps.canManagePeople ? getPendingSignups() : Promise.resolve(null),
+  ]);
 
   if (!board.ok) {
     return (
@@ -27,12 +32,6 @@ export default async function PeoplePage() {
       />
     );
   }
-
-  const [enrolments, devices, signupsRes] = await Promise.all([
-    getEnrolments(),
-    getDevices(),
-    caps.canManagePeople ? getPendingSignups() : Promise.resolve(null),
-  ]);
 
   const enrolledBy = new Map((enrolments?.rows ?? []).map((r) => [r.employee_code, r.enrolled]));
   const deviceBy = devices.ok

@@ -333,12 +333,20 @@ def _aware(dt: datetime) -> datetime:
 def next_direction(db: Session, employee: Employee, shift_date: date) -> PunchDirection:
     """In or out? Whatever the last accepted punch wasn't."""
     policy, _ = policy_for(db, employee, shift_date)
+    window_start = datetime.combine(
+        shift_date - timedelta(days=1), time(0, 0), tzinfo=timezone.utc
+    )
+    window_end = datetime.combine(
+        shift_date + timedelta(days=2), time(0, 0), tzinfo=timezone.utc
+    )
     rows = db.scalars(
         select(PunchEvent)
         .where(
             and_(
                 PunchEvent.employee_id == employee.id,
                 PunchEvent.rejection_reason.is_(None),
+                PunchEvent.event_ts_utc >= window_start,
+                PunchEvent.event_ts_utc < window_end,
             )
         )
         .order_by(PunchEvent.event_ts_utc)

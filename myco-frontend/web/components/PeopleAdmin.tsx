@@ -45,7 +45,7 @@ function TempPasswordReveal({
         Temporary password for {created.employee.full_name} ({created.employee.emp_code})
       </p>
       <div className="flex items-center gap-2">
-        <code className="flex-1 select-all rounded-xl border border-line bg-surface-2 px-3 py-2 font-mono text-sm tracking-wide text-ink">
+        <code className="flex-1 select-all rounded-xl border-2 border-line bg-surface-2 px-3 py-2 font-mono text-sm tracking-wide font-bold text-black dark:text-white">
           {created.temporary_password}
         </code>
         <button
