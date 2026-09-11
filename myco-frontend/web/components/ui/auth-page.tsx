@@ -78,54 +78,28 @@ export function AuthPage() {
         </div>
 
         {/* The welcome block with enlarged Holbox symbol & particle effect */}
-        <div className="my-auto flex flex-col items-center gap-5 text-center">
+        <div className="my-auto flex flex-col items-center gap-6 text-center w-full max-w-xl">
           <HeroText
             text="WELCOME TO"
             size="text-[clamp(1.1rem,2vw,1.6rem)]"
             className="gap-[0.3em] opacity-90"
           />
-          <HeroText text="HOLBOX" />
 
-          {/* Sparks falling off the name */}
-          <div className="pointer-events-none relative -mt-4 h-28 w-full max-w-[34rem]">
-            {/* Gradients */}
-            <div className="absolute inset-x-20 top-0 h-[2px] w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent blur-sm" />
-            <div className="absolute inset-x-20 top-0 h-px w-3/4 bg-gradient-to-r from-transparent via-indigo-500 to-transparent" />
-            <div className="absolute inset-x-60 top-0 h-[5px] w-1/4 bg-gradient-to-r from-transparent via-sky-500 to-transparent blur-sm" />
-            <div className="absolute inset-x-60 top-0 h-px w-1/4 bg-gradient-to-r from-transparent via-sky-500 to-transparent" />
-
-            {/* Core component */}
-            <SparklesCore
-              background="transparent"
-              minSize={0.4}
-              maxSize={1}
-              particleDensity={1200}
-              className="h-full w-full"
-              particleColor="#FFFFFF"
+          {/* Prominent Particle Text Effect Canvas */}
+          <div className="w-full max-w-[540px]">
+            <ParticleTextEffect
+              words={["HOLBOX", "ATTENDANCE", "PORTAL"]}
+              width={800}
+              height={320}
+              showInfo={true}
+              className="flex flex-col items-center justify-center w-full"
             />
-
-            {/* Radial Gradient to prevent sharp edges */}
-            <div className="absolute inset-0 h-full w-full bg-black [mask-image:radial-gradient(350px_200px_at_top,transparent_20%,white)]" />
           </div>
 
-          {/* Enlarged Holbox symbol with ambient aura & dynamic particle effect */}
-          <div className="relative group flex flex-col items-center justify-center -mt-6">
-            <div className="relative flex items-center justify-center">
-              <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-blue-600/30 via-sky-500/25 to-indigo-600/30 blur-3xl pointer-events-none" />
-              <HolboxMark className="relative size-36 sm:size-44 drop-shadow-[0_0_35px_rgba(59,130,246,0.6)] transition-transform duration-500 hover:scale-105" />
-            </div>
-
-            {/* Particle Canvas Effect cycling logo and typography */}
-            <div className="w-full max-w-[420px] -mt-2">
-              <ParticleTextEffect
-                words={["__LOGO__", "HOLBOX", "ATTENDANCE"]}
-                width={420}
-                height={150}
-                fontSize={64}
-                showInfo={false}
-                className="flex flex-col items-center justify-center"
-              />
-            </div>
+          {/* Enlarged Holbox symbol directly below */}
+          <div className="relative group flex flex-col items-center justify-center mt-2">
+            <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-blue-600/30 via-sky-500/25 to-indigo-600/30 blur-3xl pointer-events-none" />
+            <HolboxMark className="relative size-36 sm:size-44 drop-shadow-[0_0_35px_rgba(59,130,246,0.6)] transition-transform duration-500 hover:scale-105" />
           </div>
         </div>
       </div>
@@ -138,18 +112,38 @@ export function AuthPage() {
           transition={{ duration: 0.5, ease: 'easeOut' }}
           className="w-full max-w-md space-y-6 rounded-3xl glass-panel p-8 sm:p-10 border border-white/10 bg-black/40 backdrop-blur-2xl shadow-2xl"
         >
-          <div className="flex items-center gap-3 lg:hidden">
-            <div className="size-12 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2">
-              <BoxcodeLogo className="size-full text-white" />
+          {/* Mobile Brand & Particle Showcase */}
+          <div className="flex flex-col items-center gap-3 lg:hidden my-2 w-full">
+            <div className="flex items-center gap-3 self-start">
+              <div className="size-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center p-2">
+                <BoxcodeLogo className="size-full text-white" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-display text-base font-bold text-white">Holbox</span>
+                <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
+              </div>
             </div>
-            <div className="flex flex-col">
-              <span className="font-display text-base font-bold text-white">Holbox</span>
-              <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
-            </div>
-          </div>
 
-          <div className="flex justify-center my-2 lg:hidden">
-            <HolboxMark className="size-24 drop-shadow-[0_0_25px_rgba(59,130,246,0.5)]" />
+            <HeroText
+              text="WELCOME TO"
+              size="text-base"
+              className="gap-[0.3em] opacity-90 mt-2"
+            />
+
+            <div className="w-full max-w-[340px]">
+              <ParticleTextEffect
+                words={["HOLBOX", "ATTENDANCE", "PORTAL"]}
+                width={500}
+                height={200}
+                showInfo={false}
+                className="w-full flex flex-col items-center justify-center"
+              />
+            </div>
+
+            <div className="relative group flex flex-col items-center justify-center mt-1">
+              <div className="absolute -inset-4 rounded-full bg-blue-600/30 blur-2xl pointer-events-none" />
+              <HolboxMark className="relative size-24 drop-shadow-[0_0_25px_rgba(59,130,246,0.5)]" />
+            </div>
           </div>
 
           <div className="space-y-1">

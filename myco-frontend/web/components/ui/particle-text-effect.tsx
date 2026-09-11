@@ -62,6 +62,8 @@ class Particle {
     // Move particle
     this.vel.x += this.acc.x
     this.vel.y += this.acc.y
+    this.pos.x += this.vel.x
+    this.pos.y += this.vel.y
     this.acc.x = 0
     this.acc.y = 0
   }
@@ -138,8 +140,6 @@ interface ParticleTextEffectProps {
   width?: number
   height?: number
   showInfo?: boolean
-  fontSize?: number
-  logoUrl?: string
 }
 
 const DEFAULT_WORDS = ["HELLO", "21st.dev", "ParticleTextEffect", "BY", "KAINXU"]
@@ -150,18 +150,15 @@ export function ParticleTextEffect({
   width = 1000,
   height = 500,
   showInfo = true,
-  fontSize = 90,
-  logoUrl = "/holbox-logo.png",
 }: ParticleTextEffectProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationRef = useRef<number | null>(null)
+  const animationRef = useRef<number | undefined>(undefined)
   const particlesRef = useRef<Particle[]>([])
   const frameCountRef = useRef(0)
   const wordIndexRef = useRef(0)
   const mouseRef = useRef({ x: 0, y: 0, isPressed: false, isRightClick: false })
-  const logoImageRef = useRef<HTMLImageElement | null>(null)
 
-  const pixelSteps = 5
+  const pixelSteps = 6
   const drawAsPoints = true
 
   const generateRandomPos = (x: number, y: number, mag: number): Vector2D => {
@@ -186,42 +183,42 @@ export function ParticleTextEffect({
   }
 
   const nextWord = (word: string, canvas: HTMLCanvasElement) => {
-    // Create off-screen canvas for rendering text or logo
+    // Create off-screen canvas for text rendering
     const offscreenCanvas = document.createElement("canvas")
     offscreenCanvas.width = canvas.width
     offscreenCanvas.height = canvas.height
     const offscreenCtx = offscreenCanvas.getContext("2d")!
 
-    const isLogo = word === "__LOGO__" && logoImageRef.current && logoImageRef.current.complete
-
-    if (isLogo) {
-      // Draw Holbox logo centered
-      const img = logoImageRef.current!
-      const logoSize = Math.min(canvas.width, canvas.height) * 0.7
-      offscreenCtx.drawImage(
-        img,
-        canvas.width / 2 - logoSize / 2,
-        canvas.height / 2 - logoSize / 2,
-        logoSize,
-        logoSize,
-      )
-    } else {
-      // Draw text
-      offscreenCtx.fillStyle = "white"
-      offscreenCtx.font = `900 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`
-      offscreenCtx.textAlign = "center"
-      offscreenCtx.textBaseline = "middle"
-      offscreenCtx.fillText(word, canvas.width / 2, canvas.height / 2)
+    // Draw text with auto-fitting font size
+    offscreenCtx.fillStyle = "white"
+    let fontSize = Math.min(Math.floor(canvas.height * 0.42), Math.floor(canvas.width / 7))
+    offscreenCtx.font = `bold ${fontSize}px Arial, -apple-system, BlinkMacSystemFont, sans-serif`
+    let textWidth = offscreenCtx.measureText(word).width
+    while (textWidth > canvas.width * 0.88 && fontSize > 20) {
+      fontSize -= 3
+      offscreenCtx.font = `bold ${fontSize}px Arial, -apple-system, BlinkMacSystemFont, sans-serif`
+      textWidth = offscreenCtx.measureText(word).width
     }
+    offscreenCtx.textAlign = "center"
+    offscreenCtx.textBaseline = "middle"
+    offscreenCtx.fillText(word, canvas.width / 2, canvas.height / 2)
 
     const imageData = offscreenCtx.getImageData(0, 0, canvas.width, canvas.height)
     const pixels = imageData.data
 
-    // Curated Holbox electric blue palette
-    const defaultColor = {
-      r: 59 + Math.random() * 30,
-      g: 130 + Math.random() * 30,
-      b: 246 + Math.random() * 9,
+    // Generate vibrant electric cyan/blue/white colors matching Holbox theme
+    const palette = [
+      { r: 59, g: 130, b: 246 },  // Blue
+      { r: 56, g: 189, b: 248 },  // Sky
+      { r: 99, g: 102, b: 241 },  // Indigo
+      { r: 147, g: 197, b: 253 }, // Soft Blue
+      { r: 255, g: 255, b: 255 }, // Crisp White
+    ]
+    const chosen = palette[Math.floor(Math.random() * palette.length)]
+    const newColor = {
+      r: chosen.r,
+      g: chosen.g,
+      b: chosen.b,
     }
 
     const particles = particlesRef.current
@@ -243,7 +240,7 @@ export function ParticleTextEffect({
       const pixelIndex = coordIndex
       const alpha = pixels[pixelIndex + 3]
 
-      if (alpha > 40) {
+      if (alpha > 0) {
         const x = (pixelIndex / 4) % canvas.width
         const y = Math.floor(pixelIndex / 4 / canvas.width)
 
@@ -268,22 +265,13 @@ export function ParticleTextEffect({
           particles.push(particle)
         }
 
-        // For logo, use real sampled pixel colors; for text, use brand color
-        let targetColor = defaultColor
-        if (isLogo) {
-          const pr = pixels[pixelIndex]
-          const pg = pixels[pixelIndex + 1]
-          const pb = pixels[pixelIndex + 2]
-          targetColor = { r: pr, g: pg, b: pb }
-        }
-
         // Set color transition
         particle.startColor = {
           r: particle.startColor.r + (particle.targetColor.r - particle.startColor.r) * particle.colorWeight,
           g: particle.startColor.g + (particle.targetColor.g - particle.startColor.g) * particle.colorWeight,
           b: particle.startColor.b + (particle.targetColor.b - particle.startColor.b) * particle.colorWeight,
         }
-        particle.targetColor = targetColor
+        particle.targetColor = newColor
         particle.colorWeight = 0
 
         particle.target.x = x
@@ -301,12 +289,11 @@ export function ParticleTextEffect({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
+    const ctx = canvas.getContext("2d")!
     const particles = particlesRef.current
 
-    // Background with smooth motion blur
-    ctx.fillStyle = "rgba(0, 0, 0, 0.14)"
+    // Background with motion blur
+    ctx.fillStyle = "rgba(0, 0, 0, 0.12)"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
     // Update and draw particles
@@ -328,13 +315,13 @@ export function ParticleTextEffect({
       }
     }
 
-    // Handle mouse interaction
-    if (mouseRef.current.isPressed && mouseRef.current.isRightClick) {
+    // Handle mouse/touch interaction
+    if (mouseRef.current.isPressed) {
       particles.forEach((particle) => {
         const distance = Math.sqrt(
           Math.pow(particle.pos.x - mouseRef.current.x, 2) + Math.pow(particle.pos.y - mouseRef.current.y, 2),
         )
-        if (distance < 50) {
+        if (distance < 55) {
           particle.kill(canvas.width, canvas.height)
         }
       })
@@ -356,15 +343,6 @@ export function ParticleTextEffect({
 
     canvas.width = width
     canvas.height = height
-
-    // Preload logo image
-    if (logoUrl) {
-      const img = new Image()
-      img.src = logoUrl
-      img.onload = () => {
-        logoImageRef.current = img
-      }
-    }
 
     // Initialize with first word
     nextWord(words[0], canvas)
@@ -392,6 +370,27 @@ export function ParticleTextEffect({
       mouseRef.current.y = e.clientY - rect.top
     }
 
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        mouseRef.current.isPressed = true
+        const rect = canvas.getBoundingClientRect()
+        mouseRef.current.x = e.touches[0].clientX - rect.left
+        mouseRef.current.y = e.touches[0].clientY - rect.top
+      }
+    }
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        const rect = canvas.getBoundingClientRect()
+        mouseRef.current.x = e.touches[0].clientX - rect.left
+        mouseRef.current.y = e.touches[0].clientY - rect.top
+      }
+    }
+
+    const handleTouchEnd = () => {
+      mouseRef.current.isPressed = false
+    }
+
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault()
     }
@@ -399,6 +398,9 @@ export function ParticleTextEffect({
     canvas.addEventListener("mousedown", handleMouseDown)
     canvas.addEventListener("mouseup", handleMouseUp)
     canvas.addEventListener("mousemove", handleMouseMove)
+    canvas.addEventListener("touchstart", handleTouchStart, { passive: true })
+    canvas.addEventListener("touchmove", handleTouchMove, { passive: true })
+    canvas.addEventListener("touchend", handleTouchEnd)
     canvas.addEventListener("contextmenu", handleContextMenu)
 
     return () => {
@@ -408,22 +410,25 @@ export function ParticleTextEffect({
       canvas.removeEventListener("mousedown", handleMouseDown)
       canvas.removeEventListener("mouseup", handleMouseUp)
       canvas.removeEventListener("mousemove", handleMouseMove)
+      canvas.removeEventListener("touchstart", handleTouchStart)
+      canvas.removeEventListener("touchmove", handleTouchMove)
+      canvas.removeEventListener("touchend", handleTouchEnd)
       canvas.removeEventListener("contextmenu", handleContextMenu)
     }
-  }, [width, height, words, logoUrl])
+  }, [width, height, words])
 
   if (className) {
     return (
       <div className={className}>
         <canvas
           ref={canvasRef}
-          className="rounded-2xl shadow-2xl"
-          style={{ maxWidth: "100%", height: "auto" }}
+          className="border border-white/10 rounded-2xl shadow-2xl bg-black/60 backdrop-blur-md"
+          style={{ width: "100%", height: "auto", aspectRatio: `${width}/${height}` }}
         />
         {showInfo && (
-          <div className="mt-3 text-white text-xs text-center max-w-md opacity-70">
+          <div className="mt-2 text-white text-xs text-center max-w-md opacity-70">
             <p className="text-gray-400 text-[11px]">
-              Right-click and hold while moving mouse to disperse particles • Words change automatically
+              Click & drag or right-click to disperse particles • Words change automatically
             </p>
           </div>
         )}
@@ -449,3 +454,5 @@ export function ParticleTextEffect({
     </div>
   )
 }
+
+export default ParticleTextEffect
