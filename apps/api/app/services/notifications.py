@@ -120,9 +120,23 @@ def notify(
     db: Session, *, org_id: uuid.UUID, user: User, category: str,
     title: str, body: str, data: dict | None = None,
 ) -> Notification:
+    # Ensure data stored in DB is JSON-serializable
+    db_data = {}
+    attachment_bytes = None
+    attachment_filename = None
+    if data:
+        for k, v in data.items():
+            if k == "doc_bytes":
+                attachment_bytes = v
+            elif k == "doc_filename":
+                attachment_filename = v
+                db_data[k] = v
+            else:
+                db_data[k] = v
+
     row = Notification(
         id=uuid.uuid4(), org_id=org_id, user_id=user.id, category=category,
-        title=title, body=body, data=data or {},
+        title=title, body=body, data=db_data,
     )
     db.add(row)
     db.flush()
@@ -140,8 +154,6 @@ def notify(
     if user.email and (user.email.lower() in ALLOWED_EMAILS or is_admin):
         if category in ("attendance_late", "attendance.late_arrival", "attendance.absent_alert", "attendance.early_leave", "leave.pending", "leave.document_uploaded", "leave.partially_approved"):
             html_body = None
-            attachment_bytes = None
-            attachment_filename = None
 
             if category in ("leave.pending", "leave.document_uploaded", "leave.partially_approved") and data and "leave_request_id" in data:
                 from app.core.security import generate_action_token
@@ -165,11 +177,8 @@ def notify(
                     except Exception:
                         pass
 
-                # Get document attachment data
-                if data.get("doc_bytes"):
-                    attachment_bytes = data["doc_bytes"]
-                    attachment_filename = data.get("doc_filename") or f"medical_doc_{req_id[:8]}.pdf"
-                else:
+                # Fallback to storage if attachment_bytes not provided in call
+                if not attachment_bytes:
                     from app.models.leave import LeaveRequest
                     try:
                         lr = db.get(LeaveRequest, uuid.UUID(req_id))
@@ -180,6 +189,8 @@ def notify(
                             attachment_filename = f"medical_doc_{lr.id}.{ext}"
                     except Exception:
                         pass
+                elif not attachment_filename:
+                    attachment_filename = f"medical_doc_{req_id[:8]}.pdf"
 
                 doc_btn_html = ""
                 if doc_url:
