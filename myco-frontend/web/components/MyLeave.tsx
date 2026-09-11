@@ -87,13 +87,18 @@ export function MyLeave({
       return;
     }
 
+    if (!reason || !reason.trim()) {
+      setError('You have to fill this reason box before applying.');
+      return;
+    }
+
     const formData = new FormData();
     formData.append('leave_type_code', code);
     formData.append('from_date', from);
     formData.append('to_date', to || from);
     formData.append('half_day_start', String(halfStart));
     formData.append('category', category);
-    if (reason) formData.append('reason', reason);
+    formData.append('reason', reason.trim());
     if (file) formData.append('file', file);
 
     const res = await fetch(proxy('/api/v1/leave/request'), {
@@ -204,11 +209,12 @@ export function MyLeave({
           </label>
           <label className="min-w-[14rem] flex-1 space-y-1.5 relative">
             <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
-              Reason {requiresProof && <span className="text-st-absent">* Requires Document</span>}
+              Reason <span className="text-st-absent font-bold">* Required</span> {requiresProof && <span className="text-st-absent ml-1">· Requires Document</span>}
             </span>
             <div className="relative flex items-center">
               <input value={reason} onChange={(e) => setReason(e.target.value)}
-                     placeholder="Brief note on reason..."
+                     placeholder="State your reason for leave (Required)..."
+                     required
                      className={`${field} w-full pr-12`} />
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
                 <label className="cursor-pointer p-1.5 rounded-full hover:bg-surface-3 transition-colors text-ink-2 hover:text-ink relative group" aria-label="Attach Document">

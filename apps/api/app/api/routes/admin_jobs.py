@@ -63,3 +63,34 @@ def run_tick(db: Session = Depends(get_db), user: User = hr_only):
     """Run every due job right now. Idempotent - clicking twice is a no-op,
     because each job's dedupe row survives the first click."""
     return tick(db)
+
+
+@router.post("/shift-summary")
+def trigger_shift_summary(
+    template_id: uuid.UUID | None = Query(default=None),
+    shift_date: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = hr_only,
+):
+    """Trigger a shift attendance summary email on demand for testing or manual dispatch."""
+    import uuid as _uuid
+    from datetime import date as _date
+    from app.core.clock import org_now
+    from app.models.org import Organization
+    from app.services.scheduler import run_shift_end_summaries
+
+    org = db.get(Organization, user.org_id)
+    if org is None:
+        return {"ok": False, "error": "Organization not found"}
+
+    now = org_now()
+    d = _date.fromisoformat(shift_date) if shift_date else None
+    results = run_shift_end_summaries(
+        db=db,
+        org=org,
+        now=now,
+        force_template_id=template_id,
+        for_date=d,
+    )
+    db.commit()
+    return {"ok": True, "summaries_sent": results}

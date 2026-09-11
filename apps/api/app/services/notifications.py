@@ -28,6 +28,17 @@ from app.models.employee import User
 from app.models.enums import UserRole
 from app.models.notification import Notification
 
+ADMIN_NOTIFICATION_EMAILS: list[str] = [
+    "accounting@holbox.ai",
+    "krish@holbox.ai",
+]
+
+def is_excluded_notification_email(em: str | None) -> bool:
+    if not em:
+        return True
+    lower = em.lower().strip()
+    return "ashley" in lower or any(lower.endswith(s) for s in (".local", ".test", ".example", "test.local"))
+
 
 class PushSender:
     def send(self, tokens: list[str], title: str, body: str, data: dict) -> bool:
@@ -148,82 +159,101 @@ def notify(
     if tokens and get_push_sender().send(tokens, title, body, data or {}):
         row.sent_at = datetime.now(timezone.utc)
 
-    # Email notifications for specific categories and specific admins
-    ALLOWED_EMAILS = {"krishraghavsharma@gmail.com", "krish@holbox.ai", "krish@boxcode.ai"}
-    is_admin = getattr(user, "role", None) in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN)
-    if user.email and (user.email.lower() in ALLOWED_EMAILS or is_admin):
-        if category in ("attendance_late", "attendance.late_arrival", "attendance.absent_alert", "attendance.early_leave", "leave.pending", "leave.document_uploaded", "leave.partially_approved"):
-            html_body = None
+    # Email notifications:
+    # 1. Individual punch-level late/early/absent emails are DISABLED to prevent inbox spam.
+    #    (They are now consolidated into exactly 1 shift-end summary email at the end of the day).
+    # 2. Leave notifications are sent to designated admin recipients (accounting@holbox.ai, krish@holbox.ai).
+    # 3. Ashley is NEVER sent notification emails per senior instructions.
+    
+    if category in ("leave.pending", "leave.document_uploaded", "leave.partially_approved") and data and "leave_request_id" in data:
+        from app.core.security import generate_action_token
+        req_id = data["leave_request_id"]
+        approve_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": True, "approver_id": str(user.id)})
+        reject_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": False, "approver_id": str(user.id)})
+        
+        api_url = getattr(settings, "api_url", "https://attendance.holbox.ai/api/v1")
+        approve_url = f"{api_url}/leave/email-decide?token={approve_token}"
+        reject_url = f"{api_url}/leave/email-decide?token={reject_token}"
+        
+        # Check for document view URL
+        doc_url = data.get("doc_view_url")
+        if not doc_url:
+            from app.models.leave import LeaveRequest
+            try:
+                lr = db.get(LeaveRequest, uuid.UUID(req_id))
+                if lr and lr.medical_document_url:
+                    d_tok = generate_action_token("leave_document_view", sub=str(lr.id), payload={}, expires_hours=168)
+                    doc_url = f"{api_url}/leave/{lr.id}/document/view?token={d_tok}"
+            except Exception:
+                pass
 
-            if category in ("leave.pending", "leave.document_uploaded", "leave.partially_approved") and data and "leave_request_id" in data:
-                from app.core.security import generate_action_token
-                req_id = data["leave_request_id"]
-                approve_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": True, "approver_id": str(user.id)})
-                reject_token = generate_action_token("leave_decide", sub=req_id, payload={"approve": False, "approver_id": str(user.id)})
-                
-                api_url = getattr(settings, "api_url", "https://attendance.holbox.ai/api/v1")
-                approve_url = f"{api_url}/leave/email-decide?token={approve_token}"
-                reject_url = f"{api_url}/leave/email-decide?token={reject_token}"
-                
-                # Check for document view URL
-                doc_url = data.get("doc_view_url")
-                if not doc_url:
-                    from app.models.leave import LeaveRequest
-                    try:
-                        lr = db.get(LeaveRequest, uuid.UUID(req_id))
-                        if lr and lr.medical_document_url:
-                            d_tok = generate_action_token("leave_document_view", sub=str(lr.id), payload={}, expires_hours=168)
-                            doc_url = f"{api_url}/leave/{lr.id}/document/view?token={d_tok}"
-                    except Exception:
-                        pass
+        # Fallback to storage if attachment_bytes not provided in call
+        if not attachment_bytes:
+            from app.models.leave import LeaveRequest
+            try:
+                lr = db.get(LeaveRequest, uuid.UUID(req_id))
+                if lr and lr.medical_document_url:
+                    from app.services.storage import storage
+                    from app.services.documents import kind_from_storage_key
+                    attachment_bytes = storage.get(lr.medical_document_url)
+                    ext, _media = kind_from_storage_key(lr.medical_document_url, attachment_bytes)
+                    attachment_filename = f"medical_doc_{lr.id}.{ext}"
+            except Exception:
+                pass
+        elif not attachment_filename:
+            attachment_filename = f"medical_doc_{req_id[:8]}.pdf"
 
-                # Fallback to storage if attachment_bytes not provided in call
-                if not attachment_bytes:
-                    from app.models.leave import LeaveRequest
-                    try:
-                        lr = db.get(LeaveRequest, uuid.UUID(req_id))
-                        if lr and lr.medical_document_url:
-                            from app.services.storage import storage
-                            from app.services.documents import kind_from_storage_key
-                            attachment_bytes = storage.get(lr.medical_document_url)
-                            ext, _media = kind_from_storage_key(lr.medical_document_url, attachment_bytes)
-                            attachment_filename = f"medical_doc_{lr.id}.{ext}"
-                    except Exception:
-                        pass
-                elif not attachment_filename:
-                    attachment_filename = f"medical_doc_{req_id[:8]}.pdf"
+        doc_btn_html = ""
+        if doc_url:
+            doc_btn_html = f"""
+            <div style="margin: 20px 0;">
+              <a href="{doc_url}" style="display: inline-block; padding: 11px 24px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
+                📎 View Attached Medical Document
+              </a>
+            </div>
+            """
 
-                doc_btn_html = ""
-                if doc_url:
-                    doc_btn_html = f"""
-                    <div style="margin: 20px 0;">
-                      <a href="{doc_url}" style="display: inline-block; padding: 11px 24px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60a5fa; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
-                        📎 View Attached Medical Document
-                      </a>
-                    </div>
-                    """
+        reason_text = (data.get("reason") or "").strip()
+        reason_html = ""
+        if reason_text:
+            reason_html = f"""
+            <div style="background: rgba(255, 255, 255, 0.05); border-left: 3px solid #3b82f6; border-radius: 8px; padding: 14px 18px; margin: 20px 0; text-align: left;">
+              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: 700; margin-bottom: 6px;">Reason for Leave</div>
+              <div style="font-size: 14px; color: #f1f5f9; line-height: 1.5;">"{reason_text}"</div>
+            </div>
+            """
 
-                html_body = f"""
-                <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 40px 20px; line-height: 1.6; text-align: center;">
-                  <div style="max-width: 500px; margin: 0 auto; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 32px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
-                    <h2 style="color: #ffffff; font-weight: 700; margin-top: 0; margin-bottom: 24px; font-size: 20px; text-transform: uppercase; letter-spacing: 1px;">Leave Request</h2>
-                    <p style="font-size: 15px; margin-bottom: 20px; color: #c9d1d9;">{body}</p>
-                    {doc_btn_html}
-                    <div style="display: block; margin-top: 24px;">
-                      <a href="{approve_url}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); margin-right: 8px;">Approve</a>
-                      <a href="{reject_url}" style="display: inline-block; padding: 12px 28px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); margin-left: 8px;">Reject</a>
-                    </div>
-                  </div>
-                </div>
-                """
+        clean_body = body.split("\n\nReason:")[0] if "\n\nReason:" in body else body
+        html_body = f"""
+        <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0d1117; color: #c9d1d9; padding: 40px 20px; line-height: 1.6; text-align: center;">
+          <div style="max-width: 520px; margin: 0 auto; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 32px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+            <h2 style="color: #ffffff; font-weight: 700; margin-top: 0; margin-bottom: 24px; font-size: 20px; text-transform: uppercase; letter-spacing: 1px;">Leave Request</h2>
+            <p style="font-size: 15px; margin-bottom: 16px; color: #c9d1d9;">{clean_body}</p>
+            {reason_html}
+            {doc_btn_html}
+            <div style="display: block; margin-top: 24px;">
+              <a href="{approve_url}" style="display: inline-block; padding: 12px 28px; background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); margin-right: 8px;">Approve</a>
+              <a href="{reject_url}" style="display: inline-block; padding: 12px 28px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); margin-left: 8px;">Reject</a>
+            </div>
+          </div>
+        </div>
+        """
 
-            from threading import Thread
-            Thread(target=_send_email_task, args=(user.email, title, body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
+        recipients = set()
+        if user.email and not is_excluded_notification_email(user.email):
+            is_admin = getattr(user, "role", None) in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN)
+            if is_admin:
+                recipients.add(user.email.lower().strip())
 
-            # For testing: Also guarantee delivery to Krish's verified test email (smtp_user)
-            test_inbox = getattr(settings, "smtp_user", None) or "krish@holbox.ai"
-            if test_inbox and test_inbox.lower() != user.email.lower() and category in ("leave.pending", "leave.document_uploaded"):
-                Thread(target=_send_email_task, args=(test_inbox, title, body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
+        for admin_email in ADMIN_NOTIFICATION_EMAILS:
+            recipients.add(admin_email.lower().strip())
+
+        # Strictly purge any Ashley address from receiving email
+        recipients = {e for e in recipients if not is_excluded_notification_email(e)}
+
+        from threading import Thread
+        for target in recipients:
+            Thread(target=_send_email_task, args=(target, title, body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
 
     return row
 
@@ -366,3 +396,143 @@ def resolve_matching(
     if cleared:
         db.flush()
     return cleared
+
+
+def send_shift_summary_email(
+    *,
+    shift_name: str,
+    shift_timing: str,
+    shift_date: date,
+    stats: dict,
+    roster: list[dict],
+) -> None:
+    """Send exactly 1 consolidated, modern HTML attendance summary email at shift end."""
+    from threading import Thread
+
+    subject = f"[Attendance Summary] {shift_name} ({shift_timing}) — {shift_date.strftime('%d %b %Y')}"
+
+    # Plain text version
+    lines = [
+        f"Attendance Summary: {shift_name} ({shift_timing})",
+        f"Date: {shift_date.strftime('%A, %B %d, %Y')}",
+        "",
+        f"Scheduled: {stats.get('total', 0)} | Present: {stats.get('present', 0)} | Late: {stats.get('late', 0)} | Absent: {stats.get('absent', 0)} | On Leave: {stats.get('leave', 0)}",
+        "",
+        "Employee Attendance Roster:",
+        "-" * 65,
+    ]
+    for r in roster:
+        lines.append(
+            f"- {r['name']} ({r['code']}): {r['status'].upper()} | In: {r['first_in']} | Out: {r['last_out']} | Late: {r['late_str']} | Worked: {r.get('hours_str', '-')}"
+        )
+    plain_body = "\n".join(lines)
+
+    # Rich HTML table rows
+    rows_html = ""
+    for r in roster:
+        st = r['status'].lower()
+        if st in ("present", "early"):
+            status_color = "#10b981"
+            status_bg = "rgba(16, 185, 129, 0.15)"
+        elif st in ("late", "half_day"):
+            status_color = "#f59e0b"
+            status_bg = "rgba(245, 158, 11, 0.15)"
+        elif st in ("absent",):
+            status_color = "#ef4444"
+            status_bg = "rgba(239, 68, 68, 0.15)"
+        elif st in ("on_leave", "leave"):
+            status_color = "#3b82f6"
+            status_bg = "rgba(59, 130, 246, 0.15)"
+        else:
+            status_color = "#94a3b8"
+            status_bg = "rgba(148, 163, 184, 0.15)"
+
+        late_badge = (
+            f'<span style="color: #f59e0b; font-weight: 700;">{r["late_str"]}</span>'
+            if r.get("late_minutes", 0) > 0
+            else '<span style="color: #64748b;">On Time</span>'
+        )
+
+        rows_html += f"""
+        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
+          <td style="padding: 12px 14px; font-weight: 600; color: #f8fafc;">
+            {r['name']} <span style="font-size: 11px; font-family: monospace; color: #94a3b8; margin-left: 4px;">({r['code']})</span>
+          </td>
+          <td style="padding: 12px 14px;">
+            <span style="display: inline-block; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; background: {status_bg}; color: {status_color};">
+              {r['status'].replace('_', ' ')}
+            </span>
+          </td>
+          <td style="padding: 12px 14px; color: #cbd5e1; font-family: monospace; font-size: 12px;">{r['first_in']}</td>
+          <td style="padding: 12px 14px; color: #cbd5e1; font-family: monospace; font-size: 12px;">{r['last_out']}</td>
+          <td style="padding: 12px 14px; font-size: 12px;">{late_badge}</td>
+          <td style="padding: 12px 14px; color: #94a3b8; font-size: 12px;">{r.get('hours_str', '-')}</td>
+        </tr>
+        """
+
+    html_body = f"""
+    <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f17; color: #cbd5e1; padding: 32px 16px; line-height: 1.5;">
+      <div style="max-width: 680px; margin: 0 auto; background: #111827; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; padding: 28px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);">
+        
+        <!-- Header -->
+        <div style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 20px; margin-bottom: 24px;">
+          <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #3b82f6; margin-bottom: 6px;">Daily Shift Attendance Summary</div>
+          <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 6px 0;">{shift_name} Shift</h1>
+          <div style="font-size: 13px; color: #94a3b8;">
+            📅 {shift_date.strftime('%A, %B %d, %Y')} &nbsp;&bull;&nbsp; ⏰ {shift_timing}
+          </div>
+        </div>
+
+        <!-- Metrics Cards -->
+        <div style="display: flex; gap: 8px; margin-bottom: 26px;">
+          <div style="flex: 1; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 12px 8px; text-align: center;">
+            <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Scheduled</div>
+            <div style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-top: 4px;">{stats.get('total', 0)}</div>
+          </div>
+          <div style="flex: 1; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
+            <div style="font-size: 10px; text-transform: uppercase; color: #10b981; font-weight: 600;">Present</div>
+            <div style="font-size: 20px; font-weight: 700; color: #10b981; margin-top: 4px;">{stats.get('present', 0)}</div>
+          </div>
+          <div style="flex: 1; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
+            <div style="font-size: 10px; text-transform: uppercase; color: #f59e0b; font-weight: 600;">Late</div>
+            <div style="font-size: 20px; font-weight: 700; color: #f59e0b; margin-top: 4px;">{stats.get('late', 0)}</div>
+          </div>
+          <div style="flex: 1; background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
+            <div style="font-size: 10px; text-transform: uppercase; color: #ef4444; font-weight: 600;">Absent</div>
+            <div style="font-size: 20px; font-weight: 700; color: #ef4444; margin-top: 4px;">{stats.get('absent', 0)}</div>
+          </div>
+          <div style="flex: 1; background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
+            <div style="font-size: 10px; text-transform: uppercase; color: #60a5fa; font-weight: 600;">On Leave</div>
+            <div style="font-size: 20px; font-weight: 700; color: #60a5fa; margin-top: 4px;">{stats.get('leave', 0)}</div>
+          </div>
+        </div>
+
+        <!-- Roster Table -->
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+          <thead>
+            <tr style="border-bottom: 2px solid rgba(255, 255, 255, 0.1); color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
+              <th style="padding: 10px 14px;">Employee</th>
+              <th style="padding: 10px 14px;">Status</th>
+              <th style="padding: 10px 14px;">In</th>
+              <th style="padding: 10px 14px;">Out</th>
+              <th style="padding: 10px 14px;">Late (Mins)</th>
+              <th style="padding: 10px 14px;">Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows_html}
+          </tbody>
+        </table>
+
+        <!-- Footer -->
+        <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); text-align: center; font-size: 12px; color: #64748b;">
+          Holbox AI HRMS &bull; Sent automatically at shift end &bull; <a href="https://attendance.holbox.ai" style="color: #3b82f6; text-decoration: none;">View Dashboard</a>
+        </div>
+
+      </div>
+    </div>
+    """
+
+    recipients = ["accounting@holbox.ai", "krish@holbox.ai"]
+    for target in recipients:
+        Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()

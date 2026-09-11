@@ -214,6 +214,10 @@ async def apply(
                 filename=str(orig_name) if orig_name else None,
             )
 
+    clean_reason = str(reason).strip() if reason is not None else ""
+    if not clean_reason:
+        raise HTTPException(422, "You have to fill this reason box before applying.")
+
     if category is not None:
         category = str(category).strip()
         if category and category not in LEAVE_REASON_CATEGORIES:
@@ -228,7 +232,7 @@ async def apply(
 
     result = leave_service.submit(
         db, employee=emp, leave_type=lt, start=from_date, end=to_date,
-        category=category, reason=reason, half_day_start=half_day_start,
+        category=category, reason=clean_reason, half_day_start=half_day_start,
         half_day_end=half_day_end,
     )
     if not result.ok:
@@ -257,15 +261,28 @@ async def apply(
     # Exclude user if they are an HR Admin themselves
     try:
         emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
+        days_str = f"{float(result.request.days_consumed):g}"
+        leave_body = (
+            f"{emp.full_name} requested {days_str} day(s) of {lt.name} for the dates: "
+            f"{result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.\n\n"
+            f"Reason: {clean_reason}"
+        )
         notifications.notify_hr(
             db,
             org_id=emp.org_id,
             category="leave.pending",
-            title="Leave Request",
-            body=f"{emp.full_name} requested {lt.name} for the dates: {result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.",
+            title=f"Leave Request: {emp.full_name}",
+            body=leave_body,
             exclude_user_id=emp_user.id if emp_user and emp_user.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN) else None,
             data={
                 "leave_request_id": str(result.request.id),
+                "reason": clean_reason,
+                "category": category,
+                "employee_name": emp.full_name,
+                "leave_type": lt.name,
+                "days": float(result.request.days_consumed),
+                "from_date": result.request.from_date.strftime('%B %d, %Y'),
+                "to_date": result.request.to_date.strftime('%B %d, %Y'),
                 "doc_view_url": doc_view_url,
                 "has_document": bool(doc_view_url),
                 "doc_filename": f"medical_doc_{emp.emp_code}.{file_ext}" if file_data else None,

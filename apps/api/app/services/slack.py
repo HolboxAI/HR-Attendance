@@ -91,7 +91,7 @@ def post_leave_request(
     mrkdwn_text = (
         f"🌴 *Leave Request: {employee_name}*\n"
         f"Requested *{days:g} days* of {leave_type} from {from_date} to {to_date}.\n"
-        f"> \"{reason}\""
+        f"📝 *Reason:* {reason}"
         f"{doc_part}"
     )
 

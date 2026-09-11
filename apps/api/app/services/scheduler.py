@@ -277,6 +277,140 @@ def run_punch_out_nudges(db: Session, org: Organization, now: datetime) -> list[
 
 
 # ---------------------------------------------------------------------------
+# Job 4: shift end attendance summary email (1 email per shift at shift end + 5m)
+# ---------------------------------------------------------------------------
+
+def run_shift_end_summaries(
+    db: Session,
+    org: Organization,
+    now: datetime,
+    force_template_id: uuid.UUID | None = None,
+    for_date: date | None = None,
+) -> list[str]:
+    """Sends a single consolidated attendance summary email 5 minutes after a shift ends.
+
+    Summary covers all employees assigned to that shift on today's date.
+    Delivered directly to accounting@holbox.ai and krish@holbox.ai (Ashley is excluded).
+    """
+    from app.models.attendance import AttendanceDay, ShiftTemplate
+    from app.services.notifications import send_shift_summary_email
+
+    tz = ZoneInfo(org.timezone or "Asia/Kolkata")
+    local_now = now.astimezone(tz)
+    target_date = for_date or local_now.date()
+
+    query = select(ShiftTemplate).where(ShiftTemplate.org_id == org.id)
+    if force_template_id:
+        query = query.where(ShiftTemplate.id == force_template_id)
+    templates = db.scalars(query).all()
+
+    summarized: list[str] = []
+    for tmpl in templates:
+        start_dt = datetime.combine(target_date, tmpl.start_time, tzinfo=tz)
+        end_dt = datetime.combine(target_date, tmpl.end_time, tzinfo=tz)
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+
+        # Trigger 5 minutes after shift ends (e.g. 20:05 for an 20:00 shift)
+        trigger_dt = end_dt + timedelta(minutes=5)
+        cutoff_dt = end_dt + timedelta(hours=4)
+
+        # If not forcing on-demand, verify the window and claim the dedupe row
+        if not force_template_id:
+            if not (trigger_dt <= local_now <= cutoff_dt):
+                continue
+            key = f"shift_end_summary:{tmpl.id}:{target_date.isoformat()}"
+            run = _claim(
+                db,
+                org_id=org.id,
+                job="shift_end_summary",
+                key=key,
+                detail={"template_name": tmpl.name, "date": target_date.isoformat()},
+            )
+            if run is None:
+                continue
+        else:
+            key = f"shift_end_summary_forced:{tmpl.id}:{target_date.isoformat()}:{int(now.timestamp())}"
+
+        # Resolve all active employees in this org assigned to this shift on target_date
+        active_emps = db.scalars(
+            select(Employee).where(
+                Employee.org_id == org.id,
+                Employee.is_active.is_(True),
+                Employee.deleted_at.is_(None),
+            ).order_by(Employee.emp_code)
+        ).all()
+
+        roster: list[dict] = []
+        for emp in active_emps:
+            _policy, resolved_tmpl_id = policy_for(db, emp, target_date)
+            if resolved_tmpl_id != tmpl.id:
+                continue
+
+            day = db.scalar(
+                select(AttendanceDay).where(
+                    AttendanceDay.employee_id == emp.id,
+                    AttendanceDay.shift_date == target_date,
+                )
+            )
+
+            status_str = "absent"
+            first_in_str = "—"
+            last_out_str = "—"
+            late_mins = 0
+            hours_str = "—"
+
+            if day:
+                status_str = day.status.value if hasattr(day.status, "value") else str(day.status)
+                if day.first_in:
+                    first_in_str = day.first_in.astimezone(tz).strftime("%I:%M %p").lstrip("0")
+                if day.last_out:
+                    last_out_str = day.last_out.astimezone(tz).strftime("%I:%M %p").lstrip("0")
+                late_mins = day.late_minutes or 0
+                if late_mins > 0 and status_str == "present":
+                    status_str = "late"
+                if day.worked_minutes:
+                    hours_str = f"{day.worked_minutes // 60}h {day.worked_minutes % 60:02d}m"
+            
+            late_str = f"{late_mins}m late" if late_mins > 0 else "On Time"
+
+            roster.append({
+                "id": str(emp.id),
+                "code": emp.emp_code,
+                "name": emp.full_name,
+                "status": status_str,
+                "first_in": first_in_str,
+                "last_out": last_out_str,
+                "late_minutes": late_mins,
+                "late_str": late_str,
+                "hours_str": hours_str,
+            })
+
+        if not roster and not force_template_id:
+            continue
+
+        stats = {
+            "total": len(roster),
+            "present": sum(1 for r in roster if r["status"] in ("present", "early")),
+            "late": sum(1 for r in roster if r["status"] == "late"),
+            "absent": sum(1 for r in roster if r["status"] == "absent"),
+            "leave": sum(1 for r in roster if r["status"] in ("on_leave", "leave", "half_day")),
+        }
+
+        timing_str = f"{tmpl.start_time.strftime('%I:%M %p').lstrip('0')} – {tmpl.end_time.strftime('%I:%M %p').lstrip('0')}"
+        send_shift_summary_email(
+            shift_name=tmpl.name,
+            shift_timing=timing_str,
+            shift_date=target_date,
+            stats=stats,
+            roster=roster,
+        )
+        summarized.append(key)
+
+    return summarized
+
+
+# ---------------------------------------------------------------------------
 # The tick
 # ---------------------------------------------------------------------------
 
@@ -296,6 +430,7 @@ def tick(db: Session, now: datetime | None = None) -> dict:
         ("monthly_accrual", run_monthly_accrual),
         ("late_alert", run_late_alerts),
         ("punch_out_nudge", run_punch_out_nudges),
+        ("shift_end_summary", run_shift_end_summaries),
     )
     for org in orgs:
         for name, fn in jobs:
