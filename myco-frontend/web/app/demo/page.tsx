@@ -39,6 +39,7 @@ export default function DemoPage() {
               type="button"
               width="100%"
               height={48}
+              variant="liquid"
             >
               <div className="flex items-center justify-center gap-2 text-white text-sm font-semibold tracking-wide">
                 <span>Sign in</span>

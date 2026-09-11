@@ -374,6 +374,7 @@ export function SignupPage() {
                     disabled={busy}
                     width="100%"
                     height={48}
+                    variant="liquid"
                     className="mt-3"
                   >
                     {busy ? (

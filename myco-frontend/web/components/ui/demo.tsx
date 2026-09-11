@@ -103,10 +103,7 @@ export function LiquidMetalButtonDemo() {
     <div className="flex flex-col items-center justify-center gap-8 p-8">
       <div className="flex items-center gap-8">
         <LiquidMetalButton label="Get Started" />
-        <LiquidMetalButton label="Sign in →" width="180px" height={46} />
-      </div>
-      <div className="w-72">
-        <LiquidMetalButton label="Submit Registration" width="100%" height={48} />
+        <LiquidMetalButton viewMode="icon" />
       </div>
     </div>
   );
