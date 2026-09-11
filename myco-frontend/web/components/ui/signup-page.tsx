@@ -97,7 +97,7 @@ export function SignupPage() {
           </div>
           <div className="flex flex-col">
             <span className="font-display text-sm font-bold tracking-tight text-white">Holbox</span>
-            <span className="text-[10px] text-white/50 font-mono">Workforce Portal</span>
+            <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
           </div>
         </div>
 

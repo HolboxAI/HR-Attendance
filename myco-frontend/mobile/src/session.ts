@@ -16,12 +16,64 @@ export type SignInResult =
   | { ok: true; identity: Identity }
   | { ok: false; message: string };
 
+export interface SignupData {
+  full_name: string;
+  email: string;
+  password: string;
+  phone?: string | null;
+  desired_department?: string | null;
+  desired_designation?: string | null;
+}
+
+export type SignupResult =
+  | { ok: true; message: string }
+  | { ok: false; message: string };
+
 async function post(path: string, body: unknown): Promise<Response> {
   return fetch(`${apiBase()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+export async function requestSignup(data: SignupData): Promise<SignupResult> {
+  if (!data.full_name.trim()) {
+    return { ok: false, message: 'Please enter your full name.' };
+  }
+  if (!data.email.trim() || !data.email.includes('@')) {
+    return { ok: false, message: 'Please enter a valid email address.' };
+  }
+  if (!data.password || data.password.length < 8) {
+    return { ok: false, message: 'Password must be at least 8 characters.' };
+  }
+
+  let res: Response;
+  try {
+    res = await post('/api/v1/auth/signup', {
+      full_name: data.full_name.trim(),
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
+      phone: data.phone?.trim() || null,
+      desired_department: data.desired_department?.trim() || null,
+      desired_designation: data.desired_designation?.trim() || null,
+    });
+  } catch {
+    return { ok: false, message: 'Could not reach the server. Please check your connection.' };
+  }
+
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    let msg = 'Registration request failed';
+    if (typeof body?.detail === 'string') {
+      msg = body.detail;
+    } else if (Array.isArray(body?.detail) && body.detail[0]?.msg) {
+      msg = body.detail[0].msg;
+    }
+    return { ok: false, message: msg };
+  }
+
+  return { ok: true, message: body?.message ?? 'Signup request submitted successfully.' };
 }
 
 export async function signIn(email: string, password: string): Promise<SignInResult> {

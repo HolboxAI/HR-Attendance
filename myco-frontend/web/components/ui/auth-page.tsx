@@ -74,7 +74,7 @@ export function AuthPage() {
             {/* Plain text on purpose - the shutter treatment belongs to the
                 big product name in the centre, not the corner mark. */}
             <span className="font-display text-sm font-bold tracking-tight text-white">Holbox</span>
-            <span className="text-[10px] text-white/50 font-mono">Workforce Portal</span>
+            <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
           </div>
         </div>
 

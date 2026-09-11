@@ -190,7 +190,7 @@ export function SidebarBrand({
               </span>
             </div>
             <span className="text-[10px] text-ink-3 font-mono">
-              Workforce Portal
+              Attendance Portal
             </span>
           </div>
         )}

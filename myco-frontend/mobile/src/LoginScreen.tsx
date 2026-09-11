@@ -4,27 +4,36 @@ import {
   Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
+import { BoxcodeLogo } from './BoxcodeLogo';
 import { apiBase, setApiBaseOverride } from './config';
-import { signIn } from './session';
+import { signIn, requestSignup } from './session';
 import type { Identity } from './auth';
 
 /**
- * The web login page, rebuilt natively - same structure, same words, same
- * motion. Dot-matrix black ground, the corner brand, "WELCOME TO" and
- * "HOLBOX" both under the shutter treatment on one 2-second loop, the cube
- * mark, then the sign-in card: "Sign in to Holbox", the disabled Google
- * button with its honest note, OR CREDENTIALS, email + password, the white
- * pill. Nothing about the WIRING changed - submit() still calls the same
- * signIn() and hands the same Identity up.
- *
- * No SVG and no new dependency: the cube is Views under skew/rotate
- * transforms, the slices are clipped Texts driven by Animated with the
- * native driver, so this renders identically in Expo web, iOS and Android.
+ * Mobile authentication screen featuring:
+ * 1. The official Holbox branding & shutter animation
+ * 2. Sign-in mode with email/password
+ * 3. Sign-up / Request to join mode for onboarding new team members awaiting admin approval
+ * 4. Confirmation screen for submitted signup applications
  */
 export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) => void }) {
+  const [mode, setMode] = useState<'signin' | 'signup' | 'submitted'>('signin');
+
+  // Sign-in state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Sign-up state
+  const [signupName, setSignupName] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupPhone, setSignupPhone] = useState('');
+  const [signupDept, setSignupDept] = useState('');
+  const [signupDesig, setSignupDesig] = useState('');
+  const [signupShowPass, setSignupShowPass] = useState(false);
+
+  // General state
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [serverOpen, setServerOpen] = useState(false);
@@ -41,154 +50,334 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
     else setError(res.message);
   }
 
+  async function handleSignup() {
+    if (busy) return;
+    setError(null);
+    setBusy(true);
+    const res = await requestSignup({
+      full_name: signupName,
+      email: signupEmail,
+      password: signupPassword,
+      phone: signupPhone,
+      desired_department: signupDept,
+      desired_designation: signupDesig,
+    });
+    setBusy(false);
+    if (res.ok) {
+      setMode('submitted');
+    } else {
+      setError(res.message);
+    }
+  }
+
   return (
     <View style={s.root}>
       <DotGridBackground />
       <View style={s.vignette} pointerEvents="none" />
 
-      {/* 'padding' on BOTH platforms: Android with edge-to-edge no longer
-          resizes the window for the keyboard, so without this the email and
-          password fields disappear under it while being typed into. */}
       <KeyboardAvoidingView style={s.keyboardView} behavior="padding">
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
-          {/* Corner brand - plain on purpose, the shutter belongs to the
-              centre name. Same rule as the web page. */}
+          {/* Corner brand */}
           <View style={s.cornerBrand}>
             <View style={s.cornerLogoBox}>
-              <HolboxCube size={22} />
+              <BoxcodeLogo size={22} />
             </View>
             <View>
               <Text style={s.cornerName}>Holbox</Text>
-              <Text style={s.cornerSub}>Workforce Portal</Text>
+              <Text style={s.cornerSub}>Attendance Portal</Text>
             </View>
           </View>
 
-          {/* Welcome block: lead-in and product name, both shuttered. */}
+          {/* Welcome block */}
           <View style={s.hero}>
-            <ShutterText text="WELCOME TO" fontSize={17} gap={5} />
+            <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={17} gap={5} />
             <View style={{ height: 14 }} />
             <ShutterText text="HOLBOX" fontSize={54} gap={2} />
             <View style={{ height: 22 }} />
-            <HolboxCube size={58} />
+            <BoxcodeLogo size={68} />
           </View>
 
-          {/* Sign-in card */}
-          <View style={s.card}>
-            <Text style={s.cardTitle}>Sign in to Holbox</Text>
-            <Text style={s.cardSub}>Attendance, leave and approvals for your team.</Text>
+          {/* Card: Mode-driven */}
+          {mode === 'signin' && (
+            <View style={s.card}>
+              <Text style={s.cardTitle}>Sign in to Holbox</Text>
+              <Text style={s.cardSub}>Attendance, leave and approvals for your team.</Text>
 
-            <View style={s.googleBtn}>
-              <Text style={s.googleG}>G</Text>
-              <Text style={s.googleText}>Continue with Google</Text>
-            </View>
-            <Text style={s.googleNote}>
-              Google sign-in is not enabled yet — use your email and password.
-            </Text>
+              <View style={s.googleBtn}>
+                <Text style={s.googleG}>G</Text>
+                <Text style={s.googleText}>Continue with Google</Text>
+              </View>
+              <Text style={s.googleNote}>
+                Google sign-in is not enabled yet — use your email and password.
+              </Text>
 
-            <View style={s.dividerRow}>
-              <View style={s.dividerLine} />
-              <Text style={s.dividerText}>OR CREDENTIALS</Text>
-              <View style={s.dividerLine} />
-            </View>
-
-            <View style={s.form}>
-              <Text style={s.label}>Email Address</Text>
-              <TextInput
-                style={s.input}
-                value={email}
-                onChangeText={(t) => { setEmail(t); setError(null); }}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="email-address"
-                textContentType="username"
-                placeholder="your.email@holbox.ai"
-                placeholderTextColor="rgba(255,255,255,0.3)"
-                editable={!busy}
-                accessibilityLabel="Email"
-              />
-
-              <Text style={s.label}>Password</Text>
-              <View style={s.passwordRow}>
-                <TextInput
-                  style={[s.input, s.passwordInput]}
-                  value={password}
-                  onChangeText={(t) => { setPassword(t); setError(null); }}
-                  secureTextEntry={!showPassword}
-                  textContentType="password"
-                  placeholder="••••••••••••"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
-                  onSubmitEditing={submit}
-                  returnKeyType="go"
-                  editable={!busy}
-                  accessibilityLabel="Password"
-                />
-                <Pressable
-                  onPress={() => setShowPassword((v) => !v)}
-                  hitSlop={10}
-                  accessibilityRole="button"
-                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-                  style={s.showBtn}
-                >
-                  <Text style={s.showText}>{showPassword ? 'Hide' : 'Show'}</Text>
-                </Pressable>
+              <View style={s.dividerRow}>
+                <View style={s.dividerLine} />
+                <Text style={s.dividerText}>OR CREDENTIALS</Text>
+                <View style={s.dividerLine} />
               </View>
 
-              {error && (
-                <View style={s.errorBox} accessibilityLiveRegion="polite">
-                  <Text style={s.errorText}>{error}</Text>
-                </View>
-              )}
-
-              <Pressable
-                style={[s.submitBtn, busy && s.submitBtnBusy]}
-                onPress={submit}
-                disabled={busy}
-                accessibilityRole="button"
-              >
-                {busy
-                  ? <ActivityIndicator color="#000000" />
-                  : <Text style={s.submitBtnText}>Sign in  →</Text>}
-              </Pressable>
-            </View>
-
-            <Text style={s.footerNote}>
-              By continuing, you agree to Holbox's Security Policy and Privacy
-              Terms.
-            </Text>
-
-            {/* The server row exists because the address baked into a build
-                is the laptop's LAN IP on the day it was built - the first
-                APK died the moment the laptop changed networks. Editable
-                here, saved on the device, no rebuild ever again. */}
-            <Pressable onPress={() => { setServerDraft(serverNow); setServerOpen((v) => !v); }}>
-              <Text style={s.serverRow}>Server · {serverNow.replace(/^https?:\/\//, '')}</Text>
-            </Pressable>
-            {serverOpen && (
-              <View style={s.serverEdit}>
+              <View style={s.form}>
+                <Text style={s.label}>Email Address</Text>
                 <TextInput
                   style={s.input}
-                  value={serverDraft}
-                  onChangeText={setServerDraft}
+                  value={email}
+                  onChangeText={(t) => { setEmail(t); setError(null); }}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  placeholder="http://192.168.x.x:8000"
+                  keyboardType="email-address"
+                  textContentType="username"
+                  placeholder="your.email@holbox.ai"
                   placeholderTextColor="rgba(255,255,255,0.3)"
-                  accessibilityLabel="Server address"
+                  editable={!busy}
+                  accessibilityLabel="Email"
                 />
+
+                <Text style={s.label}>Password</Text>
+                <View style={s.passwordRow}>
+                  <TextInput
+                    style={[s.input, s.passwordInput]}
+                    value={password}
+                    onChangeText={(t) => { setPassword(t); setError(null); }}
+                    secureTextEntry={!showPassword}
+                    textContentType="password"
+                    placeholder="••••••••••••"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    onSubmitEditing={submit}
+                    returnKeyType="go"
+                    editable={!busy}
+                    accessibilityLabel="Password"
+                  />
+                  <Pressable
+                    onPress={() => setShowPassword((v) => !v)}
+                    hitSlop={10}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    style={s.showBtn}
+                  >
+                    <Text style={s.showText}>{showPassword ? 'Hide' : 'Show'}</Text>
+                  </Pressable>
+                </View>
+
+                {error && (
+                  <View style={s.errorBox} accessibilityLiveRegion="polite">
+                    <Text style={s.errorText}>{error}</Text>
+                  </View>
+                )}
+
                 <Pressable
-                  style={s.serverSave}
-                  onPress={async () => {
-                    const applied = await setApiBaseOverride(serverDraft);
-                    setServerNow(applied);
-                    setServerOpen(false);
-                    setError(null);
-                  }}
+                  style={[s.submitBtn, busy && s.submitBtnBusy]}
+                  onPress={submit}
+                  disabled={busy}
+                  accessibilityRole="button"
                 >
-                  <Text style={s.serverSaveText}>Save server address</Text>
+                  {busy
+                    ? <ActivityIndicator color="#000000" />
+                    : <Text style={s.submitBtnText}>Sign in  →</Text>}
                 </Pressable>
+
+                {/* Sign up toggle button */}
+                <View style={s.signupPromptRow}>
+                  <Text style={s.signupPromptText}>New employee or joiner? </Text>
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setMode('signup');
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.signupPromptLink}>Request to join / Sign up</Text>
+                  </Pressable>
+                </View>
               </View>
-            )}
-          </View>
+
+              <Text style={s.footerNote}>
+                By continuing, you agree to Holbox's Security Policy and Privacy
+                Terms.
+              </Text>
+
+              <Pressable onPress={() => { setServerDraft(serverNow); setServerOpen((v) => !v); }}>
+                <Text style={s.serverRow}>Server · {serverNow.replace(/^https?:\/\//, '')}</Text>
+              </Pressable>
+              {serverOpen && (
+                <View style={s.serverEdit}>
+                  <TextInput
+                    style={s.input}
+                    value={serverDraft}
+                    onChangeText={setServerDraft}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    placeholder="http://192.168.x.x:8000"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    accessibilityLabel="Server address"
+                  />
+                  <Pressable
+                    style={s.serverSave}
+                    onPress={async () => {
+                      const applied = await setApiBaseOverride(serverDraft);
+                      setServerNow(applied);
+                      setServerOpen(false);
+                      setError(null);
+                    }}
+                  >
+                    <Text style={s.serverSaveText}>Save server address</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          )}
+
+          {mode === 'signup' && (
+            <View style={s.card}>
+              <Text style={s.cardTitle}>Request to Join</Text>
+              <Text style={s.cardSub}>Submit your details for HR and administrator approval.</Text>
+
+              <View style={s.form}>
+                <Text style={s.label}>Full Name *</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupName}
+                  onChangeText={(t) => { setSignupName(t); setError(null); }}
+                  autoCapitalize="words"
+                  placeholder="e.g. Rahul Sharma"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Work Email Address *</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupEmail}
+                  onChangeText={(t) => { setSignupEmail(t); setError(null); }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  placeholder="your.email@holbox.ai"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Create Password * (min 8 characters)</Text>
+                <View style={s.passwordRow}>
+                  <TextInput
+                    style={[s.input, s.passwordInput]}
+                    value={signupPassword}
+                    onChangeText={(t) => { setSignupPassword(t); setError(null); }}
+                    secureTextEntry={!signupShowPass}
+                    placeholder="••••••••••••"
+                    placeholderTextColor="rgba(255,255,255,0.3)"
+                    editable={!busy}
+                  />
+                  <Pressable
+                    onPress={() => setSignupShowPass((v) => !v)}
+                    hitSlop={10}
+                    style={s.showBtn}
+                  >
+                    <Text style={s.showText}>{signupShowPass ? 'Hide' : 'Show'}</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={s.label}>Phone Number (optional)</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupPhone}
+                  onChangeText={setSignupPhone}
+                  keyboardType="phone-pad"
+                  placeholder="+91 98765 43210"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Department (optional)</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupDept}
+                  onChangeText={setSignupDept}
+                  placeholder="e.g. Engineering, Design, Sales"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                <Text style={s.label}>Designation (optional)</Text>
+                <TextInput
+                  style={s.input}
+                  value={signupDesig}
+                  onChangeText={setSignupDesig}
+                  placeholder="e.g. Full Stack Developer"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  editable={!busy}
+                />
+
+                {error && (
+                  <View style={s.errorBox} accessibilityLiveRegion="polite">
+                    <Text style={s.errorText}>{error}</Text>
+                  </View>
+                )}
+
+                <Pressable
+                  style={[s.submitBtn, busy && s.submitBtnBusy]}
+                  onPress={handleSignup}
+                  disabled={busy}
+                  accessibilityRole="button"
+                >
+                  {busy ? (
+                    <ActivityIndicator color="#000000" />
+                  ) : (
+                    <Text style={s.submitBtnText}>Submit Application  →</Text>
+                  )}
+                </Pressable>
+
+                {/* Back to sign in */}
+                <View style={s.signupPromptRow}>
+                  <Text style={s.signupPromptText}>Already have an account? </Text>
+                  <Pressable
+                    onPress={() => {
+                      setError(null);
+                      setMode('signin');
+                    }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.signupPromptLink}>Sign in</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {mode === 'submitted' && (
+            <View style={s.card}>
+              <View style={s.successIconWrap}>
+                <View style={s.successCheckCircle}>
+                  <Text style={s.successCheckText}>✓</Text>
+                </View>
+              </View>
+
+              <Text style={[s.cardTitle, { textAlign: 'center' }]}>Application Received!</Text>
+              <Text style={[s.cardSub, { textAlign: 'center' }]}>
+                Your details have been submitted to the HR & administration team.
+              </Text>
+
+              <View style={s.approvalNotice}>
+                <Text style={s.approvalNoticeTitle}>⏳ Awaiting Admin Approval</Text>
+                <Text style={s.approvalNoticeBody}>
+                  An administrator will review your application and assign your official Employee Code. Once approved, you will be able to log in immediately using your email and password.
+                </Text>
+              </View>
+
+              <Pressable
+                style={[s.submitBtn, { marginTop: 22 }]}
+                onPress={() => {
+                  setError(null);
+                  setMode('signin');
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={s.submitBtnText}>Back to Sign In  →</Text>
+              </Pressable>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -550,6 +739,64 @@ const s = StyleSheet.create({
   },
   submitBtnBusy: { opacity: 0.7 },
   submitBtnText: { color: '#000000', fontSize: 15, fontWeight: '700' },
+
+  signupPromptRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    flexWrap: 'wrap',
+  },
+  signupPromptText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+  },
+  signupPromptLink: {
+    color: '#34D399',
+    fontSize: 12,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+
+  successIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 12,
+  },
+  successCheckCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: '#10B981',
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successCheckText: {
+    color: '#10B981',
+    fontSize: 28,
+    fontWeight: '900',
+  },
+  approvalNotice: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 6,
+    marginTop: 10,
+  },
+  approvalNoticeTitle: {
+    color: '#FBBF24',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  approvalNoticeBody: {
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: 12,
+    lineHeight: 18,
+  },
 
   footerNote: {
     marginTop: 16, fontSize: 11, lineHeight: 16, textAlign: 'center',
