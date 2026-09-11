@@ -198,13 +198,19 @@ def sync_leave_decision_to_slack(
     if not settings.slack_bot_token:
         return
 
-    if partial_approve:
+    if "cancel" in (note or "").lower():
+        status_text = f"🚫 *Cancelled by @{actor_name}*"
+        action_label = "Cancelled"
+    elif partial_approve:
         note_str = f'\n> Admin Note: "{note}"' if note else ""
         status_text = f"⚠️ Partially Approved via {source} by @{actor_name} (Awaiting Medical Document){note_str}"
+        action_label = "Partially Approved"
     elif approved:
         status_text = f"✅ Approved via {source} by @{actor_name}"
+        action_label = "Approved"
     else:
         status_text = f"❌ Rejected via {source} by @{actor_name}"
+        action_label = "Rejected"
 
     original_text = (
         f"🌴 *Leave Request: {employee_name}*\n"
@@ -229,7 +235,7 @@ def sync_leave_decision_to_slack(
             json={
                 "channel": channel_id,
                 "ts": message_ts,
-                "text": f"Leave Request {action}",
+                "text": f"Leave Request {action_label}",
                 "blocks": blocks,
             },
             timeout=5.0,

@@ -399,7 +399,7 @@ def overlapping(db: Session, employee: Employee, start: date, end: date,
     """
     stmt = select(LeaveRequest).where(
         LeaveRequest.employee_id == employee.id,
-        LeaveRequest.status.in_([LeaveStatus.PENDING, LeaveStatus.APPROVED]),
+        LeaveRequest.status.in_([LeaveStatus.PENDING, LeaveStatus.APPROVED, LeaveStatus.PARTIALLY_APPROVED]),
         LeaveRequest.from_date <= end,
         LeaveRequest.to_date >= start,
         LeaveRequest.deleted_at.is_(None),
@@ -604,6 +604,32 @@ def cancel(
 
     if was == LeaveStatus.APPROVED:
         _recompute_range(db, employee, request.from_date, request.to_date)
+
+    if request.slack_channel_id and request.slack_message_ts:
+        from app.services.slack import sync_leave_decision_to_slack
+        from threading import Thread
+        lt_obj = db.get(LeaveType, request.leave_type_id)
+        lt_name = lt_obj.name if lt_obj else "Leave"
+        Thread(
+            target=sync_leave_decision_to_slack,
+            args=(
+                request.slack_channel_id,
+                request.slack_message_ts,
+                employee.full_name,
+                lt_name,
+                request.from_date,
+                request.to_date,
+                float(request.days_consumed),
+                request.reason or "No reason provided",
+                False,
+                employee.full_name,
+                "Portal",
+                False,
+                "Cancelled by employee",
+            ),
+            daemon=True,
+        ).start()
+
     return LeaveOutcome(True, request=request)
 
 

@@ -7,6 +7,7 @@ for punching applies just as well to booking time off.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 
@@ -18,11 +19,15 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_employee, get_current_user
 from app.core.clock import org_today
+from app.core.config import settings
 from app.db.session import get_db
 from app.models.employee import Employee, User
-from app.models.enums import LeaveStatus
+from app.models.enums import LeaveStatus, UserRole
 from app.models.leave import LeaveRequest, LeaveType
 from app.services import leave as leave_service
+from app.services.storage import storage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leave", tags=["leave"])
 
@@ -227,44 +232,45 @@ async def apply(
 
     doc_view_url = None
     if file_data and result.request.id:
-        from app.services.storage import storage
-        key = f"medical_docs/{result.request.id}/doc.{file_ext}"
-        storage.put(key, file_data)
-        result.request.medical_document_url = key
-        result.request.medical_document_submitted_at = datetime.now(timezone.utc)
-        db.commit()
+        try:
+            key = f"medical_docs/{result.request.id}/doc.{file_ext}"
+            storage.put(key, file_data)
+            result.request.medical_document_url = key
+            result.request.medical_document_submitted_at = datetime.now(timezone.utc)
+            db.commit()
 
-        from app.core.security import generate_action_token
-        doc_token = generate_action_token("leave_document_view", sub=str(result.request.id), payload={}, expires_hours=168)
-        api_url = getattr(settings, "api_url", "https://attendance.holbox.ai/api/v1")
-        doc_view_url = f"{api_url}/leave/{result.request.id}/document/view?token={doc_token}"
+            from app.core.security import generate_action_token
+            doc_token = generate_action_token("leave_document_view", sub=str(result.request.id), payload={}, expires_hours=168)
+            api_url = getattr(settings, "api_url", "https://attendance.holbox.ai/api/v1")
+            doc_view_url = f"{api_url}/leave/{result.request.id}/document/view?token={doc_token}"
+        except Exception as e:
+            logger.warning("Failed to store medical document or generate token: %s", e)
     
     from app.services import notifications
     
-    # We need the User object corresponding to this employee to exclude them from HR notifications
-    # if they happen to be an HR Admin themselves.
-    from app.models.employee import User
-    emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
-    
-    from app.models.enums import UserRole
-    notifications.notify_hr(
-        db,
-        org_id=emp.org_id,
-        category="leave.pending",
-        title="Leave Request",
-        body=f"{emp.full_name} requested {lt.name} for the dates: {result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.",
-        exclude_user_id=emp_user.id if emp_user and emp_user.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN) else None,
-        data={
-            "leave_request_id": str(result.request.id),
-            "doc_view_url": doc_view_url,
-            "has_document": bool(doc_view_url),
-            "doc_filename": f"medical_doc_{emp.emp_code}.{file_ext}" if file_data else None,
-            "doc_bytes": file_data if file_data else None,
-        },
-    )
-    db.commit()
+    # Exclude user if they are an HR Admin themselves
+    try:
+        emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
+        notifications.notify_hr(
+            db,
+            org_id=emp.org_id,
+            category="leave.pending",
+            title="Leave Request",
+            body=f"{emp.full_name} requested {lt.name} for the dates: {result.request.from_date.strftime('%B %d, %Y')} to {result.request.to_date.strftime('%B %d, %Y')}.",
+            exclude_user_id=emp_user.id if emp_user and emp_user.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN) else None,
+            data={
+                "leave_request_id": str(result.request.id),
+                "doc_view_url": doc_view_url,
+                "has_document": bool(doc_view_url),
+                "doc_filename": f"medical_doc_{emp.emp_code}.{file_ext}" if file_data else None,
+                "doc_bytes": file_data if file_data else None,
+            },
+        )
+        db.commit()
+    except Exception as e:
+        logger.warning("Failed to notify HR via email/in-app: %s", e)
+
     from app.services.slack import post_leave_request
-    from fastapi import BackgroundTasks
     
     is_sick = (lt.code.upper() == "SL" or "sick" in lt.name.lower())
     try:
@@ -283,8 +289,8 @@ async def apply(
             result.request.slack_message_ts = slack_resp[0]
             result.request.slack_channel_id = slack_resp[1]
             db.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to post leave request to Slack: %s", e)
         
     return to_request_out(db, result.request, emp)
 
@@ -430,8 +436,6 @@ def upload_document(
     if row.status != LeaveStatus.PARTIALLY_APPROVED:
         raise HTTPException(409, "Cannot upload document: request is not partially approved")
         
-    from app.services.storage import storage
-    
     ext = "pdf" if file.content_type == "application/pdf" else "jpg"
     key = f"medical_docs/{row.id}/doc.{ext}"
     data = file.file.read()
@@ -459,31 +463,30 @@ def upload_document(
             original_channel_id=row.slack_channel_id,
             original_thread_ts=row.slack_message_ts,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to post document uploaded alert to Slack: %s", e)
 
     from app.services import notifications
-    from app.models.employee import User
-    from app.models.enums import UserRole
-    
-    emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
-    
-    notifications.notify_hr(
-        db,
-        org_id=emp.org_id,
-        category="leave.document_uploaded",
-        title="Medical Document Uploaded",
-        body=f"{emp.full_name} has submitted the required medical document for their leave request ({row.from_date} to {row.to_date}).",
-        exclude_user_id=emp_user.id if emp_user and emp_user.role != UserRole.HR_ADMIN else None,
-        data={
-            "leave_request_id": str(row.id),
-            "doc_view_url": doc_view_url,
-            "has_document": True,
-            "doc_filename": f"medical_doc_{emp.emp_code}.{ext}",
-            "doc_bytes": data,
-        },
-    )
-    db.commit()
+    try:
+        emp_user = db.scalar(select(User).where(User.employee_id == emp.id))
+        notifications.notify_hr(
+            db,
+            org_id=emp.org_id,
+            category="leave.document_uploaded",
+            title="Medical Document Uploaded",
+            body=f"{emp.full_name} has submitted the required medical document for their leave request ({row.from_date} to {row.to_date}).",
+            exclude_user_id=emp_user.id if emp_user and emp_user.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN) else None,
+            data={
+                "leave_request_id": str(row.id),
+                "doc_view_url": doc_view_url,
+                "has_document": True,
+                "doc_filename": f"medical_doc_{emp.emp_code}.{ext}",
+                "doc_bytes": data,
+            },
+        )
+        db.commit()
+    except Exception as e:
+        logger.warning("Failed to notify HR of uploaded document: %s", e)
 
     return to_request_out(db, row, emp)
 

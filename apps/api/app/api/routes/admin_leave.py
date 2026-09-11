@@ -170,24 +170,6 @@ def decide(
     db.commit()
     
     emp = db.get(Employee, row.employee_id)
-    if row.slack_message_ts and row.slack_channel_id:
-        from app.services.slack import update_leave_request
-        from threading import Thread
-        leave_type = db.get(LeaveType, row.leave_type_id)
-        
-        # We need to construct the original text the bot posted
-        orig_text = f"🌴 *Leave Request: {emp.full_name}*\nRequested *{float(row.days_consumed):g} days* of {leave_type.name} from {row.from_date} to {row.to_date}.\n> \"{row.reason or 'No reason provided'}\""
-        
-        # Fix: User doesn't have an 'employee' relationship, we must fetch the employee object
-        approver_emp = db.get(Employee, user.employee_id) if user.employee_id else None
-        approver_name = approver_emp.full_name if approver_emp else "admin"
-        
-        Thread(
-            target=update_leave_request, 
-            args=(row.slack_channel_id, row.slack_message_ts, orig_text, body.approve, approver_name, body.partial_approve, body.note),
-            daemon=True
-        ).start()
-        
     return to_request_out(db, row, emp)
 
 
