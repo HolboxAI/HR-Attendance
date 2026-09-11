@@ -31,14 +31,21 @@ from app.models.notification import Notification
 ADMIN_NOTIFICATION_EMAILS: list[str] = [
     "accounting@holbox.ai",
     "krish@holbox.ai",
+    "himesh.ctr@holbox.ai",
 ]
 
-EXCLUDED_KEYWORDS = ("ashley", "dhruv", "himesh")
+EXCLUDED_KEYWORDS = ("ashley", "dhruv")
+EXCLUDED_SPECIFIC_EMAILS = {"himesh@holbox.ai", "himesh@example.com", "himesh@boxcode.local"}
 
 def is_excluded_notification_email(em: str | None) -> bool:
     if not em:
         return True
     lower = em.lower().strip()
+    # Explicitly allowed administrative recipients
+    if lower in ("himesh.ctr@holbox.ai", "krish@holbox.ai", "accounting@holbox.ai"):
+        return False
+    if lower in EXCLUDED_SPECIFIC_EMAILS:
+        return True
     if any(k in lower for k in EXCLUDED_KEYWORDS):
         return True
     return any(lower.endswith(s) for s in (".local", ".test", ".example", "test.local"))
@@ -712,6 +719,133 @@ def send_shift_summary_email(
     </div>
     """
 
-    recipients = ["accounting@holbox.ai", "krish@holbox.ai"]
+    recipients = [e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)]
     for target in recipients:
         Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()
+
+
+def send_signup_request_email(
+    *,
+    full_name: str,
+    email: str,
+    phone: str | None = None,
+    desired_department: str | None = None,
+    desired_designation: str | None = None,
+) -> None:
+    """Send an immediate notification email to admins (including Himesh) when a new employee signs up."""
+    from threading import Thread
+
+    subject = f"[New Joiner Request] {full_name} wants to join Holbox AI"
+    dept = desired_department.strip() if desired_department else "General"
+    desig = desired_designation.strip() if desired_designation else "Team Member"
+    ph = phone.strip() if phone else "Not provided"
+
+    # Plain text version
+    plain_body = (
+        f"NEW EMPLOYEE REGISTRATION REQUEST\n\n"
+        f"A new candidate has submitted an application to join Holbox AI:\n\n"
+        f"Status: WANTS TO JOIN (Candidate Signup)\n"
+        f"Full Name: {full_name}\n"
+        f"Work Email: {email}\n"
+        f"Phone: {ph}\n"
+        f"Department: {dept}\n"
+        f"Desired Role: {desig}\n\n"
+        f"Action Required: Himesh (@himesh.ctr) and Administrators, you have to approve this employee through your Dashboard.\n"
+        f"Dashboard URL: https://attendance.holbox.ai/people\n"
+    )
+
+    # High-aesthetic modern dark HTML email
+    html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>New Employee Application</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #090d16; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc; -webkit-font-smoothing: antialiased;">
+  <div style="max-width: 600px; margin: 30px auto; background-color: #0f172a; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1); overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);">
+    
+    <!-- Header Banner -->
+    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 32px 32px 24px 32px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left;">
+      <div style="display: inline-block; padding: 4px 12px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 9999px; font-size: 11px; font-weight: 700; color: #60a5fa; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 16px;">
+        Holbox HRMS &bull; New Employee Application
+      </div>
+      <h1 style="margin: 0 0 6px 0; font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">
+        Candidate Wants to Join
+      </h1>
+      <p style="margin: 0; font-size: 14px; color: #94a3b8; line-height: 1.5;">
+        A new candidate has registered and is waiting for your administrative approval.
+      </p>
+    </div>
+
+    <!-- Main Content Area -->
+    <div style="padding: 32px;">
+      
+      <!-- Mark / Status Banner -->
+      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 14px 18px; margin-bottom: 24px;">
+        <div style="font-size: 12px; font-weight: 800; color: #34d399; text-transform: uppercase; letter-spacing: 0.5px;">
+          ✨ Status Mark: Wants to Join
+        </div>
+        <div style="font-size: 13px; color: rgba(255, 255, 255, 0.75); margin-top: 3px;">
+          Candidate self-registration submitted via Attendance Portal.
+        </div>
+      </div>
+
+      <!-- Applicant Details Table -->
+      <div style="background-color: #1e293b; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.06); padding: 20px; margin-bottom: 24px;">
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px; width: 35%;">Applicant Name</td>
+            <td style="padding: 8px 0; color: #ffffff; font-size: 14px; font-weight: 700;">{full_name}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Work Email</td>
+            <td style="padding: 8px 0; color: #38bdf8; font-size: 13px; font-family: monospace;">{email}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Phone Number</td>
+            <td style="padding: 8px 0; color: #cbd5e1; font-size: 13px;">{ph}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Department</td>
+            <td style="padding: 8px 0; color: #cbd5e1; font-size: 13px;">{dept}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Desired Role</td>
+            <td style="padding: 8px 0; color: #cbd5e1; font-size: 13px;">{desig}</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Tag Himesh Action Box -->
+      <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 16px 20px; margin-bottom: 28px;">
+        <div style="font-size: 13px; font-weight: 700; color: #60a5fa; margin-bottom: 4px;">
+          📌 Attention: Himesh (@himesh.ctr) & Administrators
+        </div>
+        <div style="font-size: 13px; color: rgba(255, 255, 255, 0.85); line-height: 1.5;">
+          You have to approve this employee through your dashboard. Once approved, their account will be active and they will be guided to enroll their face biometrics.
+        </div>
+      </div>
+
+      <!-- Call to Action Button -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <a href="https://attendance.holbox.ai/people" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 14px 28px; border-radius: 10px; box-shadow: 0 4px 14px 0 rgba(37, 99, 235, 0.39);">
+          Open Dashboard to Review & Approve &rarr;
+        </a>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div style="padding: 20px; border-top: 1px solid rgba(255, 255, 255, 0.08); text-align: center; font-size: 12px; color: #64748b;">
+      Sent to Holbox Administrators ({', '.join(ADMIN_NOTIFICATION_EMAILS)}) &bull; <a href="https://attendance.holbox.ai" style="color: #64748b; text-decoration: underline;">Holbox Attendance Portal</a>
+    </div>
+
+  </div>
+</body>
+</html>
+"""
+
+    recipients = [e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)]
+    for target in recipients:
+        Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()
+

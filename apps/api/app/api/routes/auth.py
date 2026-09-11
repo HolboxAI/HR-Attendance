@@ -338,12 +338,22 @@ def signup(body: SignupRequestIn, db: Session = Depends(get_db)) -> SignupRespon
         },
     )
 
-    # Dispatch Slack notification alert
+    # Dispatch email notification to all Admins (Accounting, Krish, Himesh)
+    notifications.send_signup_request_email(
+        full_name=full_name,
+        email=email,
+        phone=req.phone,
+        desired_department=req.desired_department,
+        desired_designation=req.desired_designation,
+    )
+
+    # Dispatch Slack notification alert tagging Himesh
     slack.post_signup_request_alert(
         full_name=full_name,
         email=email,
         phone=req.phone,
         department=req.desired_department,
+        designation=req.desired_designation,
     )
 
     db.commit()

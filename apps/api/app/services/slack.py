@@ -464,26 +464,69 @@ def post_signup_request_alert(
     email: str,
     phone: str | None = None,
     department: str | None = None,
+    designation: str | None = None,
 ) -> None:
     """Post an alert when a candidate submits an employee signup request."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
-    contact_bits = [f"📧 `{email}`"]
-    if phone:
-        contact_bits.append(f"📞 `{phone}`")
-    if department:
-        contact_bits.append(f"🏢 Dept: *{department}*")
-    info_line = " | ".join(contact_bits)
+    # Himesh's Slack user ID in Holbox Slack workspace
+    himesh_slack_id = "U0BQ8HZ3MKJ"
+    himesh_mention = f"<@{himesh_slack_id}>"
+
+    dept_str = department.strip() if department else "General"
+    desig_str = designation.strip() if designation else "Team Member"
+    phone_str = phone.strip() if phone else "Not provided"
 
     blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "✨ New Employee Registration Request",
+                "emoji": True,
+            },
+        },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"✨ *New Employee Registration Request*\n*{full_name}* has requested to join Holbox AI.\n{info_line}\n\n_Review and approve in the Workforce Directory (`/people`) or Notifications._"
-            }
-        }
+                "text": (
+                    f"*{full_name}* has submitted a registration request to join Holbox AI.\n\n"
+                    f"🏷️ *Status Mark:* `WANTS TO JOIN` (Candidate Signup)\n"
+                    f"👤 *Applicant Name:* *{full_name}*\n"
+                    f"📧 *Work Email:* `{email}`\n"
+                    f"📞 *Phone:* `{phone_str}`\n"
+                    f"🏢 *Department:* *{dept_str}*\n"
+                    f"💼 *Desired Role:* *{desig_str}*\n\n"
+                    f"👉 {himesh_mention} *You have to approve this employee through your dashboard.*"
+                ),
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "Review & Approve in Dashboard",
+                        "emoji": True,
+                    },
+                    "url": "https://attendance.holbox.ai/people",
+                    "style": "primary",
+                }
+            ],
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "Holbox HRMS Portal • Review candidate under People Directory or Notifications",
+                }
+            ],
+        },
     ]
 
     try:
@@ -492,7 +535,7 @@ def post_signup_request_alert(
             headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
             json={
                 "channel": settings.slack_channel_id,
-                "text": f"New Employee Signup: {full_name} ({email})",
+                "text": f"✨ New Employee Registration: {full_name} ({email}) wants to join. {himesh_mention} you have to approve him through your dashboard.",
                 "blocks": blocks,
             },
             timeout=5.0,
@@ -502,3 +545,4 @@ def post_signup_request_alert(
             logger.error(f"Slack API error in post_signup_request_alert: {res_data.get('error')}")
     except Exception as e:
         logger.error(f"Failed to post signup request alert to Slack: {e}")
+
