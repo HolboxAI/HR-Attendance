@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     max_queued_punch_hours: int = 48
 
     # Reject a punch from a phone that has not been bound to its employee.
-    # See app/services/devices.py for what binding means and how HR clears one.
-    require_device_binding: bool = True
+    # Set to False to disable device binding checks completely.
+    require_device_binding: bool = False
     default_tz: str = "Asia/Kolkata"
     api_prefix: str = "/api/v1"
     api_url: str = "http://attendance.holbox.ai/api/v1"

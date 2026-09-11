@@ -361,8 +361,8 @@ export default async function DashboardPage({
               value={enrolments ? enrolments.summary.missing : '—'} sub="missing face photo" tone="neutral"
             />
             <MetricTile
-              index={1} label="Device Handsets" icon="phone" href="/devices"
-              value="→" sub="bound mobile phones" tone="neutral"
+              index={1} label="Work Shifts" icon="clock" href="/people/shifts"
+              value="→" sub="timing & schedules" tone="neutral"
             />
             <MetricTile
               index={2} label="Leave Policy" icon="calendar" href="/leave/policy"

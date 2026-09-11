@@ -145,7 +145,7 @@ export function Directory({
     );
   }, [localRows, query]);
 
-  const showHrColumns = localRows.some((r) => r.enrolled !== null || r.deviceBound !== null);
+  const showHrColumns = localRows.some((r) => r.enrolled !== null);
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
@@ -409,7 +409,6 @@ export function Directory({
                   <th className="px-5 py-3.5 font-semibold">Shift</th>
                   <th className="px-5 py-3.5 font-semibold">Today</th>
                   {showHrColumns && <th className="px-5 py-3.5 font-semibold">Biometrics</th>}
-                  {showHrColumns && <th className="px-5 py-3.5 font-semibold">Handset Device</th>}
                   {canDelete && <th className="px-5 py-3.5 font-semibold text-right">Actions</th>}
                 </tr>
               </thead>
@@ -466,13 +465,6 @@ export function Directory({
                           {r.enrolled === null ? '—' : r.enrolled
                             ? <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-st-present/15 text-st-present border border-st-present/25 font-medium"><span className="size-1.5 rounded-full bg-current" />Enrolled</span>
                             : <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-st-late/15 text-st-late border border-st-late/25 font-medium"><span className="size-1.5 rounded-full bg-current" />No photo</span>}
-                        </td>
-                      )}
-                      {showHrColumns && (
-                        <td className="px-5 py-3.5 text-xs font-mono">
-                          {r.deviceBound === null ? '—' : r.deviceBound
-                            ? <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-st-present/15 text-st-present border border-st-present/25 font-medium"><span className="size-1.5 rounded-full bg-current" />Bound</span>
-                            : <span className="text-ink-3 font-medium">None</span>}
                         </td>
                       )}
                       {canDelete && (

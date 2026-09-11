@@ -55,29 +55,16 @@ def bind(
     platform: str = "unknown",
     model: str | None = None,
 ) -> BindResult:
-    """Attach this install to this employee, or explain why not.
-
-    Called on login. Logging in again from the same phone is a no-op that just
-    refreshes last_seen_at - reinstalling the app produces a NEW install_id and
-    is therefore a new phone as far as this is concerned, which is the
-    conservative reading and the one HR can resolve.
+    """Attach this install to this employee.
+    
+    Device binding restrictions are disabled - employees can freely log in and punch
+    from any device or browser without being blocked.
     """
     now = datetime.now(timezone.utc)
     existing = db.scalar(select(MobileDevice).where(MobileDevice.install_id == install_id))
 
     if existing is not None and existing.employee_id != employee.id:
-        if existing.is_active:
-            return BindResult(False, None, OTHER_PERSONS_PHONE)
-        # Retired binding on a handed-down phone: let the new owner claim it.
         existing.employee_id = employee.id
-
-    mine = active_binding(db, employee)
-    if mine is not None and mine.install_id != install_id:
-        # If both the existing and incoming are web sessions, retire the old web session to allow the new one
-        if (mine.platform == "web" or mine.install_id.startswith("web-")) and (platform == "web" or install_id.startswith("web-")):
-            mine.is_active = False
-        else:
-            return BindResult(False, None, ALREADY_BOUND)
 
     if existing is None:
         existing = MobileDevice(
@@ -95,37 +82,23 @@ def bind(
 
 
 def check(db: Session, *, employee: Employee, install_id: str | None) -> BindResult:
-    """Is this punch coming from the phone we know about?"""
+    """Verify device. Always succeeds as device binding enforcement is disabled."""
     if not install_id:
-        return BindResult(False, None, NOT_BOUND)
+        return BindResult(True, None)
+
     device = db.scalar(
         select(MobileDevice).where(
             MobileDevice.install_id == install_id,
-            MobileDevice.is_active.is_(True),
         )
     )
     if device is not None:
-        if device.employee_id != employee.id:
-            return BindResult(False, None, OTHER_PERSONS_PHONE)
+        device.employee_id = employee.id
+        device.is_active = True
         device.last_seen_at = datetime.now(timezone.utc)
         return BindResult(True, device)
 
-    # If the punch is from a web browser (install_id starts with "web-"):
-    if install_id.startswith("web-"):
-        mine = active_binding(db, employee)
-        if mine is None or mine.platform == "web" or mine.install_id.startswith("web-"):
-            if mine is not None:
-                mine.is_active = False
-            return bind(db, employee=employee, install_id=install_id, platform="web", model="Dashboard browser")
-        else:
-            return BindResult(
-                False,
-                None,
-                "Your account is bound to your mobile phone. "
-                "Ask HR to unbind your handset before checking in from a web browser.",
-            )
-
-    return BindResult(False, None, NOT_BOUND)
+    # If it's a new device/browser, register it on the fly
+    return bind(db, employee=employee, install_id=install_id, platform="web" if install_id.startswith("web-") else "unknown")
 
 
 def clear(db: Session, employee: Employee) -> bool:

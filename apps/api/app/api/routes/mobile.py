@@ -149,10 +149,8 @@ async def punch(
     # deliberately no employee_code parameter on this endpoint: while one
     # existed, anyone with curl could punch as anyone, and adding auth around
     # it would have changed nothing except how secure it looked.
-    if settings.require_device_binding:
-        bound = devices.check(db, employee=emp, install_id=install_id)
-        if not bound.ok:
-            raise HTTPException(403, bound.reason or devices.NOT_BOUND)
+    if install_id:
+        devices.check(db, employee=emp, install_id=install_id)
 
     image = await selfie.read()
     if not image:

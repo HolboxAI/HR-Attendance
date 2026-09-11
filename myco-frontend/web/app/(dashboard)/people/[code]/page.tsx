@@ -118,19 +118,6 @@ export default async function EmployeeDetailPage({
                 : <span className="text-sm text-st-late"><span aria-hidden>◌ </span>No photo</span>}
             </div>
           )}
-          {device !== null && devices.ok && (
-            <div>
-              <div className="text-[10px] uppercase tracking-widest text-ink-3">Device</div>
-              {device?.bound ? (
-                <span className="text-sm text-st-present">
-                  <span aria-hidden>● </span>{device.platform ?? 'bound'}
-                  {device.model ? ` · ${device.model}` : ''}
-                </span>
-              ) : (
-                <span className="text-sm text-ink-3"><span aria-hidden>○ </span>No phone registered</span>
-              )}
-            </div>
-          )}
         </div>
         {/* This page is manager-and-above already; messaging is scoped the
             same way the board is, so anyone who can see this person can

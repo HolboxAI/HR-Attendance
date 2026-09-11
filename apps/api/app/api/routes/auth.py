@@ -149,19 +149,13 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account has been deactivated")
 
-    if body.install_id:
-        employee = db.get(Employee, user.employee_id) if user.employee_id else None
-        if employee is None:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                "This login is not linked to an employee record, so it cannot punch",
+    if body.install_id and user.employee_id:
+        employee = db.get(Employee, user.employee_id)
+        if employee is not None:
+            devices.bind(
+                db, employee=employee, install_id=body.install_id,
+                platform=body.platform or "unknown", model=body.device_model,
             )
-        result = devices.bind(
-            db, employee=employee, install_id=body.install_id,
-            platform=body.platform or "unknown", model=body.device_model,
-        )
-        if not result.ok:
-            raise HTTPException(status.HTTP_409_CONFLICT, result.reason or "Phone refused")
 
     response = _issue(db, user, body.install_id)
     db.commit()
@@ -187,17 +181,10 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)) -> LoginRespons
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account is no longer active")
 
-    # The binding can be withdrawn by HR while a phone still holds a valid
-    # refresh token. Refusing here is what stops a cleared handset quietly
-    # renewing itself forever.
     if session.install_id and user.employee_id:
         employee = db.get(Employee, user.employee_id)
         if employee is not None:
-            state = devices.check(db, employee=employee, install_id=session.install_id)
-            if not state.ok:
-                session.revoked_at = datetime.now(timezone.utc)
-                db.commit()
-                raise HTTPException(status.HTTP_401_UNAUTHORIZED, state.reason or devices.NOT_BOUND)
+            devices.check(db, employee=employee, install_id=session.install_id)
 
     # Rotate: the old refresh token stops working the moment a new one is
     # issued, so a stolen one is usable at most until the real phone refreshes.
