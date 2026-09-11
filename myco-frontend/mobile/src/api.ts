@@ -69,10 +69,14 @@ export async function getToday(): Promise<TodayStatus> {
         direction: j.direction,
         checkedInAt: j.checked_in_at,
         checkedOutAt: j.checked_out_at,
-        workedMinutes: j.worked_minutes,
+        workedMinutes: j.worked_minutes ?? 0,
+        lateMinutes: j.late_minutes ?? 0,
         shiftLabel: j.shift_label,
+        shiftStart: j.shift_start ?? null,
+        shiftEnd: j.shift_end ?? null,
         officeName: j.office_name,
         fullName: j.full_name,
+        employeeCode: j.employee_code,
       };
     }
     throw new Error(await detail(res, `Could not load today (${res.status})`));

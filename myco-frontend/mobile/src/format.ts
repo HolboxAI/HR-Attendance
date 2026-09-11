@@ -15,6 +15,15 @@ export function hoursLabel(min: number): string {
   return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
 }
 
+export function formatHoursMins(min: number): string {
+  if (!min || min <= 0) return '0 hrs';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 /** "Mon 8 Sep" from YYYY-MM-DD. */
 export function plainDate(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', {

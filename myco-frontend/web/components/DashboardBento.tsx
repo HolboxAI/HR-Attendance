@@ -88,7 +88,11 @@ export function DashboardBento({
 
             <div>
               <div className="text-xs text-ink-3 font-mono uppercase tracking-wider mb-1">
-                Good day, {firstName}
+                {(() => {
+                  const h = new Date().getHours();
+                  const part = h < 12 ? "Morning" : h < 17 ? "Afternoon" : "Evening";
+                  return `Good ${part}, ${firstName}`;
+                })()}
               </div>
               <div className="flex items-baseline gap-3">
                 <h3 className="text-5xl sm:text-6xl font-black tracking-tighter text-ink font-display">

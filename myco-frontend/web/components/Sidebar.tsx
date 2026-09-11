@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   ArrowUpRight,
-  Bell, CalendarClock, CalendarRange, Camera, ChevronLeft, ClipboardList, Clock, History, LayoutGrid,
+  Bell, CalendarClock, CalendarRange, Camera, ChevronLeft, ClipboardList, Clock, History, Laptop, LayoutGrid,
   ScanFace, Scale, SlidersHorizontal, Users, PieChart, MonitorPlay, Settings
 } from 'lucide-react';
 
@@ -42,6 +42,7 @@ export const SECTIONS: Section[] = [
     items: [
       { href: '/board', label: 'History & Board', icon: CalendarRange, show: all },
       { href: '/checkin', label: 'Check in', icon: Camera, show: all },
+      { href: '/wfh', label: 'Work from home', icon: Laptop, show: all },
       { href: '/corrections', label: 'Corrections', icon: ClipboardList, show: all },
     ],
   },

@@ -5,9 +5,13 @@ export type TodayStatus = {
   checkedInAt: string | null;
   checkedOutAt: string | null;
   workedMinutes: number;
+  lateMinutes: number;
   shiftLabel: string;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
   officeName: string;
   fullName: string;
+  employeeCode?: string;
 };
 
 export type PunchResult = {

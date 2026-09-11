@@ -5,9 +5,10 @@ import {
   ActivityIndicator, Animated, AppState, Easing, Linking, Platform, Pressable,
   ScrollView, StyleSheet, Text, View,
 } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { getToday, submitPunch } from './api';
-import { hhmm, hoursLabel } from './format';
+import { formatHoursMins, hhmm } from './format';
 import { enqueue } from './queue';
 import { flush, pendingCount } from './sync';
 import { useTheme } from './ThemeContext';
@@ -17,6 +18,13 @@ import type { PunchResult, TodayStatus } from './types';
 /** Local wall-clock time, for telling someone when their punch was saved. */
 function hhmmLocal(d: Date): string {
   return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good Morning';
+  if (hour < 17) return 'Good Afternoon';
+  return 'Good Evening';
 }
 
 type Phase = 'idle' | 'camera' | 'working' | 'result';
@@ -113,6 +121,13 @@ export default function PunchScreen() {
     });
     return () => sub.remove();
   }, [load]);
+
+  // Real-time minute tick for shift progress
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const askPermissions = useCallback(async () => {
     const cam = await requestCam();
@@ -220,16 +235,69 @@ export default function PunchScreen() {
         // Two different messages, because they are two different situations
         // and the difference matters enormously to the person reading it.
         message: saved
-          ? `No signal - saved on your phone at ${hhmmLocal(capturedAt)} and will `
-            + 'send itself when you are back online.'
+          ? `No signal - saved on your phone at ${hhmmLocal(capturedAt)} and will send itself when you are back online.`
           : Platform.OS === 'web'
-            ? 'Could not reach the server, and the browser preview cannot '
-              + 'queue offline punches - that part needs the phone app.'
-            : 'Could not check in and could not save it either. Please try again '
-              + 'when you have signal.',
+            ? 'Could not reach the server, and the browser preview cannot queue offline punches.'
+            : 'Could not check in and could not save it either. Please try again when you have signal.',
       });
     }
   }, [today, ringProgress]);
+
+  // Compute shift progression (same exact logic as web check-in page)
+  const shiftInfo = useMemo(() => {
+    let startMinutes = 10 * 60;
+    let endMinutes = 19 * 60;
+    let startStr = '10:00';
+    let endStr = '19:00';
+
+    if (today?.shiftStart && today?.shiftEnd) {
+      const [sh, sm] = today.shiftStart.split(':').map(Number);
+      const [eh, em] = today.shiftEnd.split(':').map(Number);
+      if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+        startMinutes = sh * 60 + sm;
+        endMinutes = eh * 60 + em;
+        startStr = today.shiftStart;
+        endStr = today.shiftEnd;
+      }
+    } else if (today?.shiftLabel && today.shiftLabel.includes('-')) {
+      const parts = today.shiftLabel.split('-').map((str) => str.trim());
+      if (parts.length === 2) {
+        startStr = parts[0];
+        endStr = parts[1];
+        const [sh, sm] = startStr.split(':').map(Number);
+        const [eh, em] = endStr.split(':').map(Number);
+        if (!isNaN(sh) && !isNaN(sm) && !isNaN(eh) && !isNaN(em)) {
+          startMinutes = sh * 60 + sm;
+          endMinutes = eh * 60 + em;
+        }
+      }
+    }
+
+    const totalMinutes = endMinutes > startMinutes ? endMinutes - startMinutes : 24 * 60 - startMinutes + endMinutes;
+    const now = new Date();
+    const currentMinuteOfDay = now.getHours() * 60 + now.getMinutes();
+
+    let elapsedMinutes = 0;
+    if (currentMinuteOfDay >= startMinutes) {
+      elapsedMinutes = currentMinuteOfDay - startMinutes;
+    }
+
+    const remainingMinutes = Math.max(0, totalMinutes - elapsedMinutes);
+    const progress = Math.min(100, Math.max(0, (elapsedMinutes / totalMinutes) * 100));
+    const isShiftStarted = currentMinuteOfDay >= startMinutes;
+    const isShiftEnded = currentMinuteOfDay >= endMinutes;
+
+    return {
+      startStr,
+      endStr,
+      totalMinutes,
+      elapsedMinutes,
+      remainingMinutes,
+      progress,
+      isShiftStarted,
+      isShiftEnded,
+    };
+  }, [today]);
 
   if (loadError) {
     return (
@@ -239,12 +307,6 @@ export default function PunchScreen() {
         <Pressable style={s.retryBtn} onPress={load} accessibilityRole="button">
           <Text style={s.retryText}>Try again</Text>
         </Pressable>
-        {pending > 0 && (
-          <Text style={s.errBody}>
-            {pending === 1 ? '1 punch is' : `${pending} punches are`} still saved
-            on this phone and will sync once the server is reachable.
-          </Text>
-        )}
       </View>
     );
   }
@@ -271,11 +333,11 @@ export default function PunchScreen() {
             <>
               <Pressable
                 style={s.shutter} onPress={capture}
-                accessibilityRole="button" accessibilityLabel="Take the check-in photo"
+                accessibilityRole="button" accessibilityLabel="Take photo"
               >
                 <View style={s.shutterInner} />
               </Pressable>
-              <Pressable onPress={() => setPhase('idle')} hitSlop={12} accessibilityRole="button">
+              <Pressable onPress={() => setPhase('idle')}>
                 <Text style={s.cancel}>Cancel</Text>
               </Pressable>
             </>
@@ -285,14 +347,31 @@ export default function PunchScreen() {
     );
   }
 
-  const goingIn = today.direction === 'in';
-  const checkedIn = !!today.checkedInAt && !today.checkedOutAt;
+  // When direction is 'out', employee has checked in and next action is Check Out.
+  const isCurrentlyIn = today.direction === 'out' || (!!today.checkedInAt && !today.checkedOutAt);
   const camDenied = camPerm && !camPerm.granted && !camPerm.canAskAgain;
   const locDenied = locPerm === 'denied';
 
+  // Circle Dimensions for SVG Progress Ring
+  const CIRCLE_SIZE = 240;
+  const RADIUS = 96;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS; // ~603.18
+  const strokeDashoffset = CIRCUMFERENCE * (1 - shiftInfo.progress / 100);
+
   return (
     <ScrollView style={s.screen} contentContainerStyle={s.content}>
-      <Text style={s.eyebrow}>{today.officeName.toUpperCase()}</Text>
+      {/* Top Header & Dynamic Greeting */}
+      <View style={s.headerBox}>
+        <Text style={s.eyebrow}>{today.officeName.toUpperCase()} · BIO GATEWAY</Text>
+        <Text style={s.greeting}>
+          {getGreeting()}, {today.fullName.split(' ')[0]}
+        </Text>
+        <Text style={s.shift}>
+          {isCurrentlyIn
+            ? 'Shift in Progress · You are currently checked in'
+            : 'Ready to Check In · Tap below to record your punch'}
+        </Text>
+      </View>
 
       {/*
         Anything still waiting is stated plainly and permanently, not as a
@@ -303,8 +382,7 @@ export default function PunchScreen() {
         <View style={s.pendingRow}>
           <Text style={s.pendingGlyph}>◌</Text>
           <Text style={s.pendingText}>
-            {pending === 1 ? '1 punch' : `${pending} punches`} saved on this phone,
-            waiting for signal.{' '}
+            {pending === 1 ? '1 punch' : `${pending} punches`} saved on this phone, waiting for signal.{' '}
             <Text
               style={s.pendingLink}
               onPress={async () => {
@@ -321,181 +399,266 @@ export default function PunchScreen() {
       )}
       {syncNote && <Text style={s.syncNote}>{syncNote}</Text>}
 
-      <Text style={s.greeting}>
-        {checkedIn ? 'You are checked in' : goingIn ? 'Good morning' : 'Have a good evening'}
-      </Text>
-      <Text style={s.shift}>
-        {today.fullName.split(' ')[0]} · shift {today.shiftLabel}
-      </Text>
-
+      {/* Punch Result Banner */}
       {phase === 'result' && result && (
         <View
           style={[s.banner, result.accepted ? s.bannerOk : queued ? s.bannerWarn : s.bannerBad]}
           accessibilityLiveRegion="polite"
         >
-          <Text style={s.bannerGlyph}>
-            {result.accepted ? '✓' : queued ? '◌' : '✕'}
-          </Text>
+          <Text style={s.bannerGlyph}>{result.accepted ? '✓' : queued ? '◌' : '✕'}</Text>
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={s.bannerTitle}>{result.message}</Text>
             {result.distanceM !== null && (
-              <Text style={s.bannerSub}>{Math.round(result.distanceM)}m from the office</Text>
+              <Text style={s.bannerSub}>{Math.round(result.distanceM)}m from office</Text>
             )}
             {result.faceSimilarity !== null && (
               <Text style={s.bannerSub}>Face match {result.faceSimilarity.toFixed(1)}%</Text>
-            )}
-            {queued && (
-              <Text style={s.bannerSub}>
-                Saved, not checked in - it counts once the server accepts it.
-              </Text>
             )}
           </View>
         </View>
       )}
 
-      <Pressable
-        style={({ pressed }) => [s.punch, goingIn ? s.punchIn : s.punchOut, pressed && s.pressed]}
-        onPress={startPunch}
-        accessibilityRole="button"
-        accessibilityLabel={goingIn ? 'Check in' : 'Check out'}
-      >
-        <Text style={[s.punchLabel, !goingIn && s.punchLabelOut]}>
-          {goingIn ? 'Check In' : 'Check Out'}
-        </Text>
-        <Text style={[s.punchSub, !goingIn && s.punchLabelOut]}>Tap - the camera will open</Text>
-      </Pressable>
+      {/* Dynamic Shift Hour Progress Ring & Centered Interactive Punch Button */}
+      <View style={s.circleContainer}>
+        <Svg width={CIRCLE_SIZE} height={CIRCLE_SIZE} style={StyleSheet.absoluteFill}>
+          <Defs>
+            <LinearGradient id="shiftGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <Stop offset="0%" stopColor={isCurrentlyIn ? '#fb7185' : '#38bdf8'} />
+              <Stop offset="100%" stopColor={isCurrentlyIn ? '#e11d48' : '#2563eb'} />
+            </LinearGradient>
+          </Defs>
+          {/* Background Track Ring */}
+          <Circle
+            cx={CIRCLE_SIZE / 2}
+            cy={CIRCLE_SIZE / 2}
+            r={RADIUS}
+            stroke={c.surface2}
+            strokeWidth={10}
+            fill="none"
+          />
+          {/* Dynamic Shift Progress Arc */}
+          <Circle
+            cx={CIRCLE_SIZE / 2}
+            cy={CIRCLE_SIZE / 2}
+            r={RADIUS}
+            stroke="url(#shiftGradient)"
+            strokeWidth={10}
+            strokeLinecap="round"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={strokeDashoffset}
+            fill="none"
+            transform={`rotate(-90 ${CIRCLE_SIZE / 2} ${CIRCLE_SIZE / 2})`}
+          />
+        </Svg>
 
-      <View style={s.card}>
-        <Text style={s.cardTitle}>TODAY</Text>
-        <Row label="Checked in" value={hhmm(today.checkedInAt)} />
-        <Row label="Checked out" value={hhmm(today.checkedOutAt)} />
-        <Row label="Hours" value={hoursLabel(today.workedMinutes)} />
+        {/* Center Interactive Circular Button */}
+        <Pressable
+          style={({ pressed }) => [
+            s.punchCircle,
+            isCurrentlyIn ? s.punchCircleOut : s.punchCircleIn,
+            pressed && s.pressed,
+          ]}
+          onPress={startPunch}
+          accessibilityRole="button"
+          accessibilityLabel={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
+        >
+          <Text style={[s.circleIcon, isCurrentlyIn ? s.circleIconOut : s.circleIconIn]}>
+            {isCurrentlyIn ? '⇥' : '⇤'}
+          </Text>
+          <Text style={[s.circleLabel, isCurrentlyIn ? s.circleLabelOut : s.circleLabelIn]}>
+            {isCurrentlyIn ? 'Check Out' : 'Check In'}
+          </Text>
+          <Text style={[s.circleSub, isCurrentlyIn ? s.circleSubOut : s.circleSubIn]}>
+            {isCurrentlyIn && today.checkedInAt ? `In at ${hhmm(today.checkedInAt)}` : 'Tap to punch'}
+          </Text>
+        </Pressable>
       </View>
 
+      {/* Live Shift Tracker Pill Indicator */}
+      <View style={s.shiftProgressPill}>
+        <View style={[s.pulseDot, { backgroundColor: isCurrentlyIn ? '#10b981' : '#3b82f6' }]} />
+        <Text style={s.shiftProgressText}>
+          Live Shift Tracker · {Math.round(shiftInfo.progress)}% Elapsed ·{' '}
+          {shiftInfo.isShiftEnded
+            ? 'Shift completed for today'
+            : !shiftInfo.isShiftStarted
+            ? `Starts in ${formatHoursMins(Math.max(0, -shiftInfo.elapsedMinutes))}`
+            : `${formatHoursMins(shiftInfo.remainingMinutes)} remaining`}
+        </Text>
+      </View>
+
+      {/* Daily Metrics Bento Cards (Hours Worked Today, Late By Today, Shift Schedule) */}
+      <View style={s.metricsGrid}>
+        {/* Card 1: Hours Worked Today */}
+        <View style={s.metricCard}>
+          <View style={s.metricHeader}>
+            <Text style={s.metricLabel}>WORKED TODAY</Text>
+            <Text style={s.metricGlyph}>⏱</Text>
+          </View>
+          <Text style={s.metricVal}>{formatHoursMins(today.workedMinutes)}</Text>
+          <Text style={s.metricSub}>
+            {isCurrentlyIn ? 'Active session' : 'Clocked today'}
+          </Text>
+        </View>
+
+        {/* Card 2: Late By Today */}
+        <View style={s.metricCard}>
+          <View style={s.metricHeader}>
+            <Text style={s.metricLabel}>LATE BY</Text>
+            <Text style={s.metricGlyph}>⏳</Text>
+          </View>
+          <Text style={[s.metricVal, { color: today.lateMinutes > 0 ? '#f59e0b' : '#10b981' }]}>
+            {today.lateMinutes > 0 ? formatHoursMins(today.lateMinutes) : '0 hrs'}
+          </Text>
+          <Text style={s.metricSub}>
+            {today.lateMinutes > 0 ? `${today.lateMinutes}m after grace` : 'On time today'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Card 3: Today's Shift Schedule */}
+      <View style={s.shiftCard}>
+        <View style={s.metricHeader}>
+          <Text style={s.metricLabel}>TODAY&apos;S SHIFT</Text>
+          <Text style={s.metricGlyph}>📅</Text>
+        </View>
+        <View style={s.shiftRow}>
+          <Text style={s.shiftScheduleVal}>{today.shiftLabel}</Text>
+          <Text style={s.shiftTimingSub}>
+            {shiftInfo.startStr} &ndash; {shiftInfo.endStr}
+          </Text>
+        </View>
+        <Text style={s.metricSub}>
+          {today.checkedInAt
+            ? `Checked in at ${hhmm(today.checkedInAt)}${today.checkedOutAt ? ` · Out at ${hhmm(today.checkedOutAt)}` : ''}`
+            : 'Awaiting punch-in for today'}
+        </Text>
+      </View>
+
+      {/* Bottom Check-In / Check-Out Primary Action Button */}
+      <Pressable
+        style={({ pressed }) => [
+          s.bottomActionBtn,
+          isCurrentlyIn ? s.bottomActionBtnOut : s.bottomActionBtnIn,
+          pressed && s.pressed,
+        ]}
+        onPress={startPunch}
+        accessibilityRole="button"
+        accessibilityLabel={isCurrentlyIn ? 'Check out' : 'Check in'}
+      >
+        <Text style={s.bottomActionBtnText}>
+          {isCurrentlyIn ? 'Check Out' : 'Check In'}
+        </Text>
+        <Text style={s.bottomActionBtnSub}>
+          {isCurrentlyIn ? 'Tap to open camera & record checkout' : 'Tap to open camera & record check-in'}
+        </Text>
+      </Pressable>
+
+      {/* Permission Prompts */}
       {(!camPerm?.granted || locPerm !== 'granted') && (
         <View style={s.permCard}>
           <Text style={s.permTitle}>
             {camDenied || locDenied ? 'Permission switched off' : 'Two permissions needed'}
           </Text>
           <Text style={s.permBody}>
-            {camDenied && locDenied
-              ? 'Camera and location are both off for Holbox in Settings. The camera confirms it’s you; location confirms you’re at the office. Checking in needs both.'
-              : camDenied
-                ? 'The camera is off for Holbox in Settings. It confirms it’s you - checking in can’t work without it.'
-                : locDenied
-                  ? 'Location is off for Holbox in Settings. It confirms you’re at the office - checking in can’t work without it.'
-                  : 'The camera confirms it’s you. Location confirms you’re at the office. Without both, checking in can’t work.'}
+            Camera confirms your identity; location confirms you are at the office. Both are required for biometric check-in.
           </Text>
-          {camDenied || locDenied ? (
-            <Pressable
-              style={s.permBtn}
-              onPress={() => Linking.openSettings()}
-              accessibilityRole="button"
-            >
-              <Text style={s.permBtnText}>
-                {Platform.OS === 'ios' ? 'Open Settings' : 'Open app settings'}
-              </Text>
-            </Pressable>
-          ) : (
-            <Pressable style={s.permBtn} onPress={askPermissions} accessibilityRole="button">
-              <Text style={s.permBtnText}>Allow</Text>
-            </Pressable>
-          )}
+          <Pressable
+            style={s.permBtn}
+            onPress={camDenied || locDenied ? () => Linking.openSettings() : askPermissions}
+            accessibilityRole="button"
+          >
+            <Text style={s.permBtnText}>{camDenied || locDenied ? 'Open Settings' : 'Allow Permissions'}</Text>
+          </Pressable>
         </View>
       )}
     </ScrollView>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  const { c } = useTheme();
-  const s = useMemo(() => makeStyles(c), [c]);
-  return (
-    <View style={s.row}>
-      <Text style={s.rowLabel}>{label}</Text>
-      <Text style={s.rowValue}>{value}</Text>
-    </View>
-  );
-}
-
 const makeStyles = (c: ThemeColors) => StyleSheet.create({
-  pendingRow: {
-    flexDirection: 'row', gap: 8, alignItems: 'flex-start',
-    backgroundColor: c.surface2, borderColor: c.warn, borderWidth: 1,
-    borderRadius: 8, padding: 12, marginBottom: 4,
-  },
-  pendingGlyph: { color: c.warn, fontSize: 14, lineHeight: 20 },
-  pendingText: { color: c.ink2, fontSize: 14, lineHeight: 20, flex: 1 },
-  pendingLink: { color: c.accent, fontWeight: '600' },
-  syncNote: { color: c.warn, fontSize: 13, lineHeight: 19 },
   screen: { flex: 1, backgroundColor: c.ground },
   center: { alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 24, paddingTop: 40, gap: 16 },
+  content: { padding: 20, paddingTop: 36, paddingBottom: 40, gap: 16 },
 
-  eyebrow: { color: c.accent, fontSize: 12, letterSpacing: 1.6, fontWeight: '600' },
-  greeting: { color: c.ink, fontSize: 30, fontWeight: '700', letterSpacing: -0.5 },
-  shift: { color: c.ink3, fontSize: 14, marginTop: -10 },
+  headerBox: { gap: 4 },
+  eyebrow: { color: c.accent, fontSize: 11, letterSpacing: 1.5, fontWeight: '700' },
+  greeting: { color: c.ink, fontSize: 26, fontWeight: '800', letterSpacing: -0.5 },
+  shift: { color: c.ink3, fontSize: 13, marginTop: -2 },
 
-  // A circle, not a bar: the one action of the whole product gets the shape
-  // of a button you press, centred where a thumb naturally rests.
-  punch: {
-    width: 208, height: 208, borderRadius: 104,
-    alignItems: 'center', justifyContent: 'center', gap: 4,
-    alignSelf: 'center', marginTop: 16, marginBottom: 8,
-    boxShadow: '0px 8px 18px rgba(0,0,0,0.25)', elevation: 10,
+  circleContainer: {
+    width: 240, height: 240,
+    alignItems: 'center', justifyContent: 'center',
+    alignSelf: 'center', marginVertical: 8,
   },
-  punchIn: { backgroundColor: c.accent },
-  punchOut: { backgroundColor: c.surface2, borderWidth: 2, borderColor: c.accent },
-  pressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
-  punchLabel: {
-    fontSize: 25, fontWeight: '800', color: c.accentInk,
-    letterSpacing: -0.3, textAlign: 'center',
+  punchCircle: {
+    width: 172, height: 172, borderRadius: 86,
+    alignItems: 'center', justifyContent: 'center', gap: 2,
+    boxShadow: '0px 10px 24px rgba(0,0,0,0.3)', elevation: 12,
   },
-  punchLabelOut: { color: c.accent },
-  punchSub: {
-    fontSize: 12, color: c.accentInk, opacity: 0.7,
-    textAlign: 'center', paddingHorizontal: 24,
+  punchCircleIn: {
+    backgroundColor: c.surface,
+    borderWidth: 2, borderColor: '#3b82f6',
   },
+  punchCircleOut: {
+    backgroundColor: c.surface,
+    borderWidth: 2, borderColor: '#ef4444',
+  },
+  pressed: { opacity: 0.88, transform: [{ scale: 0.97 }] },
 
-  banner: {
-    borderRadius: theme.radius.md, padding: 16, borderWidth: 1,
-    flexDirection: 'row', gap: 10, alignItems: 'flex-start',
-  },
-  bannerOk: { backgroundColor: c.okBg, borderColor: c.ok },
-  bannerBad: { backgroundColor: c.badBg, borderColor: c.crit },
-  bannerWarn: { backgroundColor: c.warnBg, borderColor: c.warn },
-  bannerGlyph: { color: c.ink, fontSize: 18, fontWeight: '700', lineHeight: 22 },
-  bannerTitle: { color: c.ink, fontSize: 16, fontWeight: '600' },
-  bannerSub: { color: c.ink3, fontSize: 13 },
+  circleIcon: { fontSize: 28, marginBottom: 2 },
+  circleIconIn: { color: '#3b82f6' },
+  circleIconOut: { color: '#ef4444' },
 
-  card: {
-    backgroundColor: c.surface, borderRadius: theme.radius.md, padding: 18,
-    borderWidth: 1, borderColor: c.line, gap: 2,
-  },
-  cardTitle: { color: c.ink3, fontSize: 12, letterSpacing: 1.4, fontWeight: '600', marginBottom: 8 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7 },
-  rowLabel: { color: c.ink2, fontSize: 15 },
-  rowValue: { color: c.ink, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  circleLabel: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
+  circleLabelIn: { color: '#3b82f6' },
+  circleLabelOut: { color: '#ef4444' },
 
-  permCard: {
-    backgroundColor: c.surface, borderRadius: theme.radius.md, padding: 18,
-    borderWidth: 1, borderColor: c.warn, gap: 8,
-  },
-  permTitle: { color: c.ink, fontSize: 16, fontWeight: '700' },
-  permBody: { color: c.ink2, fontSize: 14, lineHeight: 20 },
-  permBtn: {
-    backgroundColor: c.accent, borderRadius: theme.radius.sm,
-    paddingVertical: 11, alignItems: 'center', marginTop: 4,
-  },
-  permBtnText: { color: c.accentInk, fontWeight: '700', fontSize: 15 },
+  circleSub: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  circleSubIn: { color: c.ink3 },
+  circleSubOut: { color: '#fb7185' },
 
+  shiftProgressPill: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 8, paddingHorizontal: 14,
+    backgroundColor: c.surface, borderRadius: 9999,
+    borderWidth: 1, borderColor: c.line, alignSelf: 'center',
+  },
+  pulseDot: { width: 8, height: 8, borderRadius: 4 },
+  shiftProgressText: { color: c.ink2, fontSize: 12, fontWeight: '600' },
+
+  metricsGrid: { flexDirection: 'row', gap: 12 },
+  metricCard: {
+    flex: 1, backgroundColor: c.surface, borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: c.line, gap: 4,
+  },
+  metricHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  metricLabel: { color: c.ink3, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
+  metricGlyph: { fontSize: 13 },
+  metricVal: { color: c.ink, fontSize: 24, fontWeight: '800', marginVertical: 2 },
+  metricSub: { color: c.ink3, fontSize: 11 },
+
+  shiftCard: {
+    backgroundColor: c.surface, borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: c.line, gap: 4,
+  },
+  shiftRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginVertical: 2 },
+  shiftScheduleVal: { color: c.ink, fontSize: 20, fontWeight: '800' },
+  shiftTimingSub: { color: c.ink3, fontSize: 13, fontWeight: '600' },
+
+  bottomActionBtn: {
+    borderRadius: 16, paddingVertical: 16, alignItems: 'center',
+    boxShadow: '0px 6px 20px rgba(0,0,0,0.2)', elevation: 8, marginTop: 4,
+  },
+  bottomActionBtnIn: { backgroundColor: '#2563eb' },
+  bottomActionBtnOut: { backgroundColor: '#e11d48' },
+  bottomActionBtnText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
   camera: { flex: 1 },
   cameraOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingBottom: 54, paddingTop: 24, alignItems: 'center', gap: 18,
-    backgroundColor: 'rgba(14,19,22,0.72)',
+    backgroundColor: 'rgba(14,19,22,0.75)',
   },
-  // The camera overlay is a dark scrim in BOTH themes - white controls always.
   cameraHint: { color: '#FAFAFA', fontSize: 16, fontWeight: '600' },
   shutter: {
     width: 78, height: 78, borderRadius: 39, borderWidth: 4, borderColor: '#FFFFFF',
@@ -507,7 +670,7 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   errTitle: { color: c.ink, fontSize: 18, fontWeight: '700', textAlign: 'center' },
   errBody: { color: c.ink2, fontSize: 14, lineHeight: 20, textAlign: 'center' },
   retryBtn: {
-    backgroundColor: c.accent, borderRadius: theme.radius.sm,
+    backgroundColor: c.accent, borderRadius: 8,
     paddingVertical: 11, paddingHorizontal: 28,
   },
   retryText: { color: c.accentInk, fontWeight: '700', fontSize: 15 },

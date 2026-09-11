@@ -404,9 +404,8 @@ export default async function DashboardPage({
 }
 
 function timeOfDay() {
-  const h = new Date().getUTCHours() + 5.5; // IST, roughly enough for a greeting
-  const hour = h >= 24 ? h - 24 : h;
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
-  return 'evening';
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Morning';
+  if (hour < 17) return 'Afternoon';
+  return 'Evening';
 }
