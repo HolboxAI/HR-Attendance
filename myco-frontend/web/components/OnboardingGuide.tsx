@@ -294,7 +294,7 @@ export function OnboardingGuide({
                 </div>
                 <div>
                   <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-ink">
-                    Welcome to Boxcode, {employeeName || 'Team Member'}!
+                    Welcome to Holbox, {employeeName || 'Team Member'}!
                   </h2>
                   <p className="text-xs sm:text-sm text-ink-3 mt-1 max-w-md">
                     To enable instant biometric check-ins and verify your shift attendance, we need to register your reference facial profile.

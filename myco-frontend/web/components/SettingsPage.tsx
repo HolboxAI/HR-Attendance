@@ -555,7 +555,7 @@ export function SettingsPage({ user }: SettingsPageProps) {
               </div>
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Organization</span>
-                <p className="font-semibold text-ink">Boxcode AI / IIMA Ventures</p>
+                <p className="font-semibold text-ink">Holbox AI / IIMA Ventures</p>
               </div>
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Attendance Punch</span>

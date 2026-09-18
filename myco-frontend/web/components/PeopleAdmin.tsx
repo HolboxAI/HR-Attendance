@@ -166,7 +166,7 @@ export function AddEmployeeButton() {
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field name="emp_code" label="Employee code" required placeholder="BX012" />
                   <Field name="full_name" label="Full name" required placeholder="Asha Patel" />
-                  <Field name="email" label="Email (their sign-in)" required type="email" placeholder="asha@boxcode.ai" className="sm:col-span-2" />
+                  <Field name="email" label="Email (their sign-in)" required type="email" placeholder="asha@holbox.ai" className="sm:col-span-2" />
                   <Field name="phone" label="Phone" placeholder="+91 …" />
                   <Field name="department" label="Department" placeholder="Engineering" />
                   <Field name="designation" label="Designation" placeholder="Developer" />

@@ -109,7 +109,7 @@ export function SignupPage() {
             size="text-[clamp(1.1rem,2vw,1.6rem)]"
             className="gap-[0.3em] opacity-90"
           />
-          <HeroText text="BOXCODE" />
+          <HeroText text="HOLBOX" />
 
           <div className="pointer-events-none relative -mt-4 h-40 w-full max-w-[34rem]">
             <div className="absolute inset-x-20 top-0 h-[2px] w-3/4 bg-gradient-to-r from-transparent via-emerald-500 to-transparent blur-sm" />
@@ -165,7 +165,7 @@ export function SignupPage() {
                     Request Sent to Admin
                   </h2>
                   <p className="text-sm text-white/70 leading-relaxed font-body">
-                    Your registration request for <strong className="text-white">{email}</strong> has been submitted to the Boxcode HR Admin team.
+                    Your registration request for <strong className="text-white">{email}</strong> has been submitted to the Holbox HR Admin team.
                   </p>
                 </div>
 
@@ -241,7 +241,7 @@ export function SignupPage() {
                         type="email"
                         required
                         autoComplete="email"
-                        placeholder="name@boxcode.ai"
+                        placeholder="name@holbox.ai"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full rounded-2xl bg-white/5 border border-white/10 py-2.5 ps-10 pe-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-body"

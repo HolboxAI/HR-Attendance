@@ -2,7 +2,7 @@ import { hhmm, IST, type BoardRow } from '@/lib/format';
 
 /**
  * Today's check-ins laid out across the working day - REAL first_in times
- * from the board, not a fabricated trend. At Boxcode's headcount a histogram
+ * from the board, not a fabricated trend. At Holbox's headcount a histogram
  * would be five bars of one; a dot-per-person timeline shows the same truth
  * (who arrived when, who was late) without inventing aggregate shapes the
  * data cannot support.

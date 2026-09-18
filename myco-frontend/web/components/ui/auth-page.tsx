@@ -88,7 +88,7 @@ export function AuthPage() {
             size="text-[clamp(1.1rem,2vw,1.6rem)]"
             className="gap-[0.3em] opacity-90"
           />
-          <HeroText text="BOXCODE" />
+          <HeroText text="HOLBOX" />
 
           {/* Sparks falling off the name: the demo strip, sized to the
               column. -mt pulls it up so the glow lines sit right under the
@@ -142,7 +142,7 @@ export function AuthPage() {
           </div>
 
           <div className="space-y-1">
-            <LiquidMetalText className="text-3xl sm:text-4xl">Sign in to Boxcode</LiquidMetalText>
+            <LiquidMetalText className="text-3xl sm:text-4xl">Sign in to Holbox</LiquidMetalText>
             <p className="text-sm text-white/60 font-body">
               Attendance, leave and approvals for your team.
             </p>
@@ -181,7 +181,7 @@ export function AuthPage() {
                   required
                   autoFocus
                   autoComplete="username"
-                  placeholder="your.email@boxcode.ai"
+                  placeholder="your.email@holbox.ai"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-2xl bg-white/5 border border-white/10 py-3 ps-10 pe-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-body"
@@ -263,7 +263,7 @@ export function AuthPage() {
           </div>
 
           <p className="text-center text-[11px] text-white/40 font-mono pt-1">
-            By continuing, you agree to Boxcode's{' '}
+            By continuing, you agree to Holbox's{' '}
             <Link href="#" className="underline text-white/50 hover:text-white transition-colors">
               Security Policy
             </Link>{' '}
