@@ -16,6 +16,7 @@ accrual by hand from the leave page.
 from __future__ import annotations
 
 from datetime import datetime
+import uuid
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
