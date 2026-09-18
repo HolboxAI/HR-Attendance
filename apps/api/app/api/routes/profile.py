@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 import uuid
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -15,6 +16,7 @@ from app.services.enrolment import active_enrolment, enrol
 from app.services.storage import storage
 
 router = APIRouter(tags=["profile"])
+logger = logging.getLogger(__name__)
 
 
 def _find_employee(db: Session, code_or_email: str) -> Employee:
@@ -78,18 +80,25 @@ async def update_my_photo(
         db.rollback()
         raise HTTPException(status.HTTP_400_BAD_REQUEST, result.reason or "Photo rejected by biometric quality check")
 
-    # Record auto-approved request in EnrolmentRequest audit log
-    req_row = EnrolmentRequest(
-        id=uuid.uuid4(),
-        employee_id=emp.id,
-        photo_key=record.photo_key,
-        status="approved",
-        actor_id=user.id,
-        decided_at=datetime.now(timezone.utc),
-        note="Updated via web portal profile",
-    )
-    db.add(req_row)
+    photo_key = record.photo_key
+    # Persist the enrolment first so a bad audit row cannot undo a good photo.
     db.commit()
+
+    try:
+        db.add(EnrolmentRequest(
+            id=uuid.uuid4(),
+            org_id=emp.org_id,
+            employee_id=emp.id,
+            photo_key=photo_key,
+            status="approved",
+            decided_by=user.id,
+            decided_at=datetime.now(timezone.utc),
+            note="Updated via web portal profile",
+        ))
+        db.commit()
+    except Exception:
+        logger.exception("Enrolment saved; audit row failed")
+        db.rollback()
 
     ts = int(datetime.now(timezone.utc).timestamp())
     return {

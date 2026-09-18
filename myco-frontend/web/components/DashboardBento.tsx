@@ -267,7 +267,7 @@ export function DashboardBento({
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="relative shrink-0">
-                          <Avatar name={r.full_name} />
+                          <Avatar name={r.full_name} code={r.employee_code} />
                           <span
                             className={`absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-surface ${
                               isActive ? 'bg-emerald-500' : 'bg-slate-400'

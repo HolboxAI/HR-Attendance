@@ -351,6 +351,30 @@ export function notificationHref(n: NotificationRow): string | null {
   return null;
 }
 
+/** Current hour 0–23 in the org timezone. Never Date#getHours() — that is the machine's zone. */
+export function istHour(at: Date = new Date()): number {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: IST,
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).format(at),
+  );
+}
+
+/** Morning until 12:00 IST, afternoon until 17:00, evening after that. */
+export function timeOfDay(at: Date = new Date()): 'Morning' | 'Afternoon' | 'Evening' {
+  const hour = istHour(at);
+  if (hour < 12) return 'Morning';
+  if (hour < 17) return 'Afternoon';
+  return 'Evening';
+}
+
+export function firstName(fullName: string | null | undefined): string {
+  const first = (fullName ?? '').trim().split(/\s+/)[0];
+  return first || 'there';
+}
+
 /**
  * "Today" as YYYY-MM-DD in the ORG's timezone - the backend's org_today()
  * lesson applied to the browser. toISOString() answers in UTC, which between

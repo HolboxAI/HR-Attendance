@@ -82,7 +82,7 @@ export function MyCorrections({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-gray-50 p-4 rounded-xl border border-line">
+      <div className="flex justify-between items-center bg-surface-2 p-4 rounded-xl border border-line">
         <div className="text-sm font-semibold text-ink">Monthly Corrections Limit</div>
         <div className="text-sm font-medium">
           <span className={usedCorrections >= correctionLimit ? 'text-red-500' : 'text-ink'}>

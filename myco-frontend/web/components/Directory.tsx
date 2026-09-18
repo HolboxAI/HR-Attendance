@@ -79,6 +79,9 @@ export function Directory({
   const [isApproving, setIsApproving] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [decliningId, setDecliningId] = useState<string | null>(null);
+  const [declineBusy, setDeclineBusy] = useState(false);
+  const [declineError, setDeclineError] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalRows(rows);
@@ -243,22 +246,33 @@ export function Directory({
   }
 
   async function handleRejectSignup(signupId: string, name: string) {
-    if (!confirm(`Are you sure you want to decline registration for ${name}?`)) {
-      return;
-    }
+    setDeclineBusy(true);
+    setDeclineError(null);
     try {
-      const res = await fetch(`/api/gateway/api/v1/admin/signups/${signupId}/reject`, {
+      // /decline — not /reject. Ad blockers and some in-app browsers drop
+      // POSTs whose path ends in "reject", so the click never reached the API.
+      const res = await fetch(`/api/gateway/api/v1/admin/signups/${signupId}/decline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: 'Declined by administrator' }),
       });
-      if (res.ok) {
-        setPendingSignups((prev) => prev.filter((s) => s.id !== signupId));
-        setActionSuccess(`Registration request for ${name} was declined.`);
-        setTimeout(() => setActionSuccess(null), 4000);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = data?.detail;
+        setDeclineError(
+          typeof detail === 'string' ? detail : `Could not decline ${name}. Try again.`
+        );
+        return;
       }
+      setPendingSignups((prev) => prev.filter((s) => s.id !== signupId));
+      setDecliningId(null);
+      setActionSuccess(`Registration request for ${name} was declined.`);
+      setTimeout(() => setActionSuccess(null), 4000);
+      router.refresh();
     } catch {
-      // ignore
+      setDeclineError('Network error while declining the request.');
+    } finally {
+      setDeclineBusy(false);
     }
   }
 
@@ -352,23 +366,60 @@ export function Directory({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-2 border-t border-line/40">
-                  <button
-                    type="button"
-                    onClick={() => setActiveSignup(su)}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white py-1.5 px-3 text-xs font-semibold shadow-xs transition-all cursor-pointer"
-                  >
-                    <UserPlus className="size-3.5" />
-                    <span>Review &amp; Add as Employee</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRejectSignup(su.id, su.full_name)}
-                    className="rounded-xl border border-line hover:bg-rose-500/10 hover:text-rose-500 hover:border-rose-500/30 p-1.5 text-xs text-ink-3 transition-colors cursor-pointer"
-                    title="Decline registration request"
-                  >
-                    <X className="size-4" />
-                  </button>
+                <div className="flex flex-col gap-2 pt-2 border-t border-line/40">
+                  {decliningId === su.id ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-ink-2">
+                        Decline registration for <strong className="text-ink">{su.full_name}</strong>?
+                      </p>
+                      {declineError && (
+                        <p className="text-[11px] text-rose-500">{declineError}</p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={declineBusy}
+                          onClick={() => {
+                            setDecliningId(null);
+                            setDeclineError(null);
+                          }}
+                          className="flex-1 rounded-xl border border-line py-1.5 text-xs font-semibold text-ink-2 hover:text-ink cursor-pointer disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={declineBusy}
+                          onClick={() => handleRejectSignup(su.id, su.full_name)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white py-1.5 px-3 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                        >
+                          {declineBusy ? 'Declining…' : 'Decline'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveSignup(su)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white py-1.5 px-3 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                      >
+                        <UserPlus className="size-3.5" />
+                        <span>Review &amp; Add as Employee</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDecliningId(su.id);
+                          setDeclineError(null);
+                        }}
+                        className="rounded-xl border border-line hover:bg-rose-500/10 hover:text-rose-500 hover:border-rose-500/30 p-1.5 text-xs text-ink-3 transition-colors cursor-pointer"
+                        title="Decline registration request"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -437,7 +488,7 @@ export function Directory({
                         <HoverProfile data={{ name: r.name, code: r.code, department: r.department }} className="block">
                           <Link href={`/people/${r.code}`} className="flex items-center gap-3">
                             <span className="relative shrink-0">
-                              <Avatar name={r.name} />
+                              <Avatar name={r.name} code={r.code} />
                               <span
                                 className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
                                   r.currentlyIn ? 'bg-accent shadow-sm bx-pulse' : 'bg-line'
@@ -525,7 +576,7 @@ export function Directory({
                   >
                     <HoverProfile data={{ name: r.name, code: r.code, department: r.department }} className="flex min-w-0 flex-1 items-center gap-3">
                       <span className="relative shrink-0">
-                        <Avatar name={r.name} />
+                        <Avatar name={r.name} code={r.code} />
                         <span
                           className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
                             r.currentlyIn ? 'bg-accent' : 'bg-line'
@@ -825,9 +876,9 @@ export function Directory({
                 />
               </div>
 
-              <div className="p-3.5 rounded-xl bg-zinc-100 dark:bg-zinc-800/90 border-2 border-zinc-300 dark:border-zinc-600 flex items-start gap-2.5 shadow-sm">
-                <Sparkles className="size-4 shrink-0 text-black dark:text-white mt-0.5" />
-                <span className="text-xs sm:text-sm font-bold text-black dark:text-white leading-relaxed">
+              <div className="p-3.5 rounded-xl bg-surface-2 border-2 border-line flex items-start gap-2.5 shadow-sm">
+                <Sparkles className="size-4 shrink-0 text-ink mt-0.5" />
+                <span className="text-xs sm:text-sm font-bold text-ink leading-relaxed">
                   Password is already set by the candidate during registration. Once approved, they can sign in directly with their email and password, then enroll their face biometric.
                 </span>
               </div>

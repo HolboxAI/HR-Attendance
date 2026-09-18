@@ -20,12 +20,13 @@ export function applyTheme(mode: Mode) {
 
 /**
  * Light / dark / system, persisted per browser. The dashboard defaults to
- * light; the sign-in page is deliberately untouched (it has its own approved
- * dark design and lives outside #bx-shell). An inline script in the layout
- * applies the stored choice before first paint so there is no flash.
+ * dark; light is an explicit choice. The sign-in page is deliberately
+ * untouched (it has its own approved dark design and lives outside #bx-shell).
+ * An inline script in the layout applies the stored choice before first paint
+ * so there is no flash.
  */
 export function ThemeToggle() {
-  const [mode, setMode] = useState<Mode>('light');
+  const [mode, setMode] = useState<Mode>('dark');
 
   useEffect(() => {
     try {

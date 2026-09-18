@@ -18,17 +18,16 @@ const KEY = "bx-theme"
 export function ThemeToggle({ className }: { className?: string }) {
   // Starts false on the server and corrects itself on mount - the same
   // hydration-safe pattern the previous toggle used.
-  const [isDark, setIsDark] = useState(false)
+  const [isDark, setIsDark] = useState(true)
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(KEY)
-      setIsDark(
-        stored === "dark"
-        || document.documentElement.classList.contains("bx-dark-mode"),
-      )
+      if (stored === "light") setIsDark(false)
+      else if (stored === "system") setIsDark(window.matchMedia("(prefers-color-scheme: dark)").matches)
+      else setIsDark(true)
     } catch {
-      /* private mode - the light default stands */
+      setIsDark(true)
     }
   }, [])
 

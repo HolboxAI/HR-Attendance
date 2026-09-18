@@ -205,6 +205,44 @@ def balance(
     return row
 
 
+def set_available(
+    db: Session,
+    *,
+    employee: Employee,
+    leave_type: LeaveType,
+    period: str,
+    available: float,
+    actor: User,
+    note: str | None = None,
+) -> tuple[LeaveBalance, bool]:
+    """Set remaining days for one person/type without rewriting used.
+
+    Available is opening + accrued - used - encashed. HR edits the remaining
+    figure they see on Team balances; the delta is stored on opening so the
+    used and accrued history stays intact. A no-op (same number) writes
+    nothing, so clicking save twice is not two audit rows.
+    """
+    if available < 0:
+        raise ValueError("Remaining days cannot be negative")
+    bal = balance(db, employee, leave_type, period)
+    old = round(float(bal.available), 2)
+    new = round(float(available), 2)
+    if old == new:
+        return bal, False
+    bal.opening = float(bal.opening) + (new - old)
+    audit(
+        db, org_id=employee.org_id, actor=actor, entity="leave_balance",
+        entity_id=bal.id, action="update",
+        changes={
+            "code": {"old": leave_type.code, "new": leave_type.code},
+            "employee": {"old": employee.emp_code, "new": employee.emp_code},
+            "available": {"old": old, "new": new},
+        },
+        note=note or f"{employee.emp_code} {leave_type.code} remaining {old} → {new}",
+    )
+    return bal, True
+
+
 def next_period(pol: LeavePolicy, period: str) -> str:
     """The period label that comes immediately after this one."""
     _, end = period_bounds(pol, period)

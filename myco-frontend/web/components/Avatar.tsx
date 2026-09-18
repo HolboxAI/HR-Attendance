@@ -1,3 +1,9 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+
+import { proxy } from '@/lib/format';
+
 // Deterministic colour bands, not random - reloading the board must not
 // reshuffle everyone's colour. Drawn from the same palette as the status
 // dots (see globals.css) rather than a new set, so an avatar never reads as
@@ -22,14 +28,44 @@ function hash(name: string): number {
   return h;
 }
 
-export function Avatar({ name }: { name: string }) {
+function photoSrc(code?: string | null, src?: string | null): string | null {
+  if (src) return src;
+  if (!code) return null;
+  return proxy(`/api/v1/admin/employees/directory/${encodeURIComponent(code)}/photo`);
+}
+
+export function Avatar({
+  name,
+  code,
+  src,
+}: {
+  name: string;
+  code?: string | null;
+  src?: string | null;
+}) {
+  const photo = photoSrc(code, src);
+  const [showPhoto, setShowPhoto] = useState(Boolean(photo));
   const band = BANDS[hash(name) % BANDS.length];
+
+  useEffect(() => {
+    setShowPhoto(Boolean(photo));
+  }, [photo]);
+
   return (
     <span
-      className={`flex size-8 items-center justify-center rounded-full text-xs font-semibold ${band}`}
+      className={`relative flex size-8 items-center justify-center overflow-hidden rounded-full text-xs font-semibold ${band}`}
       aria-hidden
     >
       {initials(name)}
+      {photo && showPhoto && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={photo}
+          alt=""
+          className="absolute inset-0 size-full object-cover"
+          onError={() => setShowPhoto(false)}
+        />
+      )}
     </span>
   );
 }

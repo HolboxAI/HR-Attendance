@@ -5,6 +5,7 @@ import { Avatar } from '@/components/Avatar';
 import { ErrorState } from '@/components/ErrorState';
 import { MonthCalendar } from '@/components/MonthCalendar';
 import { ResetPasswordButton, SendMessageButton, EditCorrectionLimitButton } from '@/components/PeopleAdmin';
+import { EmployeeLeaveEditor } from '@/components/EditLeaveBalances';
 import { Status } from '@/components/Status';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity } from '@/lib/session';
@@ -87,7 +88,7 @@ export default async function EmployeeDetailPage({
       {/* Header */}
       <div className="bx-rise bx-card flex flex-wrap items-center gap-4 p-5">
         <span className="relative">
-          <span className="[&>span]:size-14 [&>span]:text-lg"><Avatar name={monthData.full_name} /></span>
+          <span className="[&>span]:size-14 [&>span]:text-lg"><Avatar name={monthData.full_name} code={code} /></span>
           {todayRow?.currently_in && (
             <span className="bx-pulse absolute -bottom-0.5 -right-0.5 size-3.5 rounded-full bg-accent ring-2 ring-surface" aria-hidden />
           )}
@@ -191,6 +192,18 @@ export default async function EmployeeDetailPage({
 
       {/* Leave balances */}
       {myBalances && myBalances.length > 0 && (
+        caps.canManageLeavePolicy ? (
+          <EmployeeLeaveEditor
+            empCode={code}
+            period={myBalances[0].period}
+            rows={myBalances.map((b) => ({
+              code: b.code,
+              available: b.available,
+              used: b.used,
+              accrued: b.accrued,
+            }))}
+          />
+        ) : (
         <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-ink-3">
             Leave balances · {myBalances[0].period}
@@ -207,6 +220,7 @@ export default async function EmployeeDetailPage({
             ))}
           </div>
         </section>
+        )
       )}
 
       {/* Pending corrections */}

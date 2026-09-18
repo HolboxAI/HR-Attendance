@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.models.employee import Employee, User
 from app.models.face import EnrolmentRequest, FaceEnrollment
-from app.services.face import FaceResult, get_face_service
+from app.services.face import FaceResult, FaceUnavailable, get_face_service
 from app.services.storage import enrolment_key, image_extension, storage
 
 # A reference photo is worth more care than a punch selfie: it is used for
@@ -135,7 +135,10 @@ def enrol(
     if len(image) > MAX_ENROLMENT_BYTES:
         return None, FaceResult(False, None, "Photo too large - compress before upload")
 
-    quality = get_face_service().quality_check(image)
+    try:
+        quality = get_face_service().quality_check(image, enrolment=True)
+    except FaceUnavailable:
+        return None, FaceResult(False, None, "Face check is briefly unavailable - try again")
     if not quality.matched:
         return None, quality
 
@@ -213,7 +216,10 @@ def submit_request(
     if len(image) > MAX_ENROLMENT_BYTES:
         return None, FaceResult(False, None, "Photo too large - keep it under 8 MB")
 
-    quality = get_face_service().quality_check(image)
+    try:
+        quality = get_face_service().quality_check(image, enrolment=True)
+    except FaceUnavailable:
+        return None, FaceResult(False, None, "Face check is briefly unavailable - try again")
     if not quality.matched:
         return None, quality
 

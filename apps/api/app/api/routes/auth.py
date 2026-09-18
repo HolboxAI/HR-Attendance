@@ -348,13 +348,16 @@ def signup(body: SignupRequestIn, db: Session = Depends(get_db)) -> SignupRespon
     )
 
     # Dispatch Slack notification alert tagging Himesh
-    slack.post_signup_request_alert(
+    posted = slack.post_signup_request_alert(
         full_name=full_name,
         email=email,
         phone=req.phone,
         department=req.desired_department,
         designation=req.desired_designation,
+        signup_id=str(req.id),
     )
+    if posted:
+        req.slack_message_ts, req.slack_channel_id = posted
 
     db.commit()
     return SignupResponse(

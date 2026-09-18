@@ -16,7 +16,7 @@ import {
   getHolidays, getMyMonth, getPending, getRejected, hhmm,
 } from '@/lib/api';
 import { capabilitiesFor } from '@/lib/capabilities';
-import { istYearMonth, proxy } from '@/lib/format';
+import { istYearMonth, proxy, timeOfDay, firstName } from '@/lib/format';
 import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -110,7 +110,7 @@ export default async function DashboardPage({
             <h1 className="font-display text-3xl sm:text-5xl font-black uppercase tracking-tight text-ink">
               Good {timeOfDay()},{" "}
               <span className="inline-block -skew-x-[12deg] text-ink underline decoration-1 underline-offset-4">
-                {(me?.full_name ?? '').split(' ')[0] || 'Admin'}
+                {me?.full_name ? firstName(me.full_name) : 'Admin'}
               </span>
             </h1>
             <p className="text-xs sm:text-sm text-ink-3 flex items-center gap-2 font-mono">
@@ -211,7 +211,7 @@ export default async function DashboardPage({
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="relative shrink-0">
-                        <Avatar name={r.full_name} />
+                        <Avatar name={r.full_name} code={r.employee_code} />
                         <span
                           className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-surface ${
                             isActive ? 'bg-emerald-500' : 'bg-slate-400'
@@ -401,11 +401,4 @@ export default async function DashboardPage({
       )}
     </div>
   );
-}
-
-function timeOfDay() {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Morning';
-  if (hour < 17) return 'Afternoon';
-  return 'Evening';
 }

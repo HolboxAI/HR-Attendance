@@ -75,7 +75,7 @@ export function AuthPage() {
           <div className="flex flex-col">
             {/* Plain text on purpose - the shutter treatment belongs to the
                 big product name in the centre, not the corner mark. */}
-            <span className="font-display text-sm font-bold tracking-tight text-white">Holbox</span>
+            <span className="font-display text-sm font-bold tracking-tight text-white">Boxcode</span>
             <span className="text-[10px] text-white/50 font-mono">Attendance Portal</span>
           </div>
         </div>
@@ -88,7 +88,7 @@ export function AuthPage() {
             size="text-[clamp(1.1rem,2vw,1.6rem)]"
             className="gap-[0.3em] opacity-90"
           />
-          <HeroText text="HOLBOX" />
+          <HeroText text="BOXCODE" />
 
           {/* Sparks falling off the name: the demo strip, sized to the
               column. -mt pulls it up so the glow lines sit right under the
@@ -138,11 +138,11 @@ export function AuthPage() {
               <BoxcodeLogo className="size-full text-white" />
             </div>
             {/* The small-screen twin of the desktop corner brand - same name. */}
-            <span className="font-display text-sm font-bold text-white">Holbox</span>
+            <span className="font-display text-sm font-bold text-white">Boxcode</span>
           </div>
 
           <div className="space-y-1">
-            <LiquidMetalText className="text-3xl sm:text-4xl">Sign in to Holbox</LiquidMetalText>
+            <LiquidMetalText className="text-3xl sm:text-4xl">Sign in to Boxcode</LiquidMetalText>
             <p className="text-sm text-white/60 font-body">
               Attendance, leave and approvals for your team.
             </p>
@@ -181,7 +181,7 @@ export function AuthPage() {
                   required
                   autoFocus
                   autoComplete="username"
-                  placeholder="your.email@holbox.ai"
+                  placeholder="your.email@boxcode.ai"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-2xl bg-white/5 border border-white/10 py-3 ps-10 pe-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-body"
@@ -238,15 +238,15 @@ export function AuthPage() {
               disabled={busy}
               width="100%"
               height={48}
-              variant="liquid"
               className="mt-3"
+              textColor="#d4d4d8"
             >
               {busy ? (
-                <span className="text-white text-sm font-semibold tracking-wide">Signing in...</span>
+                <span className="text-sm font-semibold tracking-wide">Signing in...</span>
               ) : (
-                <div className="flex items-center justify-center gap-2 text-white text-sm font-semibold tracking-wide">
+                <div className="flex items-center justify-center gap-2 text-sm font-semibold tracking-wide">
                   <span>Sign in</span>
-                  <ArrowRightIcon className="size-4 text-white" />
+                  <ArrowRightIcon className="size-4" />
                 </div>
               )}
             </LiquidMetalButton>
@@ -263,7 +263,7 @@ export function AuthPage() {
           </div>
 
           <p className="text-center text-[11px] text-white/40 font-mono pt-1">
-            By continuing, you agree to Holbox's{' '}
+            By continuing, you agree to Boxcode's{' '}
             <Link href="#" className="underline text-white/50 hover:text-white transition-colors">
               Security Policy
             </Link>{' '}

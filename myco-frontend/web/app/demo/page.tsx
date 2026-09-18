@@ -39,11 +39,10 @@ export default function DemoPage() {
               type="button"
               width="100%"
               height={48}
-              variant="liquid"
             >
-              <div className="flex items-center justify-center gap-2 text-white text-sm font-semibold tracking-wide">
+              <div className="flex items-center justify-center gap-2 text-sm font-semibold tracking-wide text-zinc-400">
                 <span>Sign in</span>
-                <ArrowRight className="size-4 text-white" />
+                <ArrowRight className="size-4" />
               </div>
             </LiquidMetalButton>
           </div>

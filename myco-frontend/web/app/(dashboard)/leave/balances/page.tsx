@@ -4,6 +4,8 @@ import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { TeamBalancesTable } from '@/components/TeamBalancesTable';
 import { getTeamBalances } from '@/lib/api';
+import { capabilitiesFor } from '@/lib/capabilities';
+import { currentIdentity } from '@/lib/session';
 import type { TeamBalanceRow } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +17,8 @@ export const dynamic = 'force-dynamic';
  * API's own.
  */
 export default async function TeamBalancesPage() {
+  const me = await currentIdentity();
+  const caps = capabilitiesFor(me?.role);
   const result = await getTeamBalances();
 
   if (!result.ok) {
@@ -43,7 +47,7 @@ export default async function TeamBalancesPage() {
         title="Team balances"
         sub={
           period
-            ? `Everyone you can see, for the ${period} leave year. Accrued minus used - the same numbers each person sees on their own Leave page.`
+            ? `Everyone you can see, for the ${period} leave year. Accrued minus used — the same numbers each person sees on their own Leave page.`
             : 'Everyone you can see. Accrued minus used, per leave type.'
         }
       />
@@ -54,7 +58,11 @@ export default async function TeamBalancesPage() {
           <Link href="/leave/operations" className="text-ink font-semibold underline">Run accrual →</Link>
         </div>
       ) : (
-        <TeamBalancesTable types={types} entries={[...byEmployee.entries()]} />
+        <TeamBalancesTable
+          types={types}
+          entries={[...byEmployee.entries()]}
+          canEdit={caps.canManageLeavePolicy}
+        />
       )}
     </div>
   );

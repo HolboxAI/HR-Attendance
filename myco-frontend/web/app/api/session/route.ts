@@ -69,3 +69,19 @@ export async function DELETE(request: Request) {
   res.cookies.delete(REFRESH_COOKIE);
   return res;
 }
+
+/**
+ * Dead session bounce: JWT still in the cookie, account gone. Dashboard
+ * layout sends the browser here so we can drop the cookies (layouts cannot)
+ * and land on /login instead of the face-enrolment quest.
+ */
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  if (url.searchParams.get('clear') !== '1') {
+    return NextResponse.json({ detail: 'Method not allowed' }, { status: 405 });
+  }
+  const res = NextResponse.redirect(new URL('/login', request.url));
+  res.cookies.delete(ACCESS_COOKIE);
+  res.cookies.delete(REFRESH_COOKIE);
+  return res;
+}

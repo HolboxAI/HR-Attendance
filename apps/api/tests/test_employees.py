@@ -358,6 +358,7 @@ appr_res = client.post(f"/api/v1/admin/signups/{rohan_req['id']}/approve", json=
 check("admin approval succeeds", appr_res.status_code, 200)
 check("approval returned ok", appr_res.json()["ok"], True)
 check("employee code assigned", appr_res.json()["employee"]["emp_code"], suggested_code)
+check("approval names the new employee", "Rohan" in appr_res.json()["message"], True)
 
 # 6. Now Rohan can immediately log in with his signup password!
 rohan_login = client.post("/api/v1/auth/login", json={

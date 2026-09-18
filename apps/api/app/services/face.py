@@ -20,9 +20,16 @@ from app.core.config import settings
 MATCH_THRESHOLD = 90.0
 
 # Reject a selfie before spending money on it.
-MIN_FACE_CONFIDENCE = 95.0
-MIN_SHARPNESS = 20.0
-MAX_POSE_DEGREES = 35.0
+# These used to be 95 / 20 / 35 — indoor webcams and slightly off-axis
+# faces failed even when a human would accept the photo. Keep a floor so
+# a blur or empty frame still dies; just don't demand studio lighting.
+MIN_FACE_CONFIDENCE = 80.0
+MIN_SHARPNESS = 8.0
+MAX_POSE_DEGREES = 50.0
+# A second DetectFaces hit only counts as "two people" when it is almost
+# as large as the subject. A roommate on the bed behind you should not
+# fail enrolment.
+SECOND_FACE_AREA_RATIO = 0.45
 
 
 # Said to the employee, and stored as the rejection reason. Kept in one place
@@ -87,7 +94,7 @@ class StubFaceService:
     would be quoted back in a dispute.
     """
 
-    def quality_check(self, image_bytes: bytes) -> FaceResult:
+    def quality_check(self, image_bytes: bytes, *, enrolment: bool = False) -> FaceResult:
         if not image_bytes:
             return FaceResult(False, None, "No image supplied")
         if not _looks_like_an_image(image_bytes):
@@ -129,8 +136,18 @@ class RekognitionFaceService:
 
         self._client = build_client("rekognition")
 
-    def quality_check(self, image_bytes: bytes) -> FaceResult:
-        """Catch the obvious failures locally-ish, before CompareFaces."""
+    def quality_check(self, image_bytes: bytes, *, enrolment: bool = False) -> FaceResult:
+        """Catch the obvious failures locally-ish, before CompareFaces.
+
+        Enrolment is lenient on purpose: indoor laptop webcams fail studio
+        sharpness/pose bars even when the face is usable as a reference.
+        First-time signup only needs "there is a face". Punch still uses the
+        tighter bars so a blurry selfie does not burn a CompareFaces call.
+        """
+        # Rekognition DetectFaces refuses anything over 5 MB. Fail locally
+        # so the employee sees a size reason instead of a generic 500.
+        if len(image_bytes) > 5 * 1024 * 1024:
+            return FaceResult(False, None, "Photo too large - compress before upload")
         try:
             resp = self._client.detect_faces(
                 Image={"Bytes": image_bytes}, Attributes=["DEFAULT"]
@@ -146,16 +163,34 @@ class RekognitionFaceService:
         faces = resp.get("FaceDetails", [])
         if not faces:
             return FaceResult(False, None, "No face detected - move into better light")
-        if len(faces) > 1:
+
+        min_conf = 50.0 if enrolment else 70.0
+        faces = [f for f in faces if f.get("Confidence", 0) >= min_conf]
+        if not faces:
+            return FaceResult(False, None, "Face unclear - try again")
+
+        def _area(f: dict) -> float:
+            box = f.get("BoundingBox") or {}
+            return float(box.get("Width", 0) or 0) * float(box.get("Height", 0) or 0)
+
+        faces = sorted(faces, key=_area, reverse=True)
+        primary = faces[0]
+        extras = [
+            f for f in faces[1:]
+            if _area(f) >= max(_area(primary), 0.01) * SECOND_FACE_AREA_RATIO
+        ]
+        if extras:
             return FaceResult(False, None, "More than one face in frame")
 
-        face = faces[0]
-        if face["Confidence"] < MIN_FACE_CONFIDENCE:
+        if enrolment:
+            return FaceResult(True, None)
+
+        if primary.get("Confidence", 0) < MIN_FACE_CONFIDENCE:
             return FaceResult(False, None, "Face unclear - try again")
-        if face.get("Quality", {}).get("Sharpness", 100) < MIN_SHARPNESS:
+        if primary.get("Quality", {}).get("Sharpness", 100) < MIN_SHARPNESS:
             return FaceResult(False, None, "Photo too blurry")
 
-        pose = face.get("Pose", {})
+        pose = primary.get("Pose", {})
         if any(abs(pose.get(k, 0)) > MAX_POSE_DEGREES for k in ("Yaw", "Pitch", "Roll")):
             return FaceResult(False, None, "Look straight at the camera")
 

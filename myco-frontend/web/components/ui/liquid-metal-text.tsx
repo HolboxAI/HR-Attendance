@@ -1,10 +1,9 @@
 'use client';
 
-import { LiquidMetalCanvasFill, useLiquidMetalShader } from './use-liquid-metal-shader';
-
 /**
- * The same liquid-metal shader as the Sign in pill, clipped to the heading
- * glyphs so "Sign in to Holbox" is metal, not flat white.
+ * Chrome on the letter EDGES only. A stroke layer sits behind a solid white
+ * fill so the metal never paints across the glyphs (the old shader fill
+ * blobbed the left half of "Sign in to Holbox").
  */
 export function LiquidMetalText({
   children,
@@ -15,38 +14,22 @@ export function LiquidMetalText({
   as?: 'h1' | 'h2' | 'p' | 'span';
   className?: string;
 }) {
-  const { hostRef, shaderRef } = useLiquidMetalShader(0.45);
-
   return (
-    <div ref={hostRef} className={`relative inline-block max-w-full ${className}`}>
-      <div
-        className="pointer-events-none absolute inset-0 overflow-hidden"
-        style={{
-          borderRadius: 4,
-          WebkitMaskImage: 'linear-gradient(#000 0 0)',
-          maskImage: 'linear-gradient(#000 0 0)',
-        }}
-      >
-        <LiquidMetalCanvasFill shaderRef={shaderRef} radius={4} />
-      </div>
-      <Tag
-        className="relative z-10 font-display font-black tracking-tight"
+    <Tag className={`relative font-display font-black tracking-tight ${className}`}>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 select-none"
         style={{
           color: 'transparent',
           WebkitTextFillColor: 'transparent',
-          backgroundImage:
-            'linear-gradient(110deg, #ffffff 0%, #f1f5f9 18%, #94a3b8 38%, #ffffff 55%, #64748b 78%, #ffffff 100%)',
-          backgroundSize: '220% 100%',
-          WebkitBackgroundClip: 'text',
-          backgroundClip: 'text',
-          animation: 'bx-liquid-text 5s linear infinite',
-          mixBlendMode: 'plus-lighter',
-          filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.4))',
+          WebkitTextStroke: '1.35px #c9d2de',
+          filter: 'drop-shadow(0 0 10px rgba(148, 163, 184, 0.45))',
         }}
       >
         {children}
-      </Tag>
-    </div>
+      </span>
+      <span className="relative text-white">{children}</span>
+    </Tag>
   );
 }
 

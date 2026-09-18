@@ -199,6 +199,94 @@ def balances(db: Session = Depends(get_db), user: User = approver):
     return out
 
 
+class BalanceEditItem(BaseModel):
+    code: str = Field(min_length=1, max_length=16)
+    available: float = Field(ge=0, le=365)
+    note: str | None = None
+
+
+class BalanceEditIn(BaseModel):
+    items: list[BalanceEditItem] = Field(min_length=1, max_length=20)
+
+
+class BalanceEditOut(BaseModel):
+    employee_code: str
+    full_name: str
+    code: str
+    period: str
+    accrued: float
+    used: float
+    available: float
+    changed: bool
+
+
+def _leave_type_for(db: Session, org_id: uuid.UUID, code: str) -> LeaveType:
+    row = db.scalar(select(LeaveType).where(
+        LeaveType.org_id == org_id, LeaveType.code == code.upper(),
+        LeaveType.is_active.is_(True), LeaveType.deleted_at.is_(None),
+    ))
+    if row is None:
+        raise HTTPException(404, f"No leave type {code}")
+    if row.accrual_rule == AccrualRule.NONE:
+        raise HTTPException(409, f"{code} has no balance to edit")
+    return row
+
+
+def _apply_items(
+    db: Session, *, emp: Employee, items: list[BalanceEditItem], actor: User, period: str,
+) -> list[BalanceEditOut]:
+    out: list[BalanceEditOut] = []
+    for item in items:
+        lt = _leave_type_for(db, emp.org_id, item.code)
+        try:
+            bal, changed = leave_service.set_available(
+                db, employee=emp, leave_type=lt, period=period,
+                available=item.available, actor=actor, note=item.note,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        out.append(BalanceEditOut(
+            employee_code=emp.emp_code, full_name=emp.full_name, code=lt.code,
+            period=period, accrued=float(bal.accrued), used=float(bal.used),
+            available=bal.available, changed=changed,
+        ))
+    return out
+
+
+@router.put("/leave/balances/all", response_model=list[BalanceEditOut])
+def set_balances_for_everyone(
+    body: BalanceEditIn, db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Set remaining CL/EL/SL for every active employee HR can see.
+
+    Used days are not rewritten. Each person's remaining figure is moved to
+    the number sent; opening absorbs the difference so accrual history stays.
+    """
+    pol = leave_service.policy(db, user.org_id)
+    period = leave_service.period_for(pol, org_today())
+    out: list[BalanceEditOut] = []
+    for emp in visible_employees(db, user):
+        out.extend(_apply_items(db, emp=emp, items=body.items, actor=user, period=period))
+    db.commit()
+    return out
+
+
+@router.put("/leave/balances/{emp_code}", response_model=list[BalanceEditOut])
+def set_balances_for_employee(
+    emp_code: str, body: BalanceEditIn,
+    db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Set remaining days of one or more leave types for one person."""
+    emp = next((e for e in visible_employees(db, user) if e.emp_code == emp_code), None)
+    if emp is None:
+        raise HTTPException(404, f"No employee {emp_code} in your scope")
+    pol = leave_service.policy(db, user.org_id)
+    period = leave_service.period_for(pol, org_today())
+    out = _apply_items(db, emp=emp, items=body.items, actor=user, period=period)
+    db.commit()
+    return out
+
+
 @router.post("/leave/accrue")
 def accrue(
     year: int = Query(...), month: int = Query(ge=1, le=12),

@@ -51,11 +51,12 @@ def check(label, got, want):
     print(f"   [{'x' if good else ' '}] {label}" + ("" if good else f"  got {got!r}, want {want!r}"))
 
 
-def face(confidence=99.0, sharpness=80.0, yaw=0, pitch=0, roll=0):
+def face(confidence=99.0, sharpness=80.0, yaw=0, pitch=0, roll=0, width=0.5, height=0.6):
     return {
         "Confidence": confidence,
         "Quality": {"Sharpness": sharpness},
         "Pose": {"Yaw": yaw, "Pitch": pitch, "Roll": roll},
+        "BoundingBox": {"Width": width, "Height": height},
     }
 
 
@@ -90,17 +91,31 @@ def svc(client):
 print("1. Quality gate refuses what should never reach CompareFaces")
 check("no face detected", svc(FakeRekognition(faces=[])).quality_check(JPEG).matched, False)
 check("two faces in frame", svc(FakeRekognition(faces=[face(), face()])).quality_check(JPEG).matched, False)
-check("low confidence", svc(FakeRekognition(faces=[face(confidence=80.0)])).quality_check(JPEG).matched, False)
+check("background face ignored", svc(FakeRekognition(faces=[
+    face(), face(width=0.08, height=0.08),
+])).quality_check(JPEG).matched, True)
+check("low confidence", svc(FakeRekognition(faces=[face(confidence=70.0)])).quality_check(JPEG).matched, False)
 check("too blurry", svc(FakeRekognition(faces=[face(sharpness=5.0)])).quality_check(JPEG).matched, False)
-check("head turned away", svc(FakeRekognition(faces=[face(yaw=50)])).quality_check(JPEG).matched, False)
-check("pitched down", svc(FakeRekognition(faces=[face(pitch=-40)])).quality_check(JPEG).matched, False)
-check("rolled", svc(FakeRekognition(faces=[face(roll=40)])).quality_check(JPEG).matched, False)
+check("head turned away", svc(FakeRekognition(faces=[face(yaw=60)])).quality_check(JPEG).matched, False)
+check("pitched down", svc(FakeRekognition(faces=[face(pitch=-55)])).quality_check(JPEG).matched, False)
+check("rolled", svc(FakeRekognition(faces=[face(roll=55)])).quality_check(JPEG).matched, False)
 check("a good face passes", svc(FakeRekognition()).quality_check(JPEG).matched, True)
+check("indoor-ish face still passes", svc(FakeRekognition(faces=[
+    face(confidence=82.0, sharpness=12.0, yaw=20),
+])).quality_check(JPEG).matched, True)
+
+print("1b. Enrolment accepts a usable laptop-webcam face")
+enrol_ok = dict(enrolment=True)
+check("enrolment still refuses no face", svc(FakeRekognition(faces=[])).quality_check(JPEG, **enrol_ok).matched, False)
+check("enrolment still refuses two faces", svc(FakeRekognition(faces=[face(), face()])).quality_check(JPEG, **enrol_ok).matched, False)
+check("enrolment accepts blurry", svc(FakeRekognition(faces=[face(sharpness=5.0)])).quality_check(JPEG, **enrol_ok).matched, True)
+check("enrolment accepts turned head", svc(FakeRekognition(faces=[face(yaw=60)])).quality_check(JPEG, **enrol_ok).matched, True)
+check("enrolment accepts low-ish confidence", svc(FakeRekognition(faces=[face(confidence=55.0)])).quality_check(JPEG, **enrol_ok).matched, True)
 
 print("2. Every refusal explains itself to the person holding the phone")
 for label, faces in [
     ("no face", []), ("two faces", [face(), face()]),
-    ("blurry", [face(sharpness=5.0)]), ("turned away", [face(yaw=50)]),
+    ("blurry", [face(sharpness=5.0)]), ("turned away", [face(yaw=60)]),
 ]:
     reason = svc(FakeRekognition(faces=faces)).quality_check(JPEG).reason
     check(f"{label} has a reason", bool(reason and reason.strip()), True)

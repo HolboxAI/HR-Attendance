@@ -24,32 +24,19 @@ from app.models.enums import EmploymentType         # noqa: E402
 from app.models.org import Department, Location, Organization      # noqa: E402
 
 STAFF = [
-    # Real team. Designations are placeholders - correct them and re-run.
     ("BX001", "Krish Sharma", "Engineering", "Founder",           "General"),
     ("BX002", "Nikunj",       "Engineering", "Backend Engineer",  "General"),
-    ("BX003", "Shivam",       "Engineering", "Frontend Engineer", "General"),
-    ("BX004", "Daksh",        "Engineering", "Mobile Engineer",   "General"),
     ("BX005", "Dhruv",        "Design",      "Product Designer",  "General"),
     ("BX006", "Ashley",       "Operations",  "Operations",        "General"),
-    ("BX007", "Ritesh",       "Engineering", "Engineer",          "Night"),
     ("BX008", "Himesh",       "Operations",  "HR Manager",        "General"),
-    ("BX009", "Susmit",       "Engineering", "Engineer",          "General"),
-    ("BX010", "Sheel",        "Engineering", "Engineer",          "General"),
-    ("BX011", "Karan",        "Engineering", "Engineer",          "General"),
 ]
 
 # Who reports to whom, as employee codes. Himesh (BX008) is the HR manager and
 # every individual contributor reports to him. The admins - Krish, Dhruv and
-# Ashley - deliberately have no manager: they are super_admin and already see
-# everyone, so a reporting line would add nothing but a row to maintain.
+# Ashley - deliberately have no manager: they already see everyone, so a
+# reporting line would add nothing but a row to maintain.
 MANAGERS = {
     "BX002": "BX008",   # Nikunj -> Himesh
-    "BX003": "BX008",   # Shivam -> Himesh
-    "BX004": "BX008",   # Daksh  -> Himesh
-    "BX007": "BX008",   # Ritesh -> Himesh
-    "BX009": "BX008",   # Susmit -> Himesh
-    "BX010": "BX008",   # Sheel  -> Himesh
-    "BX011": "BX008",   # Karan  -> Himesh
 }
 
 # Real email overrides for people whose address does not follow the

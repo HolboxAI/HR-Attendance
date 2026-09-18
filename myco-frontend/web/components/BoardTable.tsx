@@ -56,7 +56,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                   <HoverProfile data={{ name: r.full_name, department: r.department, code: r.employee_code }}>
                     <Link href={`/people/${r.employee_code}`} className="flex items-center gap-3">
                       <span className="relative shrink-0">
-                        <Avatar name={r.full_name} />
+                        <Avatar name={r.full_name} code={r.employee_code} />
                         <span
                           className={`absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full ring-2 ring-surface ${
                             r.currently_in ? 'bg-ink shadow-xs' : 'bg-line'

@@ -465,10 +465,15 @@ def post_signup_request_alert(
     phone: str | None = None,
     department: str | None = None,
     designation: str | None = None,
-) -> None:
-    """Post an alert when a candidate submits an employee signup request."""
+    signup_id: str | None = None,
+) -> tuple[str, str] | None:
+    """Post an alert when a candidate submits an employee signup request.
+
+    Returns (message_ts, channel_id) so a later approve/decline can
+    chat.update this exact post instead of leaving a stale request up.
+    """
     if not settings.slack_bot_token or not settings.slack_channel_id:
-        return
+        return None
 
     # Himesh's Slack user ID in Holbox Slack workspace
     himesh_slack_id = "U0BQ8HZ3MKJ"
@@ -515,7 +520,29 @@ def post_signup_request_alert(
                     },
                     "url": "https://attendance.holbox.ai/people",
                     "style": "primary",
-                }
+                },
+                *(
+                    [{
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "Decline request",
+                            "emoji": True,
+                        },
+                        "style": "danger",
+                        "action_id": "decline_signup",
+                        "value": f"decline_signup:{signup_id}",
+                        "confirm": {
+                            "title": {"type": "plain_text", "text": "Decline registration?"},
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": f"Decline *{full_name}* (`{email}`)? They will not be added.",
+                            },
+                            "confirm": {"type": "plain_text", "text": "Decline"},
+                            "deny": {"type": "plain_text", "text": "Cancel"},
+                        },
+                    }] if signup_id else []
+                ),
             ],
         },
         {
@@ -543,6 +570,219 @@ def post_signup_request_alert(
         res_data = response.json()
         if not res_data.get("ok"):
             logger.error(f"Slack API error in post_signup_request_alert: {res_data.get('error')}")
+            return None
+        ts, channel = res_data.get("ts"), res_data.get("channel")
+        if ts and channel:
+            return ts, channel
+        return None
     except Exception as e:
         logger.error(f"Failed to post signup request alert to Slack: {e}")
+        return None
+
+
+def post_signup_approved_alert(
+    *,
+    full_name: str,
+    email: str,
+    emp_code: str,
+    admin_name: str,
+    department: str | None = None,
+    designation: str | None = None,
+) -> None:
+    """Tell the admin channel a signup was approved from the dashboard."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    dept_str = department.strip() if department else "General"
+    desig_str = designation.strip() if designation else "Team Member"
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "✅ Employee Approved",
+                "emoji": True,
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*{full_name}* has been approved and added to the workforce.\n\n"
+                    f"🏷️ *Status:* `APPROVED`\n"
+                    f"👤 *Employee:* *{full_name}* (`{emp_code}`)\n"
+                    f"📧 *Work Email:* `{email}`\n"
+                    f"🏢 *Department:* *{dept_str}*\n"
+                    f"💼 *Role:* *{desig_str}*\n\n"
+                    f"✅ *Approved by admin* — *{admin_name}*"
+                ),
+            },
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "Holbox HRMS Portal • Approved from the dashboard",
+                }
+            ],
+        },
+    ]
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": (
+                    f"✅ {full_name} ({emp_code}) got approved by admin {admin_name}."
+                ),
+                "blocks": blocks,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error(
+                "Slack API error in post_signup_approved_alert: %s",
+                res_data.get("error"),
+            )
+    except Exception as e:
+        logger.error("Failed to post signup approved alert to Slack: %s", e)
+
+
+def _find_signup_message_ts(email: str) -> tuple[str, str] | None:
+    """Best-effort lookup of the original signup post when we did not store ts."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return None
+    try:
+        response = httpx.get(
+            "https://slack.com/api/conversations.history",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            params={"channel": settings.slack_channel_id, "limit": 40},
+            timeout=5.0,
+        )
+        data = response.json()
+        if not data.get("ok"):
+            logger.error("Slack history lookup failed: %s", data.get("error"))
+            return None
+        needle = email.lower()
+        for msg in data.get("messages") or []:
+            blob = f"{msg.get('text') or ''} {msg.get('blocks') or ''}".lower()
+            if needle in blob and "registration" in blob:
+                ts = msg.get("ts")
+                if ts:
+                    return ts, settings.slack_channel_id
+    except Exception as e:
+        logger.error("Failed to look up signup Slack message: %s", e)
+    return None
+
+
+def update_signup_decision(
+    *,
+    full_name: str,
+    email: str,
+    admin_name: str,
+    approved: bool,
+    emp_code: str | None = None,
+    message_ts: str | None = None,
+    channel_id: str | None = None,
+    reason: str | None = None,
+) -> bool:
+    """Replace the original signup Slack post with the decision. No leftover buttons."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return False
+
+    ts = message_ts
+    channel = channel_id or settings.slack_channel_id
+    if not ts:
+        found = _find_signup_message_ts(email)
+        if found:
+            ts, channel = found
+    if not ts:
+        if approved:
+            return False
+        try:
+            httpx.post(
+                "https://slack.com/api/chat.postMessage",
+                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                json={
+                    "channel": settings.slack_channel_id,
+                    "text": f"❌ {full_name} ({email}) was declined by {admin_name}.",
+                    "blocks": [
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": (
+                                    f"❌ *Registration declined*\n"
+                                    f"*{full_name}* (`{email}`) was declined by *{admin_name}*."
+                                    + (f"\n_{reason}_" if reason else "")
+                                ),
+                            },
+                        }
+                    ],
+                },
+                timeout=5.0,
+            )
+        except Exception as e:
+            logger.error("Failed to post signup declined alert: %s", e)
+        return False
+
+    if approved:
+        status = (
+            f"✅ *Approved by {admin_name}*"
+            + (f" — employee `{emp_code}`" if emp_code else "")
+        )
+        fallback = f"✅ {full_name} approved by {admin_name}"
+    else:
+        status = f"❌ *Declined by {admin_name}*"
+        if reason:
+            status += f"\n_{reason}_"
+        fallback = f"❌ {full_name} declined by {admin_name}"
+
+    blocks = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "Employee Approved" if approved else "Registration Declined",
+                "emoji": True,
+            },
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"*{full_name}* (`{email}`)\n\n{status}\n\n"
+                    f"_Holbox HRMS • decided from the dashboard or Slack_"
+                ),
+            },
+        },
+    ]
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.update",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": channel,
+                "ts": ts,
+                "text": fallback,
+                "blocks": blocks,
+            },
+            timeout=5.0,
+        )
+        data = response.json()
+        if not data.get("ok"):
+            logger.error("Slack chat.update failed for signup: %s", data.get("error"))
+            return False
+        return True
+    except Exception as e:
+        logger.error("Failed to update signup Slack message: %s", e)
+        return False
 

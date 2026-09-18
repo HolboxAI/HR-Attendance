@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -27,6 +27,12 @@ from app.core.config import settings
 from app.models.employee import User
 from app.models.enums import UserRole
 from app.models.notification import Notification
+from app.services.email_templates import (
+    leave_request_html,
+    shift_summary_html,
+    signup_approved_html,
+    signup_request_html,
+)
 
 ADMIN_NOTIFICATION_EMAILS: list[str] = [
     "accounting@holbox.ai",
@@ -219,7 +225,6 @@ def notify(
         # Applicant metadata
         applicant_name = (emp.full_name if emp else None) or data.get("employee_name") or "Employee"
         applicant_code = (emp.emp_code if emp else None) or data.get("employee_code") or ""
-        applicant_code_badge = f'<span style="display: inline-block; background: #f1f5f9; color: #475569; font-size: 12px; font-family: monospace; font-weight: 600; padding: 2px 8px; border-radius: 6px; margin-left: 6px;">{applicant_code}</span>' if applicant_code else ""
 
         # Leave type
         leave_type_name = data.get("leave_type")
@@ -261,163 +266,28 @@ def notify(
             if from_d == to_d or days_num == 1.0:
                 date_display = from_d.strftime("%A, %B %d, %Y")
             else:
-                date_display = f"{from_d.strftime('%B %d, %Y')} &ndash; {to_d.strftime('%B %d, %Y')}"
+                date_display = f"{from_d.strftime('%B %d, %Y')} – {to_d.strftime('%B %d, %Y')}"
         elif from_str and to_str:
             if from_str == to_str or days_num == 1.0:
                 date_display = from_str
             else:
-                date_display = f"{from_str} &ndash; {to_str}"
+                date_display = f"{from_str} – {to_str}"
         else:
             date_display = "Specified in portal"
 
         reason_text = (data.get("reason") or (lr.reason if lr else "") or "").strip()
-        reason_html = ""
-        if reason_text:
-            reason_html = f"""
-            <div style="margin: 20px 0; background: #f8fafc; border-left: 4px solid #3b82f6; border-radius: 8px; padding: 14px 18px; text-align: left;">
-              <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; font-weight: 700; margin-bottom: 6px;">Reason for Leave</div>
-              <div style="font-size: 14px; color: #1e293b; line-height: 1.6; font-style: italic;">"{reason_text}"</div>
-            </div>
-            """
 
-        doc_btn_html = ""
-        if doc_url:
-            doc_btn_html = f"""
-            <div style="margin: 20px 0; text-align: center;">
-              <a href="{doc_url}" style="display: inline-block; padding: 11px 22px; background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px;">
-                📎 View Attached Medical Document
-              </a>
-            </div>
-            """
-
-        # Modern Executive HTML Email Layout
-        html_body = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Leave Request &mdash; {applicant_name}</title>
-        </head>
-        <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; color: #1e293b;">
-          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f1f5f9; padding: 40px 16px;">
-            <tr>
-              <td align="center">
-                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 540px; background-color: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 10px 25px rgba(0,0,0,0.05); overflow: hidden;">
-                  
-                  <!-- Top Banner / Header -->
-                  <tr>
-                    <td style="padding: 28px 32px 20px 32px; border-bottom: 1px solid #f1f5f9; text-align: left;">
-                      <div style="display: inline-block; padding: 4px 10px; background-color: #eff6ff; color: #2563eb; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
-                        Holbox HRMS &bull; Leave Request
-                      </div>
-                      <h1 style="margin: 0; font-size: 22px; font-weight: 700; color: #0f172a; letter-spacing: -0.3px;">
-                        New Leave Application
-                      </h1>
-                      <p style="margin: 6px 0 0 0; font-size: 13px; color: #64748b;">
-                        A team member has applied for leave and is waiting for your review.
-                      </p>
-                    </td>
-                  </tr>
-
-                  <!-- Main Content Card -->
-                  <tr>
-                    <td style="padding: 28px 32px;">
-                      
-                      <!-- Applicant Details Panel -->
-                      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 20px;">
-                        <tr>
-                          <td style="padding: 16px 20px;">
-                            <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                              <tr>
-                                <td style="padding-bottom: 12px;">
-                                  <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Requested By</div>
-                                  <div style="font-size: 17px; font-weight: 700; color: #0f172a; margin-top: 2px;">
-                                    {applicant_name} {applicant_code_badge}
-                                  </div>
-                                </td>
-                              </tr>
-                              <tr>
-                                <td>
-                                  <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                                    <tr>
-                                      <td width="50%" style="vertical-align: top;">
-                                        <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Leave Type</div>
-                                        <div style="font-size: 14px; font-weight: 600; color: #334155; margin-top: 3px;">
-                                          {leave_type_name}
-                                        </div>
-                                      </td>
-                                      <td width="50%" style="vertical-align: top;">
-                                        <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Duration</div>
-                                        <div style="margin-top: 3px;">
-                                          <span style="display: inline-block; background-color: #e0f2fe; color: #0369a1; font-weight: 700; font-size: 13px; padding: 2px 10px; border-radius: 9999px;">
-                                            {days_badge_text}
-                                          </span>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  </table>
-                                </td>
-                              </tr>
-                              <tr>
-                                <td style="padding-top: 14px; border-top: 1px dashed #cbd5e1;">
-                                  <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Scheduled Date(s)</div>
-                                  <div style="font-size: 14px; font-weight: 700; color: #0f172a; margin-top: 3px;">
-                                    📅 {date_display}
-                                  </div>
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                        </tr>
-                      </table>
-
-                      <!-- Reason Box -->
-                      {reason_html}
-
-                      <!-- Document Attachment (if any) -->
-                      {doc_btn_html}
-
-                      <!-- Action Buttons -->
-                      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 28px;">
-                        <tr>
-                          <td align="center">
-                            <table border="0" cellspacing="0" cellpadding="0">
-                              <tr>
-                                <td style="padding-right: 12px;">
-                                  <a href="{approve_url}" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);">
-                                    Approve
-                                  </a>
-                                </td>
-                                <td style="padding-left: 12px;">
-                                  <a href="{reject_url}" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; font-size: 14px; font-weight: 700; padding: 13px 30px; border-radius: 8px; box-shadow: 0 4px 10px rgba(239, 68, 68, 0.25);">
-                                    Reject
-                                  </a>
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                        </tr>
-                      </table>
-
-                    </td>
-                  </tr>
-
-                  <!-- Footer -->
-                  <tr>
-                    <td style="padding: 16px 32px 24px 32px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5;">
-                      Submitted via Holbox AI Attendance System &bull; One-click decision secured by encrypted action token.<br>
-                      You can also manage leaves directly from the <a href="https://attendance.holbox.ai" style="color: #2563eb; text-decoration: none; font-weight: 600;">Admin Dashboard</a>.
-                    </td>
-                  </tr>
-
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-        </html>
-        """
+        html_body = leave_request_html(
+            applicant_name=applicant_name,
+            applicant_code=applicant_code,
+            leave_type_name=leave_type_name,
+            days_badge_text=days_badge_text,
+            date_display=date_display,
+            reason_text=reason_text,
+            approve_url=approve_url,
+            reject_url=reject_url,
+            doc_url=doc_url,
+        )
 
         # Plain text version
         plain_body = (
@@ -613,111 +483,13 @@ def send_shift_summary_email(
         )
     plain_body = "\n".join(lines)
 
-    # Rich HTML table rows
-    rows_html = ""
-    for r in roster:
-        st = r['status'].lower()
-        if st in ("present", "early"):
-            status_color = "#10b981"
-            status_bg = "rgba(16, 185, 129, 0.15)"
-        elif st in ("late", "half_day"):
-            status_color = "#f59e0b"
-            status_bg = "rgba(245, 158, 11, 0.15)"
-        elif st in ("absent",):
-            status_color = "#ef4444"
-            status_bg = "rgba(239, 68, 68, 0.15)"
-        elif st in ("on_leave", "leave"):
-            status_color = "#3b82f6"
-            status_bg = "rgba(59, 130, 246, 0.15)"
-        else:
-            status_color = "#94a3b8"
-            status_bg = "rgba(148, 163, 184, 0.15)"
-
-        late_badge = (
-            f'<span style="color: #f59e0b; font-weight: 700;">{r["late_str"]}</span>'
-            if r.get("late_minutes", 0) > 0
-            else '<span style="color: #64748b;">On Time</span>'
-        )
-
-        rows_html += f"""
-        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.06);">
-          <td style="padding: 12px 14px; font-weight: 600; color: #f8fafc;">
-            {r['name']} <span style="font-size: 11px; font-family: monospace; color: #94a3b8; margin-left: 4px;">({r['code']})</span>
-          </td>
-          <td style="padding: 12px 14px;">
-            <span style="display: inline-block; padding: 3px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; background: {status_bg}; color: {status_color};">
-              {r['status'].replace('_', ' ')}
-            </span>
-          </td>
-          <td style="padding: 12px 14px; color: #cbd5e1; font-family: monospace; font-size: 12px;">{r['first_in']}</td>
-          <td style="padding: 12px 14px; color: #cbd5e1; font-family: monospace; font-size: 12px;">{r['last_out']}</td>
-          <td style="padding: 12px 14px; font-size: 12px;">{late_badge}</td>
-          <td style="padding: 12px 14px; color: #94a3b8; font-size: 12px;">{r.get('hours_str', '-')}</td>
-        </tr>
-        """
-
-    html_body = f"""
-    <div style="font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0b0f17; color: #cbd5e1; padding: 32px 16px; line-height: 1.5;">
-      <div style="max-width: 680px; margin: 0 auto; background: #111827; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 14px; padding: 28px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);">
-        
-        <!-- Header -->
-        <div style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 20px; margin-bottom: 24px;">
-          <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #3b82f6; margin-bottom: 6px;">Daily Shift Attendance Summary</div>
-          <h1 style="color: #ffffff; font-size: 22px; font-weight: 700; margin: 0 0 6px 0;">{shift_name} Shift</h1>
-          <div style="font-size: 13px; color: #94a3b8;">
-            📅 {shift_date.strftime('%A, %B %d, %Y')} &nbsp;&bull;&nbsp; ⏰ {shift_timing}
-          </div>
-        </div>
-
-        <!-- Metrics Cards -->
-        <div style="display: flex; gap: 8px; margin-bottom: 26px;">
-          <div style="flex: 1; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 12px 8px; text-align: center;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600;">Scheduled</div>
-            <div style="font-size: 20px; font-weight: 700; color: #f8fafc; margin-top: 4px;">{stats.get('total', 0)}</div>
-          </div>
-          <div style="flex: 1; background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #10b981; font-weight: 600;">Present</div>
-            <div style="font-size: 20px; font-weight: 700; color: #10b981; margin-top: 4px;">{stats.get('present', 0)}</div>
-          </div>
-          <div style="flex: 1; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #f59e0b; font-weight: 600;">Late</div>
-            <div style="font-size: 20px; font-weight: 700; color: #f59e0b; margin-top: 4px;">{stats.get('late', 0)}</div>
-          </div>
-          <div style="flex: 1; background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #ef4444; font-weight: 600;">Absent</div>
-            <div style="font-size: 20px; font-weight: 700; color: #ef4444; margin-top: 4px;">{stats.get('absent', 0)}</div>
-          </div>
-          <div style="flex: 1; background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px; padding: 12px 8px; text-align: center;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #60a5fa; font-weight: 600;">On Leave</div>
-            <div style="font-size: 20px; font-weight: 700; color: #60a5fa; margin-top: 4px;">{stats.get('leave', 0)}</div>
-          </div>
-        </div>
-
-        <!-- Roster Table -->
-        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
-          <thead>
-            <tr style="border-bottom: 2px solid rgba(255, 255, 255, 0.1); color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">
-              <th style="padding: 10px 14px;">Employee</th>
-              <th style="padding: 10px 14px;">Status</th>
-              <th style="padding: 10px 14px;">In</th>
-              <th style="padding: 10px 14px;">Out</th>
-              <th style="padding: 10px 14px;">Late (Mins)</th>
-              <th style="padding: 10px 14px;">Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows_html}
-          </tbody>
-        </table>
-
-        <!-- Footer -->
-        <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); text-align: center; font-size: 12px; color: #64748b;">
-          Holbox AI HRMS &bull; Sent automatically at shift end &bull; <a href="https://attendance.holbox.ai" style="color: #3b82f6; text-decoration: none;">View Dashboard</a>
-        </div>
-
-      </div>
-    </div>
-    """
+    html_body = shift_summary_html(
+        shift_name=shift_name,
+        shift_timing=shift_timing,
+        shift_date_label=shift_date.strftime("%A, %B %d, %Y"),
+        stats=stats,
+        roster=roster,
+    )
 
     recipients = [e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)]
     for target in recipients:
@@ -754,96 +526,56 @@ def send_signup_request_email(
         f"Dashboard URL: https://attendance.holbox.ai/people\n"
     )
 
-    # High-aesthetic modern dark HTML email
-    html_body = f"""<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>New Employee Application</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #090d16; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc; -webkit-font-smoothing: antialiased;">
-  <div style="max-width: 600px; margin: 30px auto; background-color: #0f172a; border-radius: 16px; border: 1px solid rgba(255, 255, 255, 0.1); overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);">
-    
-    <!-- Header Banner -->
-    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 32px 32px 24px 32px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left;">
-      <div style="display: inline-block; padding: 4px 12px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 9999px; font-size: 11px; font-weight: 700; color: #60a5fa; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 16px;">
-        Holbox HRMS &bull; New Employee Application
-      </div>
-      <h1 style="margin: 0 0 6px 0; font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">
-        Candidate Wants to Join
-      </h1>
-      <p style="margin: 0; font-size: 14px; color: #94a3b8; line-height: 1.5;">
-        A new candidate has registered and is waiting for your administrative approval.
-      </p>
-    </div>
+    html_body = signup_request_html(
+        full_name=full_name,
+        email=email,
+        phone=ph,
+        department=dept,
+        designation=desig,
+    )
 
-    <!-- Main Content Area -->
-    <div style="padding: 32px;">
-      
-      <!-- Mark / Status Banner -->
-      <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 14px 18px; margin-bottom: 24px;">
-        <div style="font-size: 12px; font-weight: 800; color: #34d399; text-transform: uppercase; letter-spacing: 0.5px;">
-          ✨ Status Mark: Wants to Join
-        </div>
-        <div style="font-size: 13px; color: rgba(255, 255, 255, 0.75); margin-top: 3px;">
-          Candidate self-registration submitted via Attendance Portal.
-        </div>
-      </div>
+    recipients = [e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)]
+    for target in recipients:
+        Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()
 
-      <!-- Applicant Details Table -->
-      <div style="background-color: #1e293b; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.06); padding: 20px; margin-bottom: 24px;">
-        <table style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px; width: 35%;">Applicant Name</td>
-            <td style="padding: 8px 0; color: #ffffff; font-size: 14px; font-weight: 700;">{full_name}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Work Email</td>
-            <td style="padding: 8px 0; color: #38bdf8; font-size: 13px; font-family: monospace;">{email}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Phone Number</td>
-            <td style="padding: 8px 0; color: #cbd5e1; font-size: 13px;">{ph}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Department</td>
-            <td style="padding: 8px 0; color: #cbd5e1; font-size: 13px;">{dept}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; color: #94a3b8; font-size: 13px;">Desired Role</td>
-            <td style="padding: 8px 0; color: #cbd5e1; font-size: 13px;">{desig}</td>
-          </tr>
-        </table>
-      </div>
 
-      <!-- Tag Himesh Action Box -->
-      <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 12px; padding: 16px 20px; margin-bottom: 28px;">
-        <div style="font-size: 13px; font-weight: 700; color: #60a5fa; margin-bottom: 4px;">
-          📌 Attention: Himesh (@himesh.ctr) & Administrators
-        </div>
-        <div style="font-size: 13px; color: rgba(255, 255, 255, 0.85); line-height: 1.5;">
-          You have to approve this employee through your dashboard. Once approved, their account will be active and they will be guided to enroll their face biometrics.
-        </div>
-      </div>
+def send_signup_approved_email(
+    *,
+    full_name: str,
+    email: str,
+    emp_code: str,
+    admin_name: str,
+    department: str | None = None,
+    designation: str | None = None,
+) -> None:
+    """Tell admins a signup was approved from the dashboard, and by whom."""
+    from threading import Thread
 
-      <!-- Call to Action Button -->
-      <div style="text-align: center; margin-bottom: 24px;">
-        <a href="https://attendance.holbox.ai/people" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; text-decoration: none; font-weight: 700; font-size: 14px; padding: 14px 28px; border-radius: 10px; box-shadow: 0 4px 14px 0 rgba(37, 99, 235, 0.39);">
-          Open Dashboard to Review & Approve &rarr;
-        </a>
-      </div>
+    dept = department.strip() if department else "General"
+    desig = designation.strip() if designation else "Team Member"
+    subject = f"[Approved] {full_name} joined Holbox — approved by {admin_name}"
 
-    </div>
+    plain_body = (
+        f"EMPLOYEE APPROVED\n\n"
+        f"{full_name} has been approved and added to the workforce.\n\n"
+        f"Status: APPROVED\n"
+        f"Full Name: {full_name}\n"
+        f"Employee Code: {emp_code}\n"
+        f"Work Email: {email}\n"
+        f"Department: {dept}\n"
+        f"Role: {desig}\n\n"
+        f"Approved by admin: {admin_name}\n"
+        f"Dashboard: https://attendance.holbox.ai/people/{emp_code}\n"
+    )
 
-    <!-- Footer -->
-    <div style="padding: 20px; border-top: 1px solid rgba(255, 255, 255, 0.08); text-align: center; font-size: 12px; color: #64748b;">
-      Sent to Holbox Administrators ({', '.join(ADMIN_NOTIFICATION_EMAILS)}) &bull; <a href="https://attendance.holbox.ai" style="color: #64748b; text-decoration: underline;">Holbox Attendance Portal</a>
-    </div>
-
-  </div>
-</body>
-</html>
-"""
+    html_body = signup_approved_html(
+        full_name=full_name,
+        email=email,
+        emp_code=emp_code,
+        admin_name=admin_name,
+        department=dept,
+        designation=desig,
+    )
 
     recipients = [e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)]
     for target in recipients:

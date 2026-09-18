@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Product theme is html.bx-dark-mode, not Tailwind's default .dark class.
+   Without this, every `dark:` utility in the dashboard is a no-op. */
+@custom-variant dark (&:where(.bx-dark-mode, .bx-dark-mode *));
+
 /* Same palette as the mobile app - amber on cool graphite - so the two halves
    read as one product rather than two projects. */
 :root {
@@ -213,6 +217,13 @@ dialog {
   background: rgba(255, 255, 255, 0.03) !important;
 }
 
+html.bx-dark-mode {
+  color-scheme: dark;
+}
+html:not(.bx-dark-mode) {
+  color-scheme: light;
+}
+
 .bx-dark-mode #bx-shell input,
 .bx-dark-mode #bx-shell select,
 .bx-dark-mode #bx-shell textarea {
@@ -220,6 +231,20 @@ dialog {
   border-color: rgba(255, 255, 255, 0.1) !important;
   border-radius: 0.75rem !important;
   color: #fafafa !important;
+  color-scheme: dark;
+}
+
+/* Hardcoded Tailwind gray/zinc "paper" fills that ignore our tokens. */
+.bx-dark-mode #bx-shell :is(.bg-gray-50, .bg-gray-100, .bg-zinc-50, .bg-zinc-100, .bg-slate-50, .bg-neutral-50) {
+  background-color: rgba(39, 39, 42, 0.7) !important;
+}
+
+/* Primary CTAs use bg-ink text-ground. In dark mode --ink is #fafafa, so
+   those buttons become a lamp. Keep them as a raised dark chip instead. */
+.bx-dark-mode #bx-shell :is(button, a, [type="submit"], [type="button"]).bg-ink {
+  background-color: #27272a !important;
+  color: #fafafa !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
 }
 
 /* ---------------------------------------------------------------------------
@@ -377,7 +402,9 @@ header::before,
 .bx-pop::before {
   content: "";
   position: absolute;
-  inset: -1.5px;
+  /* Inset 0 so overflow-hidden tiles still show the ring (a -1.5px
+     ::before was clipped and the cards looked like they had no effect). */
+  inset: 0;
   border-radius: inherit;
   padding: 1.5px;
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
@@ -385,7 +412,7 @@ header::before,
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
   pointer-events: none;
-  opacity: var(--glow-opacity, 1);
+  opacity: var(--glow-opacity, 0);
   transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 3;
 }
@@ -414,11 +441,11 @@ header::before,
 .bx-dark .glass-panel::before,
 .bx-dark .bx-card::before {
   background-image: radial-gradient(
-    400px 400px at var(--lx, -1000px) var(--ly, -1000px),
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(228, 228, 231, 0.75) 25%,
-    rgba(161, 161, 170, 0.35) 50%,
-    transparent 100%
+    280px 280px at var(--lx, -1000px) var(--ly, -1000px),
+    rgba(255, 255, 255, 1) 0%,
+    rgba(244, 244, 245, 0.9) 18%,
+    rgba(212, 212, 216, 0.45) 42%,
+    transparent 72%
   ) !important;
 }
 

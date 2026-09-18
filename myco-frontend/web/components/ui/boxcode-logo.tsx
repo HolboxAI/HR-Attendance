@@ -15,7 +15,7 @@ export function BoxcodeLogo({ className = 'size-5', size, ...props }: BoxcodeLog
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       style={size ? { width: size, height: size } : undefined}
-      aria-label="Holbox Logo"
+      aria-label="Boxcode Logo"
       {...props}
     >
       <image
@@ -37,7 +37,7 @@ export function HolboxMark({ className = 'size-16', size, ...props }: BoxcodeLog
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       style={size ? { width: size, height: size } : undefined}
-      aria-label="Holbox Logo"
+      aria-label="Boxcode Logo"
       {...props}
     >
       <image

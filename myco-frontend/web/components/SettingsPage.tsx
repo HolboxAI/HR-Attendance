@@ -47,7 +47,7 @@ export function SettingsPage({ user }: SettingsPageProps) {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Preference states (stored in localStorage)
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('light');
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>('dark');
   const [dateFormat, setDateFormat] = useState('DD/MM/YYYY');
   const [timeFormat, setTimeFormat] = useState('12h');
   const [defaultLanding, setDefaultLanding] = useState('/');
@@ -58,7 +58,7 @@ export function SettingsPage({ user }: SettingsPageProps) {
 
   useEffect(() => {
     try {
-      const storedTheme = (localStorage.getItem('bx-theme') as any) || 'light';
+      const storedTheme = (localStorage.getItem('bx-theme') as any) || 'dark';
       setThemeMode(storedTheme);
       setDateFormat(localStorage.getItem('bx-date-format') || 'DD/MM/YYYY');
       setTimeFormat(localStorage.getItem('bx-time-format') || '12h');
@@ -555,7 +555,7 @@ export function SettingsPage({ user }: SettingsPageProps) {
               </div>
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Organization</span>
-                <p className="font-semibold text-ink">Holbox AI / IIMA Ventures</p>
+                <p className="font-semibold text-ink">Boxcode AI / IIMA Ventures</p>
               </div>
               <div className="p-3.5 rounded-xl bg-surface-2/40 border border-line/60 space-y-1">
                 <span className="text-[10px] font-mono uppercase tracking-wider text-ink-3">Attendance Punch</span>

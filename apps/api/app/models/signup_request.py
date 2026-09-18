@@ -40,6 +40,10 @@ class SignupRequest(Base, TimestampMixin):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rejection_reason: Mapped[str | None] = mapped_column(String(500))
 
+    # Slack chat.update target for the original "wants to join" post.
+    slack_message_ts: Mapped[str | None] = mapped_column(String(32))
+    slack_channel_id: Mapped[str | None] = mapped_column(String(32))
+
     # Created employee record when approved
     created_employee_id: Mapped[uuid.UUID | None] = mapped_column(
         GUID(), ForeignKey("employees.id")

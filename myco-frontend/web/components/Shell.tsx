@@ -12,25 +12,17 @@ import { SidebarBrand, SidebarFooter, SidebarNav } from '@/components/Sidebar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SpotlightCursor } from '@/components/ui/spotlight-cursor';
 import { ParticleWave } from '@/components/ui/particle-wave';
+import { Avatar } from '@/components/Avatar';
 import { OnboardingGuide } from '@/components/OnboardingGuide';
 import type { Capabilities } from '@/lib/capabilities';
 import { roleLabel } from '@/lib/capabilities';
-
-function initialsFor(name: string | null, email: string): string {
-  if (name) {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-    if (parts.length === 1 && parts[0].length > 0) return parts[0].slice(0, 2).toUpperCase();
-  }
-  return email.slice(0, 2).toUpperCase();
-}
 
 /**
  * The signed-in frame: fixed glass sidebar on desktop, drawer on mobile,
  * and a high-fidelity auto-hiding glass topbar on scroll with independent content scrolling.
  */
 export function Shell({
-  email, role, name, avatarUrl, caps, employeeCode, faceEnrolled, children,
+  email, role, name, avatarUrl, caps, employeeCode, faceEnrolled, skipEnrolQuest, children,
 }: {
   email: string;
   role: string;
@@ -39,18 +31,44 @@ export function Shell({
   caps: Capabilities;
   employeeCode?: string | null;
   faceEnrolled?: boolean;
+  skipEnrolQuest?: boolean;
   children: React.ReactNode;
 }) {
   const [drawer, setDrawer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
-  const [guideDismissed, setGuideDismissed] = useState(false);
+  const [guideDismissed, setGuideDismissed] = useState(!!skipEnrolQuest);
   const lastScrollY = useRef(0);
   const router = useRouter();
   const pathname = usePathname();
 
-  const needsEnrolment = (!avatarUrl && !faceEnrolled) && !guideDismissed;
+  // Must include email. After a mid-month wipe the next hire often reuses
+  // BX009; a skip saved for the previous holder of that code must not hide
+  // the quest from the new person.
+  const enrolSkipKey =
+    employeeCode && email
+      ? `bx-enrol-skip:${employeeCode}:${email.trim().toLowerCase()}`
+      : null;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (skipEnrolQuest) {
+      setGuideDismissed(true);
+      return;
+    }
+    setGuideDismissed(enrolSkipKey ? localStorage.getItem(enrolSkipKey) === '1' : false);
+  }, [employeeCode, email, enrolSkipKey, skipEnrolQuest]);
+
+  const needsEnrolment = Boolean(email) && (!avatarUrl && !faceEnrolled) && !guideDismissed;
+
+  function dismissEnrolment() {
+    if (typeof window !== 'undefined' && enrolSkipKey) {
+      localStorage.setItem(enrolSkipKey, '1');
+    }
+    setGuideDismissed(true);
+    router.refresh();
+  }
 
   useEffect(() => {
     setDrawer(false);
@@ -99,8 +117,6 @@ export function Shell({
     router.replace('/login');
     router.refresh();
   }
-
-  const initials = initialsFor(name, email);
 
   return (
     <div className="relative flex h-screen max-h-screen w-full bg-ground text-ink overflow-hidden">
@@ -227,17 +243,9 @@ export function Shell({
               className="hidden sm:flex items-center gap-2.5 pl-2 border-l border-line/60 hover:opacity-80 transition-opacity group"
               title="Settings & Profile"
             >
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt={name ?? email}
-                  className="size-8 rounded-full object-cover border border-line shadow-sm group-hover:border-ink/40 transition-colors"
-                />
-              ) : (
-                <div className="size-8 rounded-full bg-surface-2 border border-line flex items-center justify-center text-ink font-bold font-mono text-xs shadow-sm group-hover:border-ink/40 transition-colors">
-                  {initials}
-                </div>
-              )}
+              <span className="size-8 rounded-full border border-line shadow-sm overflow-hidden group-hover:border-ink/40 transition-colors [&>span]:size-8">
+                <Avatar name={name ?? email} code={employeeCode} src={avatarUrl} />
+              </span>
               <div className="flex flex-col text-left">
                 <span className="max-w-36 truncate text-xs font-semibold text-ink" title={email}>
                   {name ?? email}
@@ -283,10 +291,8 @@ export function Shell({
         <OnboardingGuide
           employeeName={name}
           employeeCode={employeeCode || null}
-          onCompleted={() => {
-            setGuideDismissed(true);
-            router.refresh();
-          }}
+          onCompleted={dismissEnrolment}
+          onSkip={dismissEnrolment}
         />
       )}
     </div>

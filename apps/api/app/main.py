@@ -70,7 +70,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Holbox HRMS API",
+    title="Boxcode HRMS API",
     version="0.1.0",
     description="Attendance-first HR platform. All capture methods converge on one punch event.",
     lifespan=lifespan,

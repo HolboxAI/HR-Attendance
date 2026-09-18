@@ -184,7 +184,7 @@ export function SidebarBrand({
         {!collapsed && (
           <div className="flex flex-col overflow-hidden whitespace-nowrap transition-all duration-200">
             <div className="flex items-center gap-1.5">
-              <span className="font-display text-sm font-bold tracking-tight text-ink">Holbox</span>
+              <span className="font-display text-sm font-bold tracking-tight text-ink">Boxcode</span>
               <span className="text-[8px] font-mono uppercase tracking-wider px-1 py-0.5 rounded bg-surface-2 text-ink-3 border border-line">
                 HRMS
               </span>

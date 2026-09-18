@@ -9,16 +9,17 @@ import { applyTheme } from "@/components/ThemeToggle";
 const KEY = "bx-theme";
 
 export const AnimatedThemeToggle = ({ className }: { className?: string }) => {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
     try {
-      const isDarkClass = document.documentElement.classList.contains("bx-dark-mode");
       const stored = localStorage.getItem(KEY);
-      if (stored === "dark" || isDarkClass) {
-        setTheme("dark");
-      } else {
+      if (stored === "light") {
         setTheme("light");
+      } else if (stored === "system") {
+        setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      } else {
+        setTheme("dark");
       }
     } catch {
       // fallback

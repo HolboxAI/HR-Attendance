@@ -31,6 +31,8 @@ from app.models.enums import UserRole                # noqa: E402
 # hr_admin can do, which includes everything a manager can do. So nobody needs
 # two roles, and giving someone `manager` when they are already `hr_admin`
 # would DEMOTE them.
+# Mid-month reset: seed only creates logins for people seed.py still lists
+# (Krish, Nikunj, Dhruv, Ashley, Himesh). It must not resurrect deleted staff.
 ROLES = {
     "BX001": UserRole.HR_ADMIN,     # Krish (Admin)
     "BX005": UserRole.HR_ADMIN,     # Dhruv (Admin)

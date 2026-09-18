@@ -1,0 +1,14 @@
+report_code,emp_code,report_name
+# Fill this AFTER the senior's report arrives.
+# report_code = whatever identifier the report uses (old MyCo code, staff id, …)
+# emp_code    = OUR live code (BX001 …). Must already exist and be active.
+# report_name = display only, never used for matching.
+#
+# Example:
+# 101,BX001,Krish Sharma
+# 102,BX002,Nikunj
+# 105,BX005,Dhruv
+# 106,BX006,Ashley
+# 108,BX008,Himesh
+#
+# Leave leavers OUT of this file. Unmapped rows are skipped, never guessed.

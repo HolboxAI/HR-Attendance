@@ -12,6 +12,7 @@ import { ParticleWave } from "@/components/ui/particle-wave";
 import { GlowCard } from "@/components/ui/spotlight-card";
 import { SignInPage } from "@/components/ui/sign-in-flow-1";
 import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
+import { GlowingShadow } from "@/components/ui/glowing-shadow";
 
 export function AuroraBackgroundDemo() {
   return (
@@ -105,6 +106,18 @@ export function LiquidMetalButtonDemo() {
         <LiquidMetalButton label="Get Started" />
         <LiquidMetalButton viewMode="icon" />
       </div>
+    </div>
+  );
+}
+
+export function GlowingShadowDemo() {
+  return (
+    <div className="flex items-center justify-center">
+      <GlowingShadow>
+        <span className="pointer-events-none z-10 m-8 text-center text-5xl leading-none font-semibold tracking-tighter text-white">
+          Glowing Shadow
+        </span>
+      </GlowingShadow>
     </div>
   );
 }

@@ -1,0 +1,16 @@
+---
+description: Deploy live dashboard to EC2 ONLY when explicitly requested by user
+alwaysApply: false
+---
+
+# Deploy live dashboard to EC2 (MANUAL ONLY)
+
+IMPORTANT: DO NOT deploy to EC2 automatically. ONLY deploy when Krish explicitly requests a deploy or push to EC2.
+
+When Krish explicitly requests an EC2 deployment:
+1. Verify local build and tests first (`npx tsc --noEmit`).
+2. Rsync only the web app and api. Never overwrite server `.env`, `data/`, `boxcode.db`, `.venv`, or `node_modules`.
+3. Host: `ubuntu@98.84.138.15`, key: `/Users/krishsharma/Downloads/hrms-attendance-system-kp.pem`, remote path: `/home/ubuntu/boxcode-hrms`.
+4. Run build on server: `cd /home/ubuntu/boxcode-hrms/myco-frontend/web && npm run build && pm2 restart boxcode-web && sudo systemctl restart boxcode-api.service`.
+5. Confirm the live URL after restart.
+

@@ -7,14 +7,11 @@ import {
   Loader2,
   LogIn,
   LogOut,
-  MapPin,
 } from 'lucide-react';
 
 import { CameraCaptureModal } from '@/components/CameraCaptureModal';
+import { GlowingShadow } from '@/components/ui/glowing-shadow';
 import { hhmm12, hours } from '@/lib/format';
-
-// Measured on site 2026-08-27. Keep in sync with apps/api/app/core/office.py.
-const OFFICE = { lat: 23.03479, lng: 72.53238 };
 
 type Today = {
   fullName: string;
@@ -45,7 +42,6 @@ function getIstMinutesNow(): number {
 export default function CheckinPage() {
   const [today, setToday] = useState<Today | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [useOfficeCoords, setUseOfficeCoords] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -170,44 +166,42 @@ export default function CheckinPage() {
     setBusy(true);
     setFeedback(null);
 
-    let lat = OFFICE.lat;
-    let lng = OFFICE.lng;
-    let accuracy = 15;
-    if (!useOfficeCoords) {
-      const cached = cachedCoordsRef.current;
-      const isFresh = cached && Date.now() - cached.ts < 120_000;
-      if (isFresh && cached) {
-        lat = cached.lat;
-        lng = cached.lng;
-        accuracy = cached.accuracy;
-      } else {
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: false,
-              maximumAge: 60_000,
-              timeout: 2500,
-            }),
-          );
-          lat = pos.coords.latitude;
-          lng = pos.coords.longitude;
-          accuracy = Math.round(pos.coords.accuracy || 15);
-          cachedCoordsRef.current = { lat, lng, accuracy, ts: Date.now() };
-        } catch {
-          if (cached) {
-            lat = cached.lat;
-            lng = cached.lng;
-            accuracy = cached.accuracy;
-          } else {
-            setFeedback({
-              type: 'error',
-              message: 'Location permission was denied or unavailable.',
-              details: 'Allow location for this site, or tick "Use office coordinates" for an off-site demo.',
-            });
-            setBusy(false);
-            setModalOpen(false);
-            return;
-          }
+    const cached = cachedCoordsRef.current;
+    const isFresh = cached && Date.now() - cached.ts < 120_000;
+    let lat: number;
+    let lng: number;
+    let accuracy: number;
+    if (isFresh && cached) {
+      lat = cached.lat;
+      lng = cached.lng;
+      accuracy = cached.accuracy;
+    } else {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false,
+            maximumAge: 60_000,
+            timeout: 2500,
+          }),
+        );
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+        accuracy = Math.round(pos.coords.accuracy || 15);
+        cachedCoordsRef.current = { lat, lng, accuracy, ts: Date.now() };
+      } catch {
+        if (cached) {
+          lat = cached.lat;
+          lng = cached.lng;
+          accuracy = cached.accuracy;
+        } else {
+          setFeedback({
+            type: 'error',
+            message: 'Location permission was denied or unavailable.',
+            details: 'Allow location for this site, then try again. Check-in needs your real position.',
+          });
+          setBusy(false);
+          setModalOpen(false);
+          return;
         }
       }
     }
@@ -277,7 +271,7 @@ export default function CheckinPage() {
       )}
 
       {/* Main Interactive Circular Widget */}
-      <section className="glass-panel rounded-3xl border border-line p-6 sm:p-10 shadow-sm flex flex-col items-center justify-center text-center space-y-6 bg-gradient-to-b from-surface via-surface to-surface-2/30 relative overflow-hidden">
+      <section className="glass-panel rounded-3xl border border-line p-6 sm:p-10 shadow-sm flex flex-col items-center justify-center text-center space-y-6 bg-gradient-to-b from-surface via-surface to-surface-2/30 relative overflow-visible">
         {/* Top Header & Live Tracker Pill */}
         <div className="space-y-2 max-w-md mx-auto">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-mono font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
@@ -343,38 +337,36 @@ export default function CheckinPage() {
               }}
               disabled={busy || !today}
               aria-label={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
-              className={`size-40 sm:size-44 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-2xl border-2 ${
-                isCurrentlyIn
-                  ? 'bg-gradient-to-b from-rose-500/15 via-rose-600/10 to-surface border-rose-500/40 hover:border-rose-500 hover:shadow-rose-500/25'
-                  : 'bg-gradient-to-b from-blue-500/15 via-blue-600/10 to-surface border-blue-500/40 hover:border-blue-500 hover:shadow-blue-500/25'
-              }`}
+              className="size-40 sm:size-44 rounded-full p-0 border-0 bg-transparent cursor-pointer select-none active:scale-95 disabled:opacity-70 disabled:cursor-wait"
             >
-              {busy ? (
-                <>
-                  <Loader2 className="size-6 animate-spin text-ink mb-1" />
-                  <span className="text-[11px] font-mono text-ink-3 uppercase">Recording…</span>
-                </>
-              ) : isCurrentlyIn ? (
-                <>
-                  <LogOut className="size-8 text-rose-500 dark:text-rose-400 mb-1" />
-                  <span className="font-display text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
-                    Check Out
-                  </span>
-                  <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                    {today?.checkedInAt ? `In ${hhmm12(today.checkedInAt)}` : 'Tap to punch'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
-                  <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
-                    Check In
-                  </span>
-                  <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                    Tap to punch
-                  </span>
-                </>
-              )}
+              <GlowingShadow variant="circle">
+                {busy ? (
+                  <>
+                    <Loader2 className="size-6 animate-spin text-ink mb-1" />
+                    <span className="text-[11px] font-mono text-ink-3 uppercase">Recording…</span>
+                  </>
+                ) : isCurrentlyIn ? (
+                  <>
+                    <LogOut className="size-8 text-rose-500 dark:text-rose-400 mb-1" />
+                    <span className="font-display text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
+                      Check Out
+                    </span>
+                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                      {today?.checkedInAt ? `In ${hhmm12(today.checkedInAt)}` : 'Tap to punch'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
+                    <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
+                      Check In
+                    </span>
+                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                      Tap to punch
+                    </span>
+                  </>
+                )}
+              </GlowingShadow>
             </button>
           </div>
         </div>
@@ -435,17 +427,6 @@ export default function CheckinPage() {
           </div>
         )}
 
-        {/* Subtle Off-site Office Coordinates Toggle */}
-        <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-ink-3 hover:text-ink transition-colors pt-2">
-          <input
-            type="checkbox"
-            checked={useOfficeCoords}
-            onChange={(e) => setUseOfficeCoords(e.target.checked)}
-            className="size-3.5 rounded border-line text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
-          />
-          <MapPin className="size-3.5" />
-          <span>Use office coordinates (for off-site demo)</span>
-        </label>
       </section>
 
       {/* Camera Capture Modal */}

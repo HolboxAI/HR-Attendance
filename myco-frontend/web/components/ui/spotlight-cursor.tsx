@@ -91,6 +91,9 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
         const r = currentlyLitEl.getBoundingClientRect();
         currentlyLitEl.style.setProperty('--lx', `${targetX - r.left}px`);
         currentlyLitEl.style.setProperty('--ly', `${targetY - r.top}px`);
+        document.documentElement.style.setProperty('--glow-opacity', '1');
+      } else {
+        document.documentElement.style.setProperty('--glow-opacity', '0');
       }
     };
 
@@ -104,7 +107,6 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
       }
       if (!glowOn) {
         glowOn = true;
-        document.documentElement.style.setProperty('--glow-opacity', '1');
       }
       if (!borderRaf) borderRaf = requestAnimationFrame(updateBorderGlow);
     };
@@ -153,11 +155,10 @@ const useSpotlightEffect = (config: SpotlightConfig) => {
         mouseY += (targetY - mouseY) * 0.2;
       }
 
-      // The cursor going idle fades the border glow out via the CSS
-      // transition - one var write on the transition, never one per frame.
+      // Canvas blob fades when the pointer is still; the CARD EDGE glow
+      // stays while the cursor is on a panel (see updateBorderGlow).
       if (!isMoving && glowOn) {
         glowOn = false;
-        document.documentElement.style.setProperty('--glow-opacity', '0');
       }
 
       if (currentOpacity > 0.005 && mouseX !== -1000 && mouseY !== -1000) {

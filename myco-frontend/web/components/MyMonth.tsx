@@ -10,8 +10,9 @@ import {
 import { MonthCalendar } from '@/components/MonthCalendar';
 import { CameraCaptureModal } from '@/components/CameraCaptureModal';
 import { statusGlyph, statusLabel } from '@/components/Status';
+import { GlowingShadow } from '@/components/ui/glowing-shadow';
 import {
-  hhmm, hhmm12, hours, istToday, istYearMonth, monthLabel,
+  hhmm, hhmm12, hours, istToday, istYearMonth, monthLabel, timeOfDay, firstName,
   type MonthDay, type MonthResponse
 } from '@/lib/format';
 
@@ -30,8 +31,6 @@ type TodayStatus = {
   shift_end: string | null;
   office_name: string;
 };
-
-const OFFICE = { lat: 23.03479, lng: 72.53238 };
 
 function getHandsetId(): string {
   if (typeof window === 'undefined') return '';
@@ -100,24 +99,28 @@ export function MyMonth({
     setBusy(true);
     setPunchFeedback(null);
 
-    let lat = OFFICE.lat;
-    let lng = OFFICE.lng;
-    let accuracy = 15;
-
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 8000,
-          })
-        );
-        lat = pos.coords.latitude;
-        lng = pos.coords.longitude;
-        accuracy = Math.round(pos.coords.accuracy || 15);
-      } catch {
-        // use fallback coords for smooth demo if permission denied
-      }
+    let lat: number;
+    let lng: number;
+    let accuracy: number;
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 8000,
+        })
+      );
+      lat = pos.coords.latitude;
+      lng = pos.coords.longitude;
+      accuracy = Math.round(pos.coords.accuracy || 15);
+    } catch {
+      setBusy(false);
+      setModalOpen(false);
+      setPunchFeedback({
+        type: 'error',
+        message: 'Location permission was denied or unavailable.',
+        details: 'Allow location for this site, then try again. Check-in needs your real position.',
+      });
+      return;
     }
 
     const form = new FormData();
@@ -256,7 +259,7 @@ export function MyMonth({
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-bold tracking-tight text-ink">
-            {name ?? data.full_name}
+            Good {timeOfDay()}, {firstName(name ?? data.full_name)}
           </h1>
           <p className="mt-1 text-sm text-ink-3 font-mono">
             Employee Workspace · {monthLabel(year, month)}
@@ -315,9 +318,8 @@ export function MyMonth({
       )}
 
       {/* 1. Daily Metrics Section (Limited to Today) */}
-      <section className="grid gap-4 sm:grid-cols-3">
-        {/* Hours Worked Today */}
-        <div className="glass-panel rounded-2xl p-5 border border-line/70 shadow-xs relative overflow-hidden">
+      <section className="grid gap-4 overflow-visible sm:grid-cols-3">
+        <GlowingShadow>
           <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-ink-3">
             <span>Hours worked today</span>
             <Clock className="size-4 text-ink-3" />
@@ -328,10 +330,9 @@ export function MyMonth({
           <p className="mt-1.5 text-xs text-ink-3 font-mono">
             {isCurrentlyIn ? 'Active session in progress' : 'Clocked total for today'}
           </p>
-        </div>
+        </GlowingShadow>
 
-        {/* Late by (today) */}
-        <div className="glass-panel rounded-2xl p-5 border border-line/70 shadow-xs relative overflow-hidden">
+        <GlowingShadow>
           <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-ink-3">
             <span>Late by today</span>
             <Timer className="size-4 text-ink-3" />
@@ -344,10 +345,9 @@ export function MyMonth({
           <p className="mt-1.5 text-xs font-mono text-ink-3">
             {lateTodayMinutes > 0 ? `${lateTodayMinutes} minutes after grace period` : 'On time today · 0 hours late · Refreshes daily'}
           </p>
-        </div>
+        </GlowingShadow>
 
-        {/* Assigned Shift Schedule */}
-        <div className="glass-panel rounded-2xl p-5 border border-line/70 shadow-xs relative overflow-hidden">
+        <GlowingShadow>
           <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-wider text-ink-3">
             <span>Today&apos;s shift schedule</span>
             <Sparkles className="size-4 text-blue-500" />
@@ -358,11 +358,11 @@ export function MyMonth({
           <p className="mt-1.5 text-xs text-ink-3 font-mono truncate">
             {todayData?.checked_in_at ? `Checked in at ${hhmm12(todayData.checked_in_at)}` : 'Awaiting punch-in'}
           </p>
-        </div>
+        </GlowingShadow>
       </section>
 
       {/* 2. Circular Check-in / Check-out Interactive Widget with Dynamic Blue Parameter */}
-      <section className="glass-panel rounded-3xl border border-line p-6 sm:p-10 shadow-sm flex flex-col items-center justify-center text-center space-y-6 bg-gradient-to-b from-surface via-surface to-surface-2/30 relative overflow-hidden">
+      <section className="glass-panel rounded-3xl border border-line p-6 sm:p-10 shadow-sm flex flex-col items-center justify-center text-center space-y-6 bg-gradient-to-b from-surface via-surface to-surface-2/30 relative overflow-visible">
         {/* Top Header & Status */}
         <div className="space-y-2 max-w-md mx-auto">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
@@ -425,38 +425,36 @@ export function MyMonth({
               onClick={() => setModalOpen(true)}
               disabled={busy}
               aria-label={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
-              className={`size-40 sm:size-44 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-2xl border-2 ${
-                isCurrentlyIn
-                  ? 'bg-gradient-to-b from-rose-500/15 via-rose-600/10 to-surface border-rose-500/40 hover:border-rose-500 hover:shadow-rose-500/25'
-                  : 'bg-gradient-to-b from-blue-500/15 via-blue-600/10 to-surface border-blue-500/40 hover:border-blue-500 hover:shadow-blue-500/25'
-              }`}
+              className="size-40 sm:size-44 rounded-full p-0 border-0 bg-transparent cursor-pointer select-none active:scale-95 disabled:opacity-70 disabled:cursor-wait"
             >
-              {busy ? (
-                <>
-                  <Loader2 className="size-6 animate-spin text-ink mb-1" />
-                  <span className="text-[11px] font-mono text-ink-3 uppercase">Recording…</span>
-                </>
-              ) : isCurrentlyIn ? (
-                <>
-                  <LogOut className="size-8 text-rose-500 dark:text-rose-400 mb-1" />
-                  <span className="font-display text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
-                    Check Out
-                  </span>
-                  <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                    {todayData?.checked_in_at ? `In ${hhmm12(todayData.checked_in_at)}` : 'Tap to punch'}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
-                  <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
-                    Check In
-                  </span>
-                  <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                    Tap to punch
-                  </span>
-                </>
-              )}
+              <GlowingShadow variant="circle">
+                {busy ? (
+                  <>
+                    <Loader2 className="size-6 animate-spin text-ink mb-1" />
+                    <span className="text-[11px] font-mono text-ink-3 uppercase">Recording…</span>
+                  </>
+                ) : isCurrentlyIn ? (
+                  <>
+                    <LogOut className="size-8 text-rose-500 dark:text-rose-400 mb-1" />
+                    <span className="font-display text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
+                      Check Out
+                    </span>
+                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                      {todayData?.checked_in_at ? `In ${hhmm12(todayData.checked_in_at)}` : 'Tap to punch'}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
+                    <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
+                      Check In
+                    </span>
+                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                      Tap to punch
+                    </span>
+                  </>
+                )}
+              </GlowingShadow>
             </button>
           </div>
         </div>

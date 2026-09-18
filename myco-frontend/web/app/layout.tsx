@@ -4,8 +4,8 @@ import Script from 'next/script';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Holbox · HRMS',
-  description: 'Attendance, leave and people - Holbox HRMS',
+  title: 'Boxcode · HRMS',
+  description: 'Attendance, leave and people - Boxcode HRMS',
 };
 
 /**
@@ -34,15 +34,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Theme preference, applied before first paint so a dark-theme user
           never sees a white flash. It flags <html>; the CSS scopes the flag
           to #bx-shell, so the sign-in page keeps its own approved design.
-          Failure (no storage, private mode) leaves the light default.
+          No stored choice (new account, first visit) is dark. Light is opt-in.
         */}
         <Script id="bx-theme-init" strategy="beforeInteractive">{`
           try {
             var m = localStorage.getItem('bx-theme');
-            if (m === 'dark' || (m === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+            if (m === 'light') {
+              document.documentElement.classList.remove('bx-dark-mode');
+            } else if (m === 'system') {
+              if (matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.classList.add('bx-dark-mode');
+              }
+            } else {
               document.documentElement.classList.add('bx-dark-mode');
             }
-          } catch (e) {}
+          } catch (e) {
+            document.documentElement.classList.add('bx-dark-mode');
+          }
           try {
             var nav = performance.getEntriesByType('navigation')[0];
             var isReload = (nav && nav.type === 'reload') || (performance.navigation && performance.navigation.type === 1);

@@ -118,6 +118,7 @@ db.commit()
 
 EL = db.scalar(select(LeaveType).where(LeaveType.code == "EL"))
 CL = db.scalar(select(LeaveType).where(LeaveType.code == "CL"))
+SL = db.scalar(select(LeaveType).where(LeaveType.code == "SL"))
 LOP = db.scalar(select(LeaveType).where(LeaveType.code == "LOP"))
 
 client = TestClient(app)
@@ -158,6 +159,7 @@ def status_on(emp, day):
 
 
 def apply_leave(headers, code, start, end, **kw):
+    kw.setdefault("reason", "Test leave")
     return client.post("/api/v1/leave/request", headers=headers, json={
         "leave_type_code": code, "from_date": start.isoformat(),
         "to_date": end.isoformat(), **kw,
@@ -380,6 +382,10 @@ locked = [
     ("GET", "/api/v1/admin/leave/types", None),
     ("GET", "/api/v1/admin/leave/audit", None),
     ("POST", "/api/v1/admin/leave/accrue?year=2026&month=10", None),
+    ("PUT", "/api/v1/admin/leave/balances/all",
+     {"items": [{"code": "CL", "available": 9}]}),
+    ("PUT", "/api/v1/admin/leave/balances/BX002",
+     {"items": [{"code": "CL", "available": 9}]}),
     ("POST", "/api/v1/admin/holidays", {"day": "2026-12-01", "name": "Nope"}),
 ]
 for method, path, payload in locked:
@@ -413,6 +419,37 @@ db.expire_all()
 after = float(leave_service.balance(db, nikunj, CL, "2026").accrued)
 box("quota-change-safe", check("next run uses the new quota (24/12 = 2)",
                                round(after - accrued_before, 2), 2.0))
+
+
+print("13b. HR can set remaining CL/EL/SL per person and for everyone")
+db.expire_all()
+used_before = float(leave_service.balance(db, nikunj, CL, "2026").used)
+r = client.put("/api/v1/admin/leave/balances/BX002", headers=ASHLEY,
+               json={"items": [{"code": "CL", "available": 3}]})
+box("hr-can-edit-balances", check("per-person 200", r.status_code, 200))
+cl_row = next(x for x in r.json() if x["code"] == "CL")
+box("hr-can-edit-balances", check("Nikunj CL remaining is 3", cl_row["available"], 3.0))
+db.expire_all()
+box("hr-can-edit-balances", check("used days were not rewritten",
+                               float(leave_service.balance(db, nikunj, CL, "2026").used),
+                               used_before))
+r = client.put("/api/v1/admin/leave/balances/all", headers=ASHLEY,
+               json={"items": [{"code": "SL", "available": 4}]})
+box("hr-can-edit-balances", check("everyone 200", r.status_code, 200))
+db.expire_all()
+box("hr-can-edit-balances", check("Nikunj SL remaining is 4",
+                               round(leave_service.balance(db, nikunj, SL, "2026").available, 2), 4.0))
+box("hr-can-edit-balances", check("Dhruv SL remaining is 4",
+                               round(leave_service.balance(db, dhruv, SL, "2026").available, 2), 4.0))
+box("hr-can-edit-balances", check("employee cannot set balances",
+                               client.put("/api/v1/admin/leave/balances/BX002", headers=NIKUNJ,
+                                          json={"items": [{"code": "CL", "available": 99}]}).status_code, 403))
+box("hr-can-edit-balances", check("manager cannot set balances either",
+                               client.put("/api/v1/admin/leave/balances/all", headers=MAYA,
+                                          json={"items": [{"code": "CL", "available": 99}]}).status_code, 403))
+r = client.put("/api/v1/admin/leave/balances/BX002", headers=ASHLEY,
+               json={"items": [{"code": "LOP", "available": 1}]})
+box("hr-can-edit-balances", check("LOP has no balance to edit", r.status_code, 409))
 
 
 print("14. Every policy change writes an audit row with old and new values")
@@ -489,6 +526,7 @@ LABELS = {
     "hr-can-edit-everything": "hr_admin changes every setting, no restart",
     "employee-locked-out":    "Employee cannot reach the policy endpoints",
     "quota-change-safe":      "Quota change does not alter accrued balances",
+    "hr-can-edit-balances":   "HR can set remaining CL/EL/SL per person and for everyone",
     "policy-audited":         "Every policy change audited with old + new",
     "holiday-recompute":      "Adding a holiday recomputes those dates",
 }

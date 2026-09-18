@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime, timezone
 
@@ -19,11 +20,22 @@ from app.models.enums import SignupStatus, UserRole
 from app.models.org import Department
 from app.models.signup_request import SignupRequest
 from app.services import employees as employee_service
+from app.services import notifications, slack
 from app.services.notifications import resolve_matching
 
 router = APIRouter(prefix="/admin/signups", tags=["signups"])
+logger = logging.getLogger(__name__)
 
 hr_only = Depends(require_role(UserRole.HR_ADMIN))
+
+
+def _actor_display_name(db: Session, actor: User) -> str:
+    if actor.employee_id:
+        emp = db.get(Employee, actor.employee_id)
+        if emp and emp.full_name:
+            return emp.full_name.strip()
+    local = (actor.email or "").split("@")[0].replace(".", " ").replace("_", " ").strip()
+    return local.title() if local else "Admin"
 
 
 class SignupRequestOut(BaseModel):
@@ -175,30 +187,56 @@ def approve_signup(
 
     db.commit()
 
+    created = result.employee
+    admin_name = _actor_display_name(db, actor)
+    dept_name = body.department or req.desired_department
+    desig_name = created.designation or body.designation or req.desired_designation
+    try:
+        slack.update_signup_decision(
+            full_name=created.full_name,
+            email=created.email or req.email,
+            admin_name=admin_name,
+            approved=True,
+            emp_code=created.emp_code,
+            message_ts=req.slack_message_ts,
+            channel_id=req.slack_channel_id,
+        )
+        slack.post_signup_approved_alert(
+            full_name=created.full_name,
+            email=created.email or req.email,
+            emp_code=created.emp_code,
+            admin_name=admin_name,
+            department=dept_name,
+            designation=desig_name,
+        )
+        notifications.send_signup_approved_email(
+            full_name=created.full_name,
+            email=created.email or req.email,
+            emp_code=created.emp_code,
+            admin_name=admin_name,
+            department=dept_name,
+            designation=desig_name,
+        )
+    except Exception:
+        logger.exception("Signup approved, but Slack/email follow-up failed")
+
     return DecisionResponse(
         ok=True,
-        message=f"{result.employee.full_name} ({result.employee.emp_code}) has been approved and added to workforce.",
-        employee=to_out(db, result.employee),
+        message=f"{created.full_name} ({created.emp_code}) has been approved and added to workforce.",
+        employee=to_out(db, created),
     )
 
 
-@router.post("/{signup_id}/reject", response_model=DecisionResponse)
-def reject_signup(
-    signup_id: str,
-    body: RejectSignupIn | None = None,
-    db: Session = Depends(get_db),
-    actor: User = hr_only,
+def apply_decline(
+    db: Session,
+    *,
+    req: SignupRequest,
+    actor: User,
+    reason: str | None,
+    slack_message_ts: str | None = None,
+    slack_channel_id: str | None = None,
 ) -> DecisionResponse:
-    """Reject a signup request."""
-    try:
-        req_uuid = uuid.UUID(signup_id)
-    except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid signup request ID")
-
-    req = db.get(SignupRequest, req_uuid)
-    if req is None or req.org_id != actor.org_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Signup request not found")
-
+    """Mark a pending signup declined and update the original Slack post."""
     if req.status != SignupStatus.PENDING:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -208,10 +246,9 @@ def reject_signup(
     req.status = SignupStatus.REJECTED
     req.decided_by_id = actor.id
     req.decided_at = datetime.now(timezone.utc)
-    req.rejection_reason = body.reason if body else None
+    req.rejection_reason = reason
     db.flush()
 
-    # Clear matching admin notifications
     resolve_matching(
         db,
         org_id=actor.org_id,
@@ -222,7 +259,48 @@ def reject_signup(
 
     db.commit()
 
-    return DecisionResponse(
-        ok=True,
-        message="Registration request rejected.",
+    admin_name = _actor_display_name(db, actor)
+    try:
+        slack.update_signup_decision(
+            full_name=req.full_name,
+            email=req.email,
+            admin_name=admin_name,
+            approved=False,
+            message_ts=slack_message_ts or req.slack_message_ts,
+            channel_id=slack_channel_id or req.slack_channel_id,
+            reason=reason,
+        )
+    except Exception:
+        logger.exception("Signup declined, but Slack update failed")
+
+    return DecisionResponse(ok=True, message="Registration request declined.")
+
+
+def _load_pending_signup(db: Session, signup_id: str, actor: User) -> SignupRequest:
+    try:
+        req_uuid = uuid.UUID(signup_id)
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid signup request ID")
+    req = db.get(SignupRequest, req_uuid)
+    if req is None or req.org_id != actor.org_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Signup request not found")
+    return req
+
+
+@router.post("/{signup_id}/decline", response_model=DecisionResponse)
+@router.post("/{signup_id}/reject", response_model=DecisionResponse)
+def reject_signup(
+    signup_id: str,
+    body: RejectSignupIn | None = None,
+    db: Session = Depends(get_db),
+    actor: User = hr_only,
+) -> DecisionResponse:
+    """Decline a signup request. /decline is the live path — some browsers
+    and ad-blockers swallow POSTs whose URL ends in /reject."""
+    req = _load_pending_signup(db, signup_id, actor)
+    return apply_decline(
+        db,
+        req=req,
+        actor=actor,
+        reason=(body.reason if body else None),
     )

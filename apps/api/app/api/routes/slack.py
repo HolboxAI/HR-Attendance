@@ -62,7 +62,48 @@ async def slack_interactions(
 
     action = data.get("actions", [{}])[0]
     action_value = action.get("value", "")
-    
+    slack_user = data.get("user", {}).get("username", "Unknown User")
+    channel_id = data.get("channel", {}).get("id")
+    message_ts = data.get("message", {}).get("ts")
+
+    if action_value.startswith("decline_signup:"):
+        from app.api.routes.admin_signups import apply_decline
+        from app.models.signup_request import SignupRequest
+
+        if settings.slack_channel_id and channel_id != settings.slack_channel_id:
+            return {"message": "Interactions only permitted from the designated admin channel."}
+
+        signup_id_str = action_value.split(":", 1)[1]
+        try:
+            signup_uuid = uuid.UUID(signup_id_str)
+        except ValueError:
+            return {"message": "Invalid signup request"}
+        req = db.get(SignupRequest, signup_uuid)
+        if req is None:
+            return {"message": "Signup request not found"}
+        hr_admin = db.scalar(
+            select(User).where(
+                User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
+                User.is_active.is_(True),
+            ).limit(1)
+        )
+        if not hr_admin:
+            hr_admin = db.scalar(select(User).where(User.is_active.is_(True)).limit(1))
+        if not hr_admin:
+            return {"message": "No admin available to record the decline"}
+        try:
+            apply_decline(
+                db,
+                req=req,
+                actor=hr_admin,
+                reason=f"Declined via Slack by @{slack_user}",
+                slack_message_ts=message_ts,
+                slack_channel_id=channel_id,
+            )
+        except HTTPException as exc:
+            return {"message": str(exc.detail)}
+        return {"message": "Success"}
+
     if action_value.startswith("partial_approve:"):
         action_type = "partial_approve"
         request_id_str = action_value.split(":", 1)[1]

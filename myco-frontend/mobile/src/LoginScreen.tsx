@@ -41,7 +41,7 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
   const [serverOpen, setServerOpen] = useState(false);
   const [serverDraft, setServerDraft] = useState('');
   const [serverNow, setServerNow] = useState(apiBase());
-  const { width: windowWidth } = useWindowDimensions();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const splitLayout = windowWidth >= 760;
 
   async function submit() {
@@ -80,31 +80,54 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
       <View style={s.vignette} pointerEvents="none" />
 
       <KeyboardAvoidingView style={s.keyboardView} behavior="padding">
-        <ScrollView
-          contentContainerStyle={[s.scroll, splitLayout && s.scrollSplit]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={[s.leftCol, splitLayout && s.leftColSplit]}>
-            <View style={s.cornerBrand}>
-              <View style={s.cornerLogoBox}>
-                <BoxcodeLogo size={30} />
+        <View style={splitLayout ? [s.splitRow, { minHeight: windowHeight }] : { flex: 1 }}>
+          {splitLayout && (
+            <View style={s.leftColSplit}>
+              <View style={s.cornerBrandSplit}>
+                <View style={s.cornerLogoBox}>
+                  <BoxcodeLogo size={30} />
+                </View>
+                <View>
+                  <Text style={s.cornerName}>Holbox</Text>
+                  <Text style={s.cornerSub}>Attendance Portal</Text>
+                </View>
               </View>
-              <View>
-                <Text style={s.cornerName}>Holbox</Text>
-                <Text style={s.cornerSub}>Attendance Portal</Text>
+              <View style={s.heroSplit}>
+                <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={20} gap={5} />
+                <View style={{ height: 14 }} />
+                <ShutterText text="HOLBOX" fontSize={64} gap={2} />
+                <View style={{ height: 22 }} />
+                <BoxcodeLogo size={112} />
               </View>
             </View>
+          )}
 
-            <View style={s.hero}>
-              <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={splitLayout ? 20 : 17} gap={5} />
-              <View style={{ height: 14 }} />
-              <ShutterText text="HOLBOX" fontSize={splitLayout ? 64 : 54} gap={2} />
-              <View style={{ height: 22 }} />
-              <BoxcodeLogo size={splitLayout ? 112 : 96} />
-            </View>
-          </View>
+          <ScrollView
+            style={splitLayout ? s.rightColSplit : undefined}
+            contentContainerStyle={splitLayout ? s.rightColSplitInner : s.scroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            {!splitLayout && (
+              <View style={s.leftCol}>
+                <View style={s.cornerBrand}>
+                  <View style={s.cornerLogoBox}>
+                    <BoxcodeLogo size={30} />
+                  </View>
+                  <View>
+                    <Text style={s.cornerName}>Holbox</Text>
+                    <Text style={s.cornerSub}>Attendance Portal</Text>
+                  </View>
+                </View>
+                <View style={s.hero}>
+                  <ShutterText text={mode === 'signup' ? 'JOIN THE TEAM' : 'WELCOME TO'} fontSize={17} gap={5} />
+                  <View style={{ height: 14 }} />
+                  <ShutterText text="HOLBOX" fontSize={54} gap={2} />
+                  <View style={{ height: 22 }} />
+                  <BoxcodeLogo size={96} />
+                </View>
+              </View>
+            )}
 
-          <View style={[s.rightCol, splitLayout && s.rightColSplit]}>
           {mode === 'signin' && (
             <View style={s.card}>
               <LiquidMetalHeading text="Sign in to Holbox" />
@@ -374,8 +397,8 @@ export default function LoginScreen({ onSignedIn }: { onSignedIn: (i: Identity) 
               />
             </View>
           )}
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -627,12 +650,10 @@ const s = StyleSheet.create({
     alignItems: 'center',
     minHeight: '100%',
   },
-  scrollSplit: {
-    flexGrow: 1,
+  splitRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'stretch',
-    paddingHorizontal: 0,
-    paddingTop: 0,
   },
   leftCol: {
     width: '100%',
@@ -640,23 +661,19 @@ const s = StyleSheet.create({
   },
   leftColSplit: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 36,
-    paddingVertical: 40,
+    position: 'relative',
     borderRightWidth: 1,
     borderRightColor: 'rgba(255,255,255,0.1)',
-    minHeight: '100%',
-  },
-  rightCol: {
-    width: '100%',
-    alignItems: 'center',
   },
   rightColSplit: {
     flex: 1,
+  },
+  rightColSplitInner: {
+    flexGrow: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     paddingHorizontal: 36,
     paddingVertical: 40,
-    minHeight: '100%',
   },
 
   dotGrid: {
@@ -682,6 +699,15 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  cornerBrandSplit: {
+    position: 'absolute',
+    top: 40,
+    left: 36,
+    zIndex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   cornerLogoBox: {
     width: 48, height: 48, borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.1)',
@@ -692,6 +718,12 @@ const s = StyleSheet.create({
   cornerSub: { color: 'rgba(255,255,255,0.5)', fontSize: 10 },
 
   hero: { alignItems: 'center', marginTop: 28, marginBottom: 28 },
+  heroSplit: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 36,
+  },
   shutterRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
 
   card: {

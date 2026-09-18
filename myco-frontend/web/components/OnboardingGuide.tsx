@@ -12,12 +12,14 @@ interface OnboardingGuideProps {
   employeeName: string | null;
   employeeCode: string | null;
   onCompleted: () => void;
+  onSkip?: () => void;
 }
 
 export function OnboardingGuide({
   employeeName,
   employeeCode,
   onCompleted,
+  onSkip,
 }: OnboardingGuideProps) {
   // Stages: 1 = Briefing, 2 = Biometric Capture / Upload, 3 = Mission Complete
   const [stage, setStage] = useState<1 | 2 | 3>(1);
@@ -89,18 +91,28 @@ export function OnboardingGuide({
     };
   }, [previewUrl]);
 
-  // Capture snapshot from webcam
+  // Capture snapshot from webcam. Cap the JPEG so Rekognition (5 MB) and
+  // a 4K laptop camera cannot produce an empty/huge frame.
   function takeSnapshot() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 640;
+    const srcW = video.videoWidth;
+    const srcH = video.videoHeight;
+    if (!srcW || !srcH) {
+      setError('Camera is still starting — wait a second and try again.');
+      return;
+    }
+
+    const maxSide = 960;
+    const scale = Math.min(1, maxSide / Math.max(srcW, srcH));
+    canvas.width = Math.round(srcW * scale);
+    canvas.height = Math.round(srcH * scale);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Flip horizontally for natural mirror feel on selfie camera
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     if (facingMode === 'user') {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
@@ -109,19 +121,50 @@ export function OnboardingGuide({
 
     canvas.toBlob(
       (blob) => {
-        if (!blob) return;
+        if (!blob) {
+          setError('Could not capture that frame. Try again or upload a file.');
+          return;
+        }
         setCapturedBlob(blob);
         const url = URL.createObjectURL(blob);
         setPreviewUrl(url);
         setError(null);
       },
       'image/jpeg',
-      0.92
+      0.8
     );
   }
 
+  async function downscaleToJpeg(source: Blob): Promise<Blob> {
+    const url = URL.createObjectURL(source);
+    try {
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('Could not read that image'));
+        el.src = url;
+      });
+      const canvas = canvasRef.current;
+      if (!canvas) return source;
+      const maxSide = 960;
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return source;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.8)
+      );
+      return blob ?? source;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
   // Handle file picker selection
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -135,10 +178,15 @@ export function OnboardingGuide({
       return;
     }
 
-    setCapturedBlob(file);
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    setError(null);
+    try {
+      const compressed = await downscaleToJpeg(file);
+      setCapturedBlob(compressed);
+      const url = URL.createObjectURL(compressed);
+      setPreviewUrl(url);
+      setError(null);
+    } catch {
+      setError('Could not read that image. Try a different JPG or PNG.');
+    }
   }
 
   function retake() {
@@ -167,7 +215,18 @@ export function OnboardingGuide({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(data.detail || data.message || 'Photo was rejected by facial quality verification.');
+        const detail = data?.detail;
+        const reason =
+          typeof detail === 'string'
+            ? detail
+            : Array.isArray(detail) && typeof detail[0]?.msg === 'string'
+              ? detail[0].msg
+              : typeof data?.message === 'string'
+                ? data.message
+                : res.status >= 500
+                  ? 'Could not save the photo. Please try again.'
+                  : 'Photo was rejected by facial quality verification.';
+        setError(reason);
         setBusy(false);
         return;
       }
@@ -199,6 +258,7 @@ export function OnboardingGuide({
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.4, ease: 'easeOut' }}
+        data-glow
         className="w-full max-w-xl rounded-3xl border border-white/15 bg-surface/95 backdrop-blur-3xl shadow-2xl p-6 sm:p-8 relative overflow-hidden"
       >
         {/* Glow ambient background element */}
@@ -234,7 +294,7 @@ export function OnboardingGuide({
                 </div>
                 <div>
                   <h2 className="font-display text-2xl sm:text-3xl font-black tracking-tight text-ink">
-                    Welcome to Holbox, {employeeName || 'Team Member'}!
+                    Welcome to Boxcode, {employeeName || 'Team Member'}!
                   </h2>
                   <p className="text-xs sm:text-sm text-ink-3 mt-1 max-w-md">
                     To enable instant biometric check-ins and verify your shift attendance, we need to register your reference facial profile.
@@ -244,7 +304,7 @@ export function OnboardingGuide({
 
               {/* Game quest perk callouts */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <div className="p-3.5 rounded-2xl bg-surface-2 border border-line flex items-start gap-3">
+                <div data-glow className="p-3.5 rounded-2xl bg-surface-2 border border-line flex items-start gap-3">
                   <div className="size-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
                     <Zap className="size-4" />
                   </div>
@@ -256,7 +316,7 @@ export function OnboardingGuide({
                   </div>
                 </div>
 
-                <div className="p-3.5 rounded-2xl bg-surface-2 border border-line flex items-start gap-3">
+                <div data-glow className="p-3.5 rounded-2xl bg-surface-2 border border-line flex items-start gap-3">
                   <div className="size-8 rounded-xl bg-blue-500/15 text-blue-400 flex items-center justify-center shrink-0">
                     <ShieldCheck className="size-4" />
                   </div>
@@ -292,6 +352,15 @@ export function OnboardingGuide({
                 <span>Start Mission: Enroll Face Biometrics</span>
                 <ArrowRight className="size-4" />
               </button>
+              {onSkip && (
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  className="w-full h-10 rounded-2xl text-ink-3 hover:text-ink text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Skip for now — open the dashboard
+                </button>
+              )}
             </motion.div>
           )}
 
@@ -339,7 +408,7 @@ export function OnboardingGuide({
               </div>
 
               {/* Viewfinder / Preview Frame */}
-              <div className="relative aspect-square w-full max-w-[340px] mx-auto rounded-3xl overflow-hidden bg-black border-2 border-dashed border-line flex items-center justify-center shadow-inner">
+              <div data-glow className="relative aspect-square w-full max-w-[340px] mx-auto rounded-3xl overflow-hidden bg-black border-2 border-dashed border-line flex items-center justify-center shadow-inner">
                 {previewUrl ? (
                   <img
                     src={previewUrl}
@@ -491,7 +560,7 @@ export function OnboardingGuide({
               <button
                 type="button"
                 onClick={onCompleted}
-                className="w-full h-12 rounded-2xl bg-white text-black font-bold text-sm shadow-xl hover:bg-white/90 transition-all active:scale-[0.99] cursor-pointer"
+                className="w-full h-12 rounded-2xl bg-ink text-ground font-bold text-sm shadow-xl hover:opacity-90 transition-all active:scale-[0.99] cursor-pointer"
               >
                 Enter Attendance Dashboard →
               </button>

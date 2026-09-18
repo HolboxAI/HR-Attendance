@@ -145,11 +145,9 @@ print("=" * 78)
 SCENARIOS = [
     ("BX001", "normal day",           [(9, 28, 0), (13, 5, 0), (13, 52, 0), (18, 41, 0)]),
     ("BX002", "late, works through",  [(10, 22, 0), (19, 5, 0)]),
-    ("BX003", "half day",             [(9, 31, 0), (13, 40, 0)]),
-    ("BX004", "forgot to punch out",  [(9, 45, 0)]),
+    ("BX005", "half day",             [(9, 31, 0), (13, 40, 0)]),
     ("BX006", "double-tapped",        [(9, 30, 0), (9, 30, 0), (18, 30, 0)]),
-    # Night shift: out at 06:12 the NEXT morning. Must resolve to ONE day.
-    ("BX007", "night shift",          [(22, 4, 0), (6, 12, 1)]),
+    ("BX008", "forgot to punch out",  [(9, 45, 0)]),
 ]
 
 db = SessionLocal()
