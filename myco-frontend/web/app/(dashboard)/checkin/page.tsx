@@ -20,9 +20,11 @@ type Today = {
   shiftStart?: string | null;
   shiftEnd?: string | null;
   direction: 'in' | 'out';
+  isCurrentlyIn?: boolean;
   checkedInAt: string | null;
   checkedOutAt: string | null;
   workedMinutes: number;
+  breakMinutes?: number;
   lateMinutes: number;
 };
 
@@ -31,6 +33,13 @@ type Feedback = {
   message: string;
   details?: string;
 };
+
+function formatWorkHours(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m.toString().padStart(2, '0')}m`;
+}
 
 function getIstMinutesNow(): number {
   const now = new Date();
@@ -92,9 +101,11 @@ export default function CheckinPage() {
       shiftStart: j.shift_start,
       shiftEnd: j.shift_end,
       direction: j.direction,
+      isCurrentlyIn: j.is_currently_in ?? (j.direction === 'out'),
       checkedInAt: j.checked_in_at,
       checkedOutAt: j.checked_out_at,
       workedMinutes: j.worked_minutes ?? 0,
+      breakMinutes: j.break_minutes ?? 0,
       lateMinutes: j.late_minutes ?? 0,
     });
   }, []);
@@ -154,13 +165,17 @@ export default function CheckinPage() {
   }, [today, currentMinuteOfDay]);
 
   // Is currently checked in?
-  // When direction is 'out', employee has checked in and next action is Check Out.
-  const isCurrentlyIn = today?.direction === 'out';
+  const isCurrentlyIn = today?.isCurrentlyIn ?? (today?.direction === 'out');
+  const liveWorkedMinutes = today?.workedMinutes ?? 0;
+
+  // Progress towards 8h / shift daily work target
+  const targetWorkMinutes = Math.max(480, (shiftInfo.totalMinutes || 540) - 60);
+  const workProgress = Math.min(100, Math.max(0, (liveWorkedMinutes / targetWorkMinutes) * 100));
 
   // SVG Circle calculation
   const circleRadius = 82;
   const circumference = 2 * Math.PI * circleRadius; // ~515.22
-  const strokeDashoffset = circumference * (1 - shiftInfo.progress / 100);
+  const strokeDashoffset = circumference * (1 - workProgress / 100);
 
   async function punch(file: File) {
     setBusy(true);
@@ -359,10 +374,10 @@ export default function CheckinPage() {
                   <>
                     <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
                     <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
-                      Check In
+                      {today?.checkedInAt ? 'Resume / In' : 'Check In'}
                     </span>
                     <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                      Tap to punch
+                      {today?.checkedOutAt ? `Out at ${hhmm12(today.checkedOutAt)}` : 'Tap to punch'}
                     </span>
                   </>
                 )}
@@ -379,19 +394,26 @@ export default function CheckinPage() {
           </div>
 
           <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-2 border border-line text-xs font-mono">
-            <span className="text-ink-3">Remaining:</span>
-            <span className="font-bold text-blue-600 dark:text-blue-400">
-              {shiftInfo.isShiftEnded
-                ? 'Shift completed for today'
-                : !shiftInfo.isShiftStarted
-                ? `Starts in ${hours(Math.max(0, -shiftInfo.elapsedMinutes))}`
-                : `${hours(shiftInfo.remainingMinutes)} left`}
+            <span className="text-ink-3">Worked Today:</span>
+            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+              {formatWorkHours(liveWorkedMinutes)}
             </span>
           </div>
 
+          {(today?.breakMinutes ?? 0) > 0 && (
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface-2 border border-line text-xs font-mono">
+              <span className="text-ink-3">Breaks:</span>
+              <span className="font-semibold text-amber-600 dark:text-amber-400">
+                {today?.breakMinutes}m
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-mono text-blue-600 dark:text-blue-400">
-            <span>Progress:</span>
-            <span className="font-bold">{Math.round(shiftInfo.progress)}%</span>
+            <span>Status:</span>
+            <span className="font-bold">
+              {isCurrentlyIn ? 'In Office' : today?.checkedInAt ? 'On Break' : 'Not In'}
+            </span>
           </div>
         </div>
 

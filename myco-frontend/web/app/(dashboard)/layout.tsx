@@ -40,11 +40,7 @@ export default async function DashboardLayout({
           name={me.full_name ?? null}
           avatarUrl={me.avatar_url ?? null}
           employeeCode={me.employee_code ?? null}
-          faceEnrolled={me.face_enrolled ?? !!me.avatar_url}
-          skipEnrolQuest={
-            !!me.employee_code &&
-            ['BX001', 'BX002', 'BX005', 'BX006', 'BX008'].includes(me.employee_code)
-          }
+          faceEnrolled={me.face_enrolled ?? false}
           caps={caps}
         >
           {children}

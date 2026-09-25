@@ -18,6 +18,9 @@ from app.core.config import settings
 
 # Rekognition's own similarity scale is 0-100.
 MATCH_THRESHOLD = 90.0
+# For 1:N duplicate detection sweep across all enrolled faces, use a higher threshold
+# to avoid false positive duplicate matches between different employees.
+DUPLICATE_SWEEP_THRESHOLD = 96.0
 
 # Reject a selfie before spending money on it.
 # These used to be 95 / 20 / 35 — indoor webcams and slightly off-axis
@@ -236,7 +239,7 @@ class RekognitionFaceService:
             resp = self._client.compare_faces(
                 SourceImage={"Bytes": reference_bytes},
                 TargetImage={"Bytes": candidate_bytes},
-                SimilarityThreshold=MATCH_THRESHOLD,
+                SimilarityThreshold=DUPLICATE_SWEEP_THRESHOLD,
             )
         except Exception as exc:
             code = _error_code(exc)
@@ -250,7 +253,7 @@ class RekognitionFaceService:
         if not matches:
             return FaceResult(False, None)
         similarity = matches[0]["Similarity"]
-        return FaceResult(similarity >= MATCH_THRESHOLD, similarity)
+        return FaceResult(similarity >= DUPLICATE_SWEEP_THRESHOLD, similarity)
 
 
 def get_face_service():

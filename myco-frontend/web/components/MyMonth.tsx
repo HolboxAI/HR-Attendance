@@ -12,7 +12,7 @@ import { CameraCaptureModal } from '@/components/CameraCaptureModal';
 import { statusGlyph, statusLabel } from '@/components/Status';
 import { GlowingShadow } from '@/components/ui/glowing-shadow';
 import {
-  hhmm, hhmm12, hours, istToday, istYearMonth, monthLabel, timeOfDay, firstName,
+  hhmm, hhmm12, hours, formatLateLong, istToday, istYearMonth, monthLabel, timeOfDay, firstName,
   type MonthDay, type MonthResponse
 } from '@/lib/format';
 
@@ -343,7 +343,7 @@ export function MyMonth({
             {lateTodayMinutes > 0 ? hours(lateTodayMinutes) : '0 hrs'}
           </div>
           <p className="mt-1.5 text-xs font-mono text-ink-3">
-            {lateTodayMinutes > 0 ? `${lateTodayMinutes} minutes after grace period` : 'On time today · 0 hours late · Refreshes daily'}
+            {lateTodayMinutes > 0 ? `${formatLateLong(lateTodayMinutes)} after grace period` : 'On time today · 0 hours late · Refreshes daily'}
           </p>
         </GlowingShadow>
 

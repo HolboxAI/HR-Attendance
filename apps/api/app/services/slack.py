@@ -415,24 +415,47 @@ def post_reply(channel_id: str, message: str, thread_ts: str | None = None) -> N
     except Exception as e:
         logger.error(f"Failed to post reply to Slack: {e}")
 
+def format_duration_human(minutes: int) -> str:
+    """Format minutes into human-readable hours and minutes.
+    Examples:
+        127 -> "2 hours 7 minutes"
+        60  -> "1 hour"
+        61  -> "1 hour 1 minute"
+        45  -> "45 minutes"
+        1   -> "1 minute"
+        0   -> "0 minutes"
+    """
+    if minutes <= 0:
+        return "0 minutes"
+    h = minutes // 60
+    m = minutes % 60
+    if h == 0:
+        return f"{m} minute{'s' if m != 1 else ''}"
+    hour_part = f"{h} hour{'s' if h != 1 else ''}"
+    if m == 0:
+        return hour_part
+    return f"{hour_part} {m} minute{'s' if m != 1 else ''}"
+
+
 def post_late_arrival_alert(employee_name: str, arrive_time: str, late_minutes: int, shift_date: str) -> None:
     """Post a late arrival alert to Slack."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
+    dur_str = format_duration_human(late_minutes)
     try:
         response = httpx.post(
             "https://slack.com/api/chat.postMessage",
             headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
             json={
                 "channel": settings.slack_channel_id,
-                "text": f"⏳ *Late Arrival:* {employee_name} arrived late at {arrive_time} ({late_minutes} minutes late) for their shift on {shift_date}.",
+                "text": f"⏳ *Late Arrival:* {employee_name} arrived late at {arrive_time} ({dur_str} late) for their shift on {shift_date}.",
             },
             timeout=5.0,
         )
         res_data = response.json()
         if not res_data.get("ok"):
-            logger.error(f"Slack API error: {res_data.get('error')}")
+            logger.error(f"Slack API error in post_late_arrival_alert: {res_data.get('error')}")
     except Exception as e:
         logger.error(f"Failed to post late arrival alert to Slack: {e}")
 
@@ -442,19 +465,20 @@ def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: i
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
+    dur_str = format_duration_human(early_minutes)
     try:
         response = httpx.post(
             "https://slack.com/api/chat.postMessage",
             headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
             json={
                 "channel": settings.slack_channel_id,
-                "text": f"🏃 *Early Leave:* {employee_name} left early at {leave_time} ({early_minutes} minutes early) for their shift on {shift_date}.",
+                "text": f"🏃 *Early Leave:* {employee_name} left early at {leave_time} ({dur_str} early) for their shift on {shift_date}.",
             },
             timeout=5.0,
         )
         res_data = response.json()
         if not res_data.get("ok"):
-            logger.error(f"Slack API error: {res_data.get('error')}")
+            logger.error(f"Slack API error in post_early_leave_alert: {res_data.get('error')}")
     except Exception as e:
         logger.error(f"Failed to post early leave alert to Slack: {e}")
 

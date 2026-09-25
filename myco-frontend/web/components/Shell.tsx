@@ -22,7 +22,7 @@ import { roleLabel } from '@/lib/capabilities';
  * and a high-fidelity auto-hiding glass topbar on scroll with independent content scrolling.
  */
 export function Shell({
-  email, role, name, avatarUrl, caps, employeeCode, faceEnrolled, skipEnrolQuest, children,
+  email, role, name, avatarUrl, caps, employeeCode, faceEnrolled, children,
 }: {
   email: string;
   role: string;
@@ -31,42 +31,19 @@ export function Shell({
   caps: Capabilities;
   employeeCode?: string | null;
   faceEnrolled?: boolean;
-  skipEnrolQuest?: boolean;
   children: React.ReactNode;
 }) {
   const [drawer, setDrawer] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
-  const [guideDismissed, setGuideDismissed] = useState(!!skipEnrolQuest);
   const lastScrollY = useRef(0);
   const router = useRouter();
   const pathname = usePathname();
 
-  // Must include email. After a mid-month wipe the next hire often reuses
-  // BX009; a skip saved for the previous holder of that code must not hide
-  // the quest from the new person.
-  const enrolSkipKey =
-    employeeCode && email
-      ? `bx-enrol-skip:${employeeCode}:${email.trim().toLowerCase()}`
-      : null;
+  const needsEnrolment = Boolean(email) && !faceEnrolled;
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (skipEnrolQuest) {
-      setGuideDismissed(true);
-      return;
-    }
-    setGuideDismissed(enrolSkipKey ? localStorage.getItem(enrolSkipKey) === '1' : false);
-  }, [employeeCode, email, enrolSkipKey, skipEnrolQuest]);
-
-  const needsEnrolment = Boolean(email) && (!avatarUrl && !faceEnrolled) && !guideDismissed;
-
-  function dismissEnrolment() {
-    if (typeof window !== 'undefined' && enrolSkipKey) {
-      localStorage.setItem(enrolSkipKey, '1');
-    }
-    setGuideDismissed(true);
+  function handleEnrolmentCompleted() {
     router.refresh();
   }
 
@@ -291,8 +268,7 @@ export function Shell({
         <OnboardingGuide
           employeeName={name}
           employeeCode={employeeCode || null}
-          onCompleted={dismissEnrolment}
-          onSkip={dismissEnrolment}
+          onCompleted={handleEnrolmentCompleted}
         />
       )}
     </div>

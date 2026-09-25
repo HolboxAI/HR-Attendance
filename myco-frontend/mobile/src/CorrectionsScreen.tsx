@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
+  ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
   TextInput, View,
 } from 'react-native';
 
@@ -352,54 +352,59 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   newBtn: {
     backgroundColor: c.accent, borderRadius: theme.radius.md,
     paddingVertical: 14, alignItems: 'center',
+    boxShadow: '0 4px 20px rgba(255, 255, 255, 0.25)',
   },
-  newBtnText: { color: c.accentInk, fontWeight: '700', fontSize: 15 },
+  newBtnText: { color: c.accentInk, fontWeight: '800', fontSize: 15 },
 
   form: {
-    backgroundColor: c.surface, borderRadius: theme.radius.md,
-    borderWidth: 1, borderColor: c.line, padding: 16, gap: 4,
+    backgroundColor: c.surface, borderRadius: 20,
+    borderWidth: 1, borderColor: c.line, padding: 18, gap: 6,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' } as any : {}),
   },
   label: {
     color: c.ink3, fontSize: 11, letterSpacing: 1.2,
-    textTransform: 'uppercase', marginTop: 10,
+    textTransform: 'uppercase', marginTop: 10, fontWeight: '700',
   },
   input: {
     backgroundColor: c.surface2, borderColor: c.line, borderWidth: 1,
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
     color: c.ink, fontSize: 15, marginTop: 6,
   },
   multiline: { minHeight: 64, textAlignVertical: 'top' },
   dateRow: { flexDirection: 'row', gap: 8, marginTop: 6, alignItems: 'center' },
   pickBtn: {
-    borderColor: c.line, borderWidth: 1, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 11,
+    borderColor: c.line, borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: c.surface2,
   },
   pickBtnOn: { borderColor: c.accent, backgroundColor: c.hiBg },
   pickText: { color: c.ink2, fontSize: 14, fontWeight: '600' },
   pickTextOn: { color: c.accent },
   segmented: { flexDirection: 'row', gap: 8, marginTop: 6 },
   segment: {
-    flex: 1, borderWidth: 1, borderColor: c.line, borderRadius: 8,
-    paddingVertical: 10, alignItems: 'center',
+    flex: 1, borderWidth: 1, borderColor: c.line, borderRadius: 12,
+    paddingVertical: 12, alignItems: 'center', backgroundColor: c.surface2,
   },
   segmentOn: { borderColor: c.accent, backgroundColor: c.hiBg },
   segmentText: { color: c.ink3, fontSize: 14, fontWeight: '600' },
-  segmentTextOn: { color: c.accent },
+  segmentTextOn: { color: c.accent, fontWeight: '700' },
   formError: { color: c.crit, fontSize: 13, lineHeight: 18, marginTop: 10 },
   submit: {
-    backgroundColor: c.accent, borderRadius: 8, paddingVertical: 13,
+    backgroundColor: c.accent, borderRadius: 14, paddingVertical: 14,
     alignItems: 'center', marginTop: 14,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
   },
   busy: { opacity: 0.7 },
-  submitText: { color: c.accentInk, fontWeight: '700', fontSize: 15 },
+  submitText: { color: c.accentInk, fontWeight: '800', fontSize: 15 },
   cancelLink: { color: c.ink3, fontSize: 14, textAlign: 'center', paddingVertical: 10 },
 
   sectionTitle: {
     color: c.ink3, fontSize: 11, letterSpacing: 1.4, fontWeight: '700', marginTop: 12,
   },
   item: {
-    backgroundColor: c.surface, borderRadius: theme.radius.md,
-    borderWidth: 1, borderColor: c.line, padding: 14, gap: 3,
+    backgroundColor: c.surface, borderRadius: 18,
+    borderWidth: 1, borderColor: c.line, padding: 16, gap: 4,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
   },
   itemRow: { flexDirection: 'row', justifyContent: 'space-between' },
   itemDate: { color: c.ink, fontSize: 15, fontWeight: '600' },

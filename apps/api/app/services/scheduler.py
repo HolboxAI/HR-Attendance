@@ -369,10 +369,12 @@ def run_shift_end_summaries(
                 late_mins = day.late_minutes or 0
                 if late_mins > 0 and status_str == "present":
                     status_str = "late"
-                if day.worked_minutes:
-                    hours_str = f"{day.worked_minutes // 60}h {day.worked_minutes % 60:02d}m"
-            
-            late_str = f"{late_mins}m late" if late_mins > 0 else "On Time"
+            if late_mins > 0:
+                h = late_mins // 60
+                m = late_mins % 60
+                late_str = f"{h}h {m}m late" if h > 0 and m > 0 else (f"{h}h late" if h > 0 else f"{m}m late")
+            else:
+                late_str = "On Time"
 
             roster.append({
                 "id": str(emp.id),
@@ -384,6 +386,8 @@ def run_shift_end_summaries(
                 "late_minutes": late_mins,
                 "late_str": late_str,
                 "hours_str": hours_str,
+                "break_str": f"{day.break_minutes}m" if (day and day.break_minutes) else "0m",
+                "break_minutes": day.break_minutes if day else 0,
             })
 
         if not roster and not force_template_id:

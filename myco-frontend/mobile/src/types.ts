@@ -2,9 +2,11 @@ export type PunchDirection = 'in' | 'out';
 
 export type TodayStatus = {
   direction: PunchDirection;      // what the button will do next
+  isCurrentlyIn?: boolean;
   checkedInAt: string | null;
   checkedOutAt: string | null;
   workedMinutes: number;
+  breakMinutes?: number;
   lateMinutes: number;
   shiftLabel: string;
   shiftStart?: string | null;
@@ -42,6 +44,10 @@ export type LeaveRequestItem = {
   status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'partially_approved';
   category?: string | null;
   note: string | null;
+  medicalDocumentRequired?: boolean;
+  medicalDocumentDeadline?: string | null;
+  medicalDocumentUrl?: string | null;
+  medicalDocumentSubmittedAt?: string | null;
 };
 
 /* ===========================================================================

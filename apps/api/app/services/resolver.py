@@ -72,6 +72,8 @@ class ResolvedDay:
     has_exception: bool = False
     exception_note: str | None = None
     pairs: list[tuple[datetime, datetime | None]] = field(default_factory=list)
+    is_currently_in: bool = False
+    current_session_minutes: int = 0
 
 
 def shift_date_for(ts_utc: datetime, policy: ShiftPolicy) -> date:
@@ -178,9 +180,14 @@ def resolve_day(
 
     if open_in is not None:
         day.pairs.append((open_in, None))
+        day.is_currently_in = True
         if shift_over:
             day.has_exception = True
             day.exception_note = "Missing punch-out - needs regularization"
+        elif as_of is not None and as_of > open_in:
+            session_seconds = (as_of - open_in).total_seconds()
+            day.current_session_minutes = max(0, int(session_seconds // 60))
+            worked += timedelta(seconds=session_seconds)
 
     if len(punches) == 1 and shift_over:
         day.has_exception = True

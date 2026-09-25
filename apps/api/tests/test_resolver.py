@@ -93,6 +93,32 @@ r = resolve_day([
 ok &= check("has_exception", r.has_exception, True)
 ok &= check("worked_minutes", r.worked_minutes, 240)
 
+print("9. Multi-punch day: bathroom break (5m) + tea break (30m)")
+SHIFT_LONG = ShiftPolicy(start_time=time(9, 30), end_time=time(20, 0))
+r9 = resolve_day([
+    Punch(ist(2026, 8, 24, 9, 30), direction="in"),
+    Punch(ist(2026, 8, 24, 11, 0), direction="out"),
+    Punch(ist(2026, 8, 24, 11, 5), direction="in"),
+    Punch(ist(2026, 8, 24, 17, 30), direction="out"),
+    Punch(ist(2026, 8, 24, 18, 0), direction="in"),
+    Punch(ist(2026, 8, 24, 20, 0), direction="out"),
+], SHIFT_LONG, date(2026, 8, 24))
+ok &= check("worked_minutes (9h 55m)", r9.worked_minutes, 595)
+ok &= check("break_minutes (35m)", r9.break_minutes, 35)
+ok &= check("punch_count", r9.punch_count, 6)
+ok &= check("status", r9.status, "present")
+
+print("10. Live ongoing work hours at 14:00 (as_of during shift)")
+r10 = resolve_day([
+    Punch(ist(2026, 8, 24, 9, 30), direction="in"),
+    Punch(ist(2026, 8, 24, 11, 0), direction="out"),
+    Punch(ist(2026, 8, 24, 11, 5), direction="in"),
+], SHIFT_LONG, date(2026, 8, 24), as_of=ist(2026, 8, 24, 14, 0))
+ok &= check("live worked_minutes at 14:00 (4h 25m)", r10.worked_minutes, 265)
+ok &= check("live break_minutes (5m)", r10.break_minutes, 5)
+ok &= check("is_currently_in", r10.is_currently_in, True)
+ok &= check("current_session_minutes (11:05 to 14:00 = 175m)", r10.current_session_minutes, 175)
+
 print()
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

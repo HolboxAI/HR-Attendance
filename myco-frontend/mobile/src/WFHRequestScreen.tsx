@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
+  ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text,
   TextInput, View,
 } from 'react-native';
 
@@ -237,19 +237,32 @@ export default function WFHRequestScreen({ prefill }: { prefill: MonthDay | null
     >
       <View style={s.header}>
         <Text style={s.title}>Work From Home</Text>
-        {!formOpen && (
-          <Pressable style={s.buttonMini} onPress={() => {
+        <Text style={s.subtitle}>Request temporary geofence bypass for a shift</Text>
+      </View>
+
+      {!formOpen && (
+        <Pressable
+          style={s.newBtn}
+          onPress={() => {
             setFormOpen(true);
             setDone(false);
             setShiftDate('');
             setReason('');
-          }}>
-            <Text style={s.buttonMiniText}>New Request</Text>
-          </Pressable>
-        )}
-      </View>
+          }}
+          accessibilityRole="button"
+        >
+          <Text style={s.newBtnText}>+ New WFH Request</Text>
+        </Pressable>
+      )}
 
-      {formOpen ? renderForm() : renderList()}
+      {formOpen ? renderForm() : (
+        <>
+          {items && items.length > 0 && (
+            <Text style={s.sectionTitle}>YOUR REQUESTS</Text>
+          )}
+          {renderList()}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -257,20 +270,23 @@ export default function WFHRequestScreen({ prefill }: { prefill: MonthDay | null
 function makeStyles(c: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: c.ground },
-    content: { padding: 24, paddingBottom: 120 },
-    header: {
-      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-      marginBottom: 24,
+    content: { padding: 20, paddingTop: 20, gap: 12, paddingBottom: 120 },
+    header: { gap: 4, marginBottom: 4 },
+    title: { fontSize: 24, fontWeight: '800', color: c.ink, letterSpacing: -0.4 },
+    subtitle: { fontSize: 13, color: c.ink3, lineHeight: 18 },
+
+    newBtn: {
+      backgroundColor: c.accent, borderRadius: 12,
+      paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+      boxShadow: '0 4px 16px rgba(255, 255, 255, 0.2)',
     },
-    title: { fontSize: 32, fontWeight: '900', color: c.ink },
-    
-    buttonMini: {
-      backgroundColor: c.ink, paddingHorizontal: 16, paddingVertical: 8,
-      borderRadius: 12,
+    newBtnText: {
+      fontSize: 14, fontWeight: '800',
+      color: c.accentInk, letterSpacing: 0.5,
     },
-    buttonMiniText: {
-      fontSize: 12, fontWeight: '700',
-      textTransform: 'uppercase', color: c.ground,
+    sectionTitle: {
+      color: c.ink3, fontSize: 11, letterSpacing: 1.2,
+      fontWeight: '800', marginTop: 8,
     },
 
     center: { paddingVertical: 48, alignItems: 'center', gap: 16 },
@@ -284,7 +300,8 @@ function makeStyles(c: ThemeColors) {
     list: { gap: 12 },
     card: {
       backgroundColor: c.surface, borderWidth: 1, borderColor: c.line,
-      borderRadius: 16, padding: 16, gap: 4,
+      borderRadius: 20, padding: 16, gap: 4,
+      ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
     },
     cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     cardDate: { fontSize: 16, fontWeight: '700', color: c.ink },
@@ -299,7 +316,8 @@ function makeStyles(c: ThemeColors) {
 
     form: {
       backgroundColor: c.surface, borderWidth: 1, borderColor: c.line,
-      borderRadius: 20, padding: 20, gap: 20,
+      borderRadius: 24, padding: 22, gap: 20,
+      ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' } as any : {}),
     },
     formHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     formTitle: { fontSize: 18, fontWeight: '700', color: c.ink },
@@ -310,28 +328,30 @@ function makeStyles(c: ThemeColors) {
     label: { fontSize: 12, fontWeight: '600', color: c.ink2, textTransform: 'uppercase' },
     input: {
       backgroundColor: c.surface2, borderWidth: 1, borderColor: c.line,
-      borderRadius: 12, padding: 16, fontSize: 16, color: c.ink,
+      borderRadius: 14, padding: 16, fontSize: 16, color: c.ink,
     },
     inputMulti: { height: 100 },
     
     calendarWrap: {
       marginTop: -12, marginBottom: 8, backgroundColor: c.surface2,
-      borderWidth: 1, borderColor: c.line, borderRadius: 16, padding: 12,
+      borderWidth: 1, borderColor: c.line, borderRadius: 18, padding: 12,
+      ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' } as any : {}),
     },
 
     button: {
-      backgroundColor: c.ink, padding: 16, borderRadius: 12,
+      backgroundColor: c.accent, padding: 16, borderRadius: 14,
       alignItems: 'center', justifyContent: 'center', marginTop: 8,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
     },
     buttonBusy: { opacity: 0.7 },
     buttonText: {
-      fontSize: 14, fontWeight: '700',
-      color: c.ground, textTransform: 'uppercase', letterSpacing: 1,
+      fontSize: 14, fontWeight: '800',
+      color: c.accentInk, textTransform: 'uppercase', letterSpacing: 1,
     },
 
     buttonSecondary: {
       backgroundColor: c.surface2, borderWidth: 1, borderColor: c.line,
-      padding: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
+      padding: 16, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
     },
     buttonSecondaryText: {
       fontSize: 14, fontWeight: '700',

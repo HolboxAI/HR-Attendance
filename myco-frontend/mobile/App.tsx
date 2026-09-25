@@ -211,6 +211,8 @@ function AppInner() {
           setShowGuide(false);
           setMe((prev) => (prev ? { ...prev, face_enrolled: true } : prev));
         }}
+        onClose={() => setShowGuide(false)}
+        onSignOut={out}
       />
     </SafeAreaView>
   );

@@ -61,8 +61,9 @@ export default function InboxScreen({ onUnreadChange }: { onUnreadChange: (n: nu
 
   function setRead(id: string) {
     setItems((cur) => {
-      const next = cur?.map((x) => (x.id === id ? { ...x, read: true } : x)) ?? null;
-      if (next) onUnreadChange(next.filter((x) => !x.read).length);
+      if (!cur) return null;
+      const next = cur.map((x) => (x.id === id ? { ...x, read: true } : x));
+      setTimeout(() => onUnreadChange(next.filter((x) => !x.read).length), 0);
       return next;
     });
   }
@@ -346,10 +347,11 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   title: { color: c.ink, fontSize: 24, fontWeight: '700', letterSpacing: -0.4 },
 
   item: {
-    backgroundColor: c.surface, borderRadius: theme.radius.md,
-    borderWidth: 1, borderColor: c.line, padding: 14, gap: 4,
+    backgroundColor: c.surface, borderRadius: 20,
+    borderWidth: 1, borderColor: c.line, padding: 16, gap: 4,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
   },
-  itemRead: { opacity: 0.55 },
+  itemRead: { opacity: 0.6 },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: c.accent },
   itemTitle: { color: c.ink, fontSize: 15, fontWeight: '600', flex: 1 },
@@ -358,24 +360,26 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
 
   actions: { flexDirection: 'row', gap: 8, marginTop: 8 },
   actionBtn: {
-    borderColor: c.line, borderWidth: 1, borderRadius: 8,
-    paddingHorizontal: 12, paddingVertical: 7,
+    borderColor: c.line, borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: c.surface2,
   },
-  actionText: { color: c.accent, fontSize: 13, fontWeight: '600' },
+  actionText: { color: c.accent, fontSize: 13, fontWeight: '700' },
 
   replyBox: { marginTop: 10, gap: 8 },
   replyInput: {
     backgroundColor: c.surface2, borderColor: c.line, borderWidth: 1,
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
     color: c.ink, fontSize: 14, minHeight: 60, textAlignVertical: 'top',
   },
   replyError: { color: c.crit, fontSize: 13, lineHeight: 18 },
   sendBtn: {
-    backgroundColor: c.accent, borderRadius: 8, paddingVertical: 11,
+    backgroundColor: c.accent, borderRadius: 12, paddingVertical: 12,
     alignItems: 'center',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
   },
   sendBtnOff: { opacity: 0.5 },
-  sendText: { color: c.accentInk, fontWeight: '700', fontSize: 14 },
+  sendText: { color: c.accentInk, fontWeight: '800', fontSize: 14 },
   sentNote: { color: c.ok, fontSize: 13, marginTop: 4 },
 
   empty: { color: c.ink3, fontSize: 14, lineHeight: 20, marginTop: 8 },

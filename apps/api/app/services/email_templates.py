@@ -426,7 +426,8 @@ def shift_summary_html(
             <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">{_e(r.get("first_in") or "—")}</td>
             <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">{_e(r.get("last_out") or "—")}</td>
             <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;">{late_html}</td>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#64748b;">{_e(r.get("hours_str") or "—")}</td>
+            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#64748b;">{_e(r.get("break_str") or "0m")}</td>
+            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#0f172a;font-weight:700;">{_e(r.get("hours_str") or "—")}</td>
           </tr>
         """
 
@@ -460,8 +461,9 @@ def shift_summary_html(
           <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Status</th>
           <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">In</th>
           <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Out</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Late (mins)</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Hours</th>
+          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Late</th>
+          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Breaks</th>
+          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Worked</th>
         </tr>
         {rows_html}
       </table>

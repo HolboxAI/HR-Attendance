@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     #
     # Flip to True once the enrolment screen shows 100%. That is the switch
     # that makes the face check actually load-bearing.
-    require_face_enrolment: bool = False
+    require_face_enrolment: bool = True
 
     # Photos are files on disk for now, S3 later. Same interface either way.
     storage_dir: Path = DATA_DIR / "uploads"

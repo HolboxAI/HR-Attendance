@@ -20,7 +20,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import type { Board, Enrolments } from "@/lib/format";
-import { hhmm } from "@/lib/format";
+import { hhmm, formatLate } from "@/lib/format";
 import type { Capabilities } from "@/lib/capabilities";
 import { proxy } from "@/lib/format";
 import { GlowCard } from "@/components/ui/spotlight-card";
@@ -306,7 +306,7 @@ export function DashboardBento({
                         {isActive ? `In: ${hhmm(r.first_in)}` : 'Awaiting punch'}
                       </span>
                       {r.late_minutes > 0 ? (
-                        <span className="text-amber-500 font-medium">+{r.late_minutes}m late</span>
+                        <span className="text-amber-500 font-medium">+{formatLate(r.late_minutes)} late</span>
                       ) : (
                         <span className="text-ink-3">{r.status.toUpperCase()}</span>
                       )}

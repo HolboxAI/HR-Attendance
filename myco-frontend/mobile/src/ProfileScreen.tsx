@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Modal, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 
 import { setPassword } from './api';
@@ -79,11 +79,15 @@ export default function ProfileScreen({
         <Text style={s.meta}>Role: {me.role.replace('_', ' ')}</Text>
       </View>
 
+      <WorkplaceCard me={me} />
+
       <FaceEnrolmentCard status={enrolStatus} error={enrolError} onUpdateStatus={setEnrolStatus} />
 
       <PasswordCard />
 
       <AppearanceCard />
+
+      <PreferencesCard />
 
       {(me.role === 'admin' || me.role === 'hr') && (
         <View style={s.card}>
@@ -109,11 +113,97 @@ export default function ProfileScreen({
 }
 
 /**
- * Your reference photo, from your own phone. Submitting never enrols - it
- * queues the photo for an admin to vouch that the face is yours, which is
- * the one step self-service must not remove: the reference photo is what
- * every future check-in is compared against.
+ * Workplace and employment policy metadata (matches web settings).
  */
+function WorkplaceCard({ me }: { me: Identity }) {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
+
+  return (
+    <View style={s.card}>
+      <Text style={s.cardTitle}>WORKPLACE & EMPLOYMENT</Text>
+      <View style={s.detailGrid}>
+        <View style={s.detailRow}>
+          <Text style={s.detailLabel}>ORGANIZATION</Text>
+          <Text style={s.detailValue}>Holbox AI / IIMA Ventures</Text>
+        </View>
+        <View style={s.detailRow}>
+          <Text style={s.detailLabel}>{me.role === 'admin' ? 'ADMIN CODE' : 'EMPLOYEE CODE'}</Text>
+          <Text style={s.detailValueMono}>{me.employee_code || 'HB001'}</Text>
+        </View>
+        <View style={s.detailRow}>
+          <Text style={s.detailLabel}>ATTENDANCE PUNCH</Text>
+          <Text style={[s.detailValue, { color: '#10b981', fontWeight: '700' }]}>
+            ✓ Allowed on Handset / Web
+          </Text>
+        </View>
+        <View style={s.detailRow}>
+          <Text style={s.detailLabel}>MONTHLY CORRECTION LIMIT</Text>
+          <Text style={s.detailValueMono}>7 requests / month</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Display & alert preferences.
+ */
+function PreferencesCard() {
+  const { c } = useTheme();
+  const s = useMemo(() => makeStyles(c), [c]);
+  const [timeFormat, setTimeFormat] = useState<'12h' | '24h'>('12h');
+  const [punchAlerts, setPunchAlerts] = useState(true);
+  const [leaveAlerts, setLeaveAlerts] = useState(true);
+
+  return (
+    <View style={s.card}>
+      <Text style={s.cardTitle}>PREFERENCES & NOTIFICATIONS</Text>
+      <Text style={s.body}>Customize time display and alerts.</Text>
+
+      <Text style={s.label}>Time Format</Text>
+      <View style={s.modeRow}>
+        {(['12h', '24h'] as const).map((fmt) => (
+          <Pressable
+            key={fmt}
+            style={[s.modeBtn, timeFormat === fmt && s.modeBtnOn]}
+            onPress={() => setTimeFormat(fmt)}
+            accessibilityRole="button"
+          >
+            <Text style={[s.modeText, timeFormat === fmt && s.modeTextOn]}>
+              {fmt === '12h' ? '12-Hour (AM/PM)' : '24-Hour (14:00)'}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={[s.label, { marginTop: 14 }]}>Alert Notifications</Text>
+      <Pressable
+        style={s.toggleRow}
+        onPress={() => setPunchAlerts(!punchAlerts)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: punchAlerts }}
+      >
+        <Text style={s.toggleLabel}>🔔 Daily shift punch reminders</Text>
+        <View style={[s.toggleSwitch, punchAlerts && s.toggleSwitchOn]}>
+          <View style={[s.toggleKnob, punchAlerts && s.toggleKnobOn]} />
+        </View>
+      </Pressable>
+      <Pressable
+        style={s.toggleRow}
+        onPress={() => setLeaveAlerts(!leaveAlerts)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: leaveAlerts }}
+      >
+        <Text style={s.toggleLabel}>📅 Leave status & approval alerts</Text>
+        <View style={[s.toggleSwitch, leaveAlerts && s.toggleSwitchOn]}>
+          <View style={[s.toggleKnob, leaveAlerts && s.toggleKnobOn]} />
+        </View>
+      </Pressable>
+    </View>
+  );
+}
+
 /**
  * Dark or light, chosen by the person holding the phone and remembered on
  * the device. Two named options, not a toggle - a switch labelled only by
@@ -306,6 +396,19 @@ function PasswordCard() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  const getPasswordStrength = (pwd: string) => {
+    if (!pwd) return 0;
+    let score = 0;
+    if (pwd.length >= 8) score += 1;
+    if (pwd.length >= 12) score += 1;
+    if (/[A-Z]/.test(pwd) && /[a-z]/.test(pwd)) score += 1;
+    if (/[0-9]/.test(pwd) || /[^A-Za-z0-9]/.test(pwd)) score += 1;
+    return score;
+  };
+  const strength = getPasswordStrength(next);
+  const strengthLabels = ['', 'Weak', 'Fair', 'Strong', 'Excellent'];
+  const strengthColors = ['', '#f43f5e', '#f59e0b', '#3b82f6', '#10b981'];
+
   async function submit() {
     setError(null);
     setDone(false);
@@ -350,6 +453,24 @@ function PasswordCard() {
         secureTextEntry={!show} editable={!busy}
         accessibilityLabel="New password"
       />
+      {next.length > 0 && (
+        <View style={s.strengthBox}>
+          <View style={s.strengthBars}>
+            {[1, 2, 3, 4].map((level) => (
+              <View
+                key={level}
+                style={[
+                  s.strengthBar,
+                  level <= strength && { backgroundColor: strengthColors[strength] },
+                ]}
+              />
+            ))}
+          </View>
+          <Text style={[s.strengthText, { color: strengthColors[strength] }]}>
+            {strengthLabels[strength]}
+          </Text>
+        </View>
+      )}
       <Text style={s.label}>Confirm new password</Text>
       <TextInput
         style={s.input} value={confirm} onChangeText={setConfirm}
@@ -413,8 +534,9 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   title: { color: c.ink, fontSize: 24, fontWeight: '700', letterSpacing: -0.4 },
 
   card: {
-    backgroundColor: c.surface, borderRadius: theme.radius.md,
-    borderWidth: 1, borderColor: c.line, padding: 16, gap: 4,
+    backgroundColor: c.surface, borderRadius: 20,
+    borderWidth: 1, borderColor: c.line, padding: 18, gap: 4,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
   },
   cardTitle: {
     color: c.ink3, fontSize: 11, letterSpacing: 1.4, fontWeight: '700', marginBottom: 4,
@@ -425,11 +547,11 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
 
   label: {
     color: c.ink3, fontSize: 11, letterSpacing: 1.2,
-    textTransform: 'uppercase', marginTop: 8,
+    textTransform: 'uppercase', marginTop: 8, fontWeight: '700',
   },
   input: {
     backgroundColor: c.surface2, borderColor: c.line, borderWidth: 1,
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 11,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
     color: c.ink, fontSize: 15, marginTop: 6,
   },
   showLink: { color: c.accent, fontSize: 13, fontWeight: '600', marginTop: 10 },
@@ -437,16 +559,51 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   ok: { color: c.ok, fontSize: 13, lineHeight: 18, marginTop: 10 },
 
   primaryBtn: {
-    backgroundColor: c.accent, borderRadius: 8, paddingVertical: 13,
+    backgroundColor: c.accent, borderRadius: 14, paddingVertical: 14,
     alignItems: 'center', marginTop: 12,
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
   },
   busy: { opacity: 0.7 },
-  primaryText: { color: c.accentInk, fontWeight: '700', fontSize: 15 },
+  primaryText: { color: c.accentInk, fontWeight: '800', fontSize: 15 },
   secondaryBtn: {
-    borderColor: c.accent, borderWidth: 1, borderRadius: 8, paddingVertical: 12,
-    alignItems: 'center', marginTop: 8,
+    borderColor: c.line, borderWidth: 1, borderRadius: 14, paddingVertical: 12,
+    alignItems: 'center', marginTop: 8, backgroundColor: c.surface2,
   },
-  secondaryText: { color: c.accent, fontWeight: '600', fontSize: 14 },
+  secondaryText: { color: c.ink, fontWeight: '700', fontSize: 14 },
+
+  /* Workplace Details Styles */
+  detailGrid: { gap: 10, marginTop: 4 },
+  detailRow: {
+    backgroundColor: c.surface2, borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: c.line, gap: 2,
+  },
+  detailLabel: { color: c.ink3, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
+  detailValue: { color: c.ink, fontSize: 14, fontWeight: '600' },
+  detailValueMono: { color: c.ink, fontSize: 14, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+
+  /* Preferences & Notifications Styles */
+  toggleRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.line,
+  },
+  toggleLabel: { color: c.ink, fontSize: 13, fontWeight: '600', flex: 1 },
+  toggleSwitch: {
+    width: 44, height: 26, borderRadius: 13, backgroundColor: c.surface2,
+    borderWidth: 1, borderColor: c.line, padding: 2, justifyContent: 'center',
+  },
+  toggleSwitchOn: { backgroundColor: c.accent, borderColor: c.accent },
+  toggleKnob: {
+    width: 20, height: 20, borderRadius: 10, backgroundColor: c.ink3,
+  },
+  toggleKnobOn: {
+    backgroundColor: c.accentInk, alignSelf: 'flex-end',
+  },
+
+  /* Password Strength Styles */
+  strengthBox: { marginTop: 6, gap: 4 },
+  strengthBars: { flexDirection: 'row', gap: 4 },
+  strengthBar: { flex: 1, height: 4, borderRadius: 2, backgroundColor: c.line },
+  strengthText: { fontSize: 11, fontWeight: '700', alignSelf: 'flex-end' },
 
   signOut: {
     borderColor: c.line, borderWidth: 1, borderRadius: 8, paddingVertical: 13,

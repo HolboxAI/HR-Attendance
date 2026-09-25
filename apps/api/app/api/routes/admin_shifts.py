@@ -33,7 +33,7 @@ from app.models.attendance import (
 from app.models.employee import Employee, User
 from app.models.enums import UserRole
 from app.models.org import Department, Organization
-from app.services.attendance import resolve_shift
+from app.services.attendance import recompute_day, resolve_shift
 from app.services.notifications import notify
 
 router = APIRouter(prefix="/admin/shifts", tags=["admin-shifts"])
@@ -537,6 +537,10 @@ def assign_direct_shift(
         effective_to=body.effective_to,
     )
     db.add(assignment)
+    try:
+        recompute_day(db, emp, eff_from)
+    except Exception:
+        pass
 
     _notify_employee(
         db=db,
@@ -570,6 +574,10 @@ def clear_direct_shift(
     db.execute(
         delete(ShiftAssignment).where(ShiftAssignment.employee_id == emp.id)
     )
+    try:
+        recompute_day(db, emp, org_today())
+    except Exception:
+        pass
 
     _notify_employee(
         db=db,
@@ -674,11 +682,28 @@ def create_shift_group(
     db.add(group)
     db.flush()
 
+    today = org_today()
     for emp_id in set(body.employee_ids):
         emp = db.get(Employee, emp_id)
         if emp and emp.org_id == current_user.org_id:
-            # Delete any existing membership for this group (safety)
+            # Clear conflicting direct overrides so group schedule takes effect
+            db.execute(
+                delete(ShiftAssignment).where(ShiftAssignment.employee_id == emp.id)
+            )
+            # Remove from other groups so employee belongs to this new group cleanly
+            db.execute(
+                delete(ShiftGroupMember).where(
+                    and_(
+                        ShiftGroupMember.employee_id == emp.id,
+                        ShiftGroupMember.shift_group_id != group.id,
+                    )
+                )
+            )
             db.add(ShiftGroupMember(shift_group_id=group.id, employee_id=emp.id))
+            try:
+                recompute_day(db, emp, today)
+            except Exception:
+                pass
             _notify_employee(
                 db=db,
                 org_id=current_user.org_id,
@@ -724,10 +749,28 @@ def update_shift_group(
     db.execute(
         delete(ShiftGroupMember).where(ShiftGroupMember.shift_group_id == group.id)
     )
+    today = org_today()
     for emp_id in new_members:
         emp = db.get(Employee, emp_id)
         if emp and emp.org_id == current_user.org_id:
+            # Clear conflicting direct overrides so group schedule takes effect
+            db.execute(
+                delete(ShiftAssignment).where(ShiftAssignment.employee_id == emp.id)
+            )
+            # Remove from other groups so employee belongs to this new group cleanly
+            db.execute(
+                delete(ShiftGroupMember).where(
+                    and_(
+                        ShiftGroupMember.employee_id == emp.id,
+                        ShiftGroupMember.shift_group_id != group.id,
+                    )
+                )
+            )
             db.add(ShiftGroupMember(shift_group_id=group.id, employee_id=emp.id))
+            try:
+                recompute_day(db, emp, today)
+            except Exception:
+                pass
             _notify_employee(
                 db=db,
                 org_id=current_user.org_id,
@@ -740,6 +783,12 @@ def update_shift_group(
 
     removed_members = existing_members - new_members
     for emp_id in removed_members:
+        emp = db.get(Employee, emp_id)
+        if emp:
+            try:
+                recompute_day(db, emp, today)
+            except Exception:
+                pass
         _notify_employee(
             db=db,
             org_id=current_user.org_id,

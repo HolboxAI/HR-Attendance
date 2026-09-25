@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from './ThemeContext';
 import type { ThemeColors } from './theme';
@@ -121,16 +121,16 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   pill: {
     flexDirection: 'row',
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: c.line,
     backgroundColor: c.surface,
     overflow: 'visible',
-    // Lift the pill off the page - the floating look is the point.
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' } as any : {}),
     shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
   },
   tab: {
     flex: 1,

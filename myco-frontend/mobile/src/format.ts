@@ -24,6 +24,16 @@ export function formatHoursMins(min: number): string {
   return `${h}h ${m}m`;
 }
 
+export function formatDurationHuman(min: number): string {
+  if (!min || min <= 0) return '0 minutes';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} minute${m !== 1 ? 's' : ''}`;
+  const hStr = `${h} hour${h !== 1 ? 's' : ''}`;
+  if (m === 0) return hStr;
+  return `${hStr} ${m} minute${m !== 1 ? 's' : ''}`;
+}
+
 /** "Mon 8 Sep" from YYYY-MM-DD. */
 export function plainDate(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', {

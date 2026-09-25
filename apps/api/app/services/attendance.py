@@ -72,7 +72,7 @@ def resolve_shift(
     """
     # 1. Direct employee assignment
     stmt = (
-        select(ShiftTemplate, ShiftAssignment.id)
+        select(ShiftTemplate, ShiftAssignment.id, ShiftAssignment.created_at)
         .join(ShiftAssignment, ShiftAssignment.shift_template_id == ShiftTemplate.id)
         .where(
             and_(
@@ -81,15 +81,13 @@ def resolve_shift(
                 (ShiftAssignment.effective_to.is_(None) | (ShiftAssignment.effective_to >= on)),
             )
         )
-        .order_by(ShiftAssignment.effective_from.desc())
+        .order_by(ShiftAssignment.effective_from.desc(), ShiftAssignment.created_at.desc())
     )
-    row = db.execute(stmt).first()
-    if row:
-        return row[0], "direct", None, row[1]
+    direct_row = db.execute(stmt).first()
 
     # 2. Shift group assignment
     stmt_group = (
-        select(ShiftTemplate, ShiftGroup.name)
+        select(ShiftTemplate, ShiftGroup.name, ShiftGroupMember.created_at)
         .join(ShiftGroup, ShiftGroup.shift_template_id == ShiftTemplate.id)
         .join(ShiftGroupMember, ShiftGroupMember.shift_group_id == ShiftGroup.id)
         .where(
@@ -102,6 +100,19 @@ def resolve_shift(
         .order_by(ShiftGroupMember.created_at.desc())
     )
     group_row = db.execute(stmt_group).first()
+
+    # If both exist, respect the most recently created assignment
+    if direct_row and group_row:
+        direct_created = direct_row[2]
+        group_created = group_row[2]
+        if group_created and direct_created and group_created > direct_created:
+            # Group was assigned AFTER direct assignment -> Group wins!
+            return group_row[0], "group", group_row[1], None
+        return direct_row[0], "direct", None, direct_row[1]
+
+    if direct_row:
+        return direct_row[0], "direct", None, direct_row[1]
+
     if group_row:
         return group_row[0], "group", group_row[1], None
 

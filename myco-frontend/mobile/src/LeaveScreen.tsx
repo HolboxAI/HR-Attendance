@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-import { applyForLeave, cancelLeave, getLeaveBalance, getMyLeave, getHolidays } from './api';
+import { applyForLeave, cancelLeave, getLeaveBalance, getMyLeave, getHolidays, uploadLeaveDocument } from './api';
 import MiniCalendar from './MiniCalendar';
 import { useTheme } from './ThemeContext';
 import type { ThemeColors } from './theme';
@@ -50,11 +50,14 @@ export default function LeaveScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [sentMessage, setSentMessage] = useState<string>('Sent. It stays Pending until someone decides.');
+  const [warningModalOpen, setWarningModalOpen] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
   // Which field the calendar is filling; only one grid open at a time.
   const [picking, setPicking] = useState<'from' | 'to' | null>(null);
 
   const selectedBalance = balances?.find((b) => b.code === code);
-  const requiresProof = selectedBalance?.requiresProof;
+  const requiresProof = selectedBalance?.requiresProof || code === 'SL';
 
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [showAllHolidays, setShowAllHolidays] = useState(false);
@@ -121,7 +124,59 @@ export default function LeaveScreen() {
     }
   }
 
-  async function submit() {
+  async function handleDocUploadForRequest(reqId: string) {
+    const pick = async (index: number) => {
+      let result;
+      if (index === 0) {
+        const p = await ImagePicker.requestCameraPermissionsAsync();
+        if (!p.granted) { Alert.alert('Camera permission required'); return; }
+        result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+      } else if (index === 1) {
+        result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
+      }
+      if (result && !result.canceled) {
+        const asset = result.assets?.[0];
+        if (!asset) return;
+        if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+          Alert.alert('Error', 'File too large. Maximum 5MB.');
+          return;
+        }
+        const uri = asset.uri;
+        const ext = uri.split('.').pop() || 'jpg';
+        setUploadingId(reqId);
+        const err = await uploadLeaveDocument(reqId, {
+          fileUri: uri,
+          fileType: asset.file?.type || `image/${ext}`,
+          fileName: asset.file?.name || `doc.${ext}`,
+          webFile: asset.file,
+        });
+        setUploadingId(null);
+        if (err) {
+          Alert.alert('Upload Failed', err);
+        } else {
+          Alert.alert('Success', 'Medical document attached successfully.');
+          load();
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      pick(1);
+    } else if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Take Photo', 'Choose from Library', 'Cancel'], cancelButtonIndex: 2 },
+        (btnIndex) => { if (btnIndex !== 2) pick(btnIndex); }
+      );
+    } else {
+      Alert.alert('Upload Medical Document', 'Choose an option', [
+        { text: 'Take Photo', onPress: () => pick(0) },
+        { text: 'Choose from Library', onPress: () => pick(1) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
+
+  async function submit(ignoreProofWarning = false) {
     setError(null);
     setSent(false);
     if (!looksLikeDate(from)) {
@@ -132,17 +187,25 @@ export default function LeaveScreen() {
       setError(`End date must look like ${DATE_HINT}`);
       return;
     }
-    if (requiresProof && !file) {
-      setError('A medical document is required for this leave type.');
-      return;
-    }
     if (!category) {
       setError('Please select a leave reason category.');
       return;
     }
+    if (!reason || !reason.trim()) {
+      setError('Please provide a reason before applying.');
+      return;
+    }
+    // If sick leave / proof required and no document attached
+    if (requiresProof && !file && !ignoreProofWarning) {
+      setWarningModalOpen(true);
+      return;
+    }
+
+    const isPartialWithoutDoc = requiresProof && !file;
+
     setBusy(true);
     const problem = await applyForLeave({ 
-      code, from, to, halfDay: false, category, reason, 
+      code, from, to, halfDay: false, category, reason: reason.trim(), 
       fileUri: file?.uri, fileType: file?.type, fileName: file?.name, webFile: file?.webFile 
     });
     setBusy(false);
@@ -152,6 +215,12 @@ export default function LeaveScreen() {
     }
     setFrom(''); setTo(''); setReason(''); setCategory('Personal'); setFile(null);
     setPicking(null);
+    setWarningModalOpen(false);
+    setSentMessage(
+      isPartialWithoutDoc
+        ? 'Sent. It is sent as a partial leave until and unless you provide the document.'
+        : 'Sent. It stays Pending until someone decides.'
+    );
     setSent(true);
     load();
   }
@@ -290,13 +359,13 @@ export default function LeaveScreen() {
           <View style={s.msg}>
             <Text style={[s.msgGlyph, { color: c.ok }]}>●</Text>
             <Text style={[s.msgText, { color: c.ok }]}>
-              Sent. It stays Pending until someone decides.
+              {sentMessage}
             </Text>
           </View>
         )}
 
         <Pressable
-          style={[s.button, busy && s.buttonBusy]} onPress={submit} disabled={busy}
+          style={[s.button, busy && s.buttonBusy]} onPress={() => submit(false)} disabled={busy}
           accessibilityRole="button"
         >
           {busy
@@ -311,7 +380,8 @@ export default function LeaveScreen() {
       ) : (
         requests.map((r) => {
           const st = STATUS[r.status] || { label: String(r.status), glyph: '?', tone: c.ink3 };
-          const live = r.status === 'pending' || r.status === 'approved';
+          const live = r.status === 'pending' || r.status === 'approved' || r.status === 'partially_approved';
+          const needsDoc = (r.medicalDocumentRequired && !r.medicalDocumentUrl) || r.status === 'partially_approved';
           return (
             <View key={r.id} style={s.row}>
               <View style={{ flex: 1 }}>
@@ -323,6 +393,25 @@ export default function LeaveScreen() {
                 </Text>
                 {r.category ? <Text style={[s.rowNote, { fontWeight: '600', color: c.ink }]}>Category: {r.category}</Text> : null}
                 {r.note ? <Text style={s.rowNote}>{r.note}</Text> : null}
+
+                {needsDoc && (
+                  <View style={s.docActionRow}>
+                    <Text style={s.docActionWarn}>⚠️ Medical certificate required</Text>
+                    <Pressable
+                      style={s.docActionBtn}
+                      disabled={uploadingId === r.id}
+                      onPress={() => handleDocUploadForRequest(r.id)}
+                      accessibilityRole="button"
+                    >
+                      <Text style={s.docActionBtnText}>
+                        {uploadingId === r.id ? 'Uploading…' : 'Upload Document'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+                {r.medicalDocumentUrl && (
+                  <Text style={s.docAttachedText}>✓ Medical document attached</Text>
+                )}
               </View>
               {live && (
                 <Pressable
@@ -383,29 +472,70 @@ export default function LeaveScreen() {
         </View>
       )}
 
+      {/* Sick Leave Document Required Warning Modal */}
+      <Modal visible={warningModalOpen} transparent animationType="fade" onRequestClose={() => setWarningModalOpen(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalContent}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={{ fontSize: 20 }}>⚠️</Text>
+              <Text style={s.modalTitle}>Medical Document Required</Text>
+            </View>
+            <Text style={s.warnModalBody}>
+              Sick leave requires a medical certificate or prescription. If you apply without attaching a document now, your request will be sent as a <Text style={{ fontWeight: '700', color: c.warn }}>Partial Leave</Text> until and unless you provide the document.
+            </Text>
+            <View style={{ gap: 8, marginTop: 4 }}>
+              <Pressable
+                style={[s.button, { backgroundColor: c.accent }]}
+                onPress={() => {
+                  setWarningModalOpen(false);
+                  pickImage();
+                }}
+                accessibilityRole="button"
+              >
+                <Text style={s.buttonText}>📎 Attach Document Now</Text>
+              </Pressable>
+              <Pressable
+                style={[s.button, { backgroundColor: c.surface2, borderWidth: 1, borderColor: c.warn }]}
+                onPress={() => submit(true)}
+                accessibilityRole="button"
+              >
+                <Text style={[s.buttonText, { color: c.warn }]}>Submit as Partial Leave</Text>
+              </Pressable>
+              <Pressable
+                style={{ paddingVertical: 8, alignItems: 'center' }}
+                onPress={() => setWarningModalOpen(false)}
+                accessibilityRole="button"
+              >
+                <Text style={{ color: c.ink3, fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={calendarModalVisible} transparent animationType="fade" onRequestClose={() => setCalendarModalVisible(false)}>
         <View style={s.modalOverlay}>
           <ScrollView style={s.modalScroll} contentContainerStyle={{ padding: 0 }}>
             <View style={s.modalContent}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={s.modalTitle}>Holiday Calendar</Text>
-                <Pressable onPress={() => setCalendarModalVisible(false)} hitSlop={12} accessibilityRole="button">
+                <Pressable onPress={() => setCalendarModalVisible(false)} accessibilityRole="button" hitSlop={10}>
                   <Text style={s.modalClose}>✕</Text>
                 </Pressable>
               </View>
               <MiniCalendar
-                value={new Date().toISOString().slice(0, 10)}
-                readOnly
+                value={from || new Date().toISOString().slice(0, 10)}
                 highlights={holidayDates}
+                onPick={() => {}}
               />
               <View style={s.legendRow}>
                 <View style={[s.legendDot, { backgroundColor: c.accent }]} />
-                <Text style={s.legendText}>Highlighted dates are holidays</Text>
+                <Text style={s.legendText}>Company Holiday</Text>
               </View>
               {holidays.length > 0 && (
-                <View style={{ marginTop: 8, gap: 6 }}>
+                <View style={{ marginTop: 10, gap: 6 }}>
                   <Text style={s.modalSubhead}>All Holidays</Text>
-                  {holidays.sort((a, b) => a.day.localeCompare(b.day)).map(h => {
+                  {holidays.map(h => {
                     const d = new Date(h.day + 'T00:00:00');
                     return (
                       <View key={h.id} style={s.modalHolidayRow}>
@@ -436,37 +566,43 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
     color: c.ink3, fontSize: 11, letterSpacing: 1.4,
     textTransform: 'uppercase', fontWeight: '700',
   },
-  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   card: {
-    flexGrow: 1, minWidth: 100, backgroundColor: c.surface, borderColor: c.line,
-    borderWidth: 1, borderRadius: 10, padding: 12,
+    flexGrow: 1, minWidth: 110, backgroundColor: c.surface, borderColor: c.line,
+    borderWidth: 1, borderRadius: 16, padding: 14,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
   },
-  cardName: { color: c.ink3, fontSize: 11 },
-  cardValue: { color: c.ink, fontSize: 22, fontWeight: '800', marginTop: 2 },
+  cardName: { color: c.ink3, fontSize: 11, fontWeight: '600' },
+  cardValue: { color: c.ink, fontSize: 24, fontWeight: '800', marginTop: 2 },
   cardUnit: { color: c.ink3, fontSize: 12, fontWeight: '400' },
   cardSub: { color: c.ink3, fontSize: 11, marginTop: 2 },
   form: {
     backgroundColor: c.surface, borderColor: c.line, borderWidth: 1,
-    borderRadius: 10, padding: 12, gap: 10,
+    borderRadius: 20, padding: 16, gap: 12,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 6px 20px rgba(0,0,0,0.08)' } as any : {}),
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     borderColor: c.line, borderWidth: 1, borderRadius: 999,
-    paddingHorizontal: 14, paddingVertical: 6,
+    paddingHorizontal: 14, paddingVertical: 8,
+    backgroundColor: c.surface2,
   },
-  chipOn: { backgroundColor: c.accent, borderColor: c.accent },
+  chipOn: {
+    backgroundColor: c.accent, borderColor: c.accent,
+  },
   chipText: { color: c.ink2, fontSize: 13, fontWeight: '600' },
-  chipTextOn: { color: c.accentInk },
+  chipTextOn: { color: c.accentInk, fontWeight: '700' },
   input: {
     backgroundColor: c.surface2, borderColor: c.line, borderWidth: 1,
-    borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12,
     color: c.ink, fontSize: 15,
   },
   dateRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   reasonRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   pickBtn: {
-    borderColor: c.line, borderWidth: 1, borderRadius: 8,
-    paddingHorizontal: 13, paddingVertical: 10,
+    borderColor: c.line, borderWidth: 1, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    backgroundColor: c.surface2,
   },
   pickBtnOn: { borderColor: c.accent, backgroundColor: c.hiBg },
   pickText: { color: c.ink2, fontSize: 15, fontWeight: '600' },
@@ -475,16 +611,18 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   msgGlyph: { fontSize: 13, lineHeight: 19 },
   msgText: { fontSize: 13, flex: 1, lineHeight: 19 },
   button: {
-    backgroundColor: c.accent, borderRadius: 8, paddingVertical: 13,
+    backgroundColor: c.accent, borderRadius: 14, paddingVertical: 14,
     alignItems: 'center',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
   },
   buttonBusy: { opacity: 0.7 },
-  buttonText: { color: c.accentInk, fontSize: 15, fontWeight: '700' },
+  buttonText: { color: c.accentInk, fontSize: 15, fontWeight: '800' },
   empty: { color: c.ink3, fontSize: 14 },
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: c.surface, borderColor: c.line, borderWidth: 1,
-    borderRadius: 10, padding: 12,
+    borderRadius: 16, padding: 14,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' } as any : {}),
   },
   rowTitle: { color: c.ink, fontSize: 14, fontWeight: '600' },
   rowStatus: { fontSize: 13, marginTop: 2 },
@@ -494,6 +632,20 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 6,
   },
   cancelText: { color: c.ink2, fontSize: 12 },
+
+  /* ---- Document upload on requests ---- */
+  docActionRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 8, marginTop: 6, paddingTop: 6,
+    borderTopWidth: 1, borderTopColor: c.line,
+  },
+  docActionWarn: { color: c.warn, fontSize: 11, fontWeight: '600' },
+  docActionBtn: {
+    backgroundColor: c.hiBg, borderColor: c.warn, borderWidth: 1,
+    borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  docActionBtnText: { color: c.warn, fontSize: 11, fontWeight: '700' },
+  docAttachedText: { color: c.ok, fontSize: 11, fontWeight: '600', marginTop: 4 },
 
   /* ---- Holidays section ---- */
   holidayHeader: {
@@ -528,7 +680,7 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   },
   readMoreText: { color: c.accent, fontSize: 13, fontWeight: '700' },
 
-  /* ---- Holiday calendar modal ---- */
+  /* ---- Holiday calendar modal & warning modal ---- */
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center', justifyContent: 'center', padding: 24,
@@ -543,7 +695,8 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
     borderWidth: 1, borderColor: c.line,
     alignSelf: 'center',
   },
-  modalTitle: { color: c.ink, fontSize: 18, fontWeight: '800' },
+  modalTitle: { color: c.ink, fontSize: 17, fontWeight: '800' },
+  warnModalBody: { color: c.ink2, fontSize: 13, lineHeight: 19 },
   modalClose: { color: c.ink3, fontSize: 18, fontWeight: '700' },
   modalSubhead: { color: c.ink3, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.2 },
   modalHolidayRow: {

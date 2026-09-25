@@ -479,7 +479,7 @@ def send_shift_summary_email(
     ]
     for r in roster:
         lines.append(
-            f"- {r['name']} ({r['code']}): {r['status'].upper()} | In: {r['first_in']} | Out: {r['last_out']} | Late: {r['late_str']} | Worked: {r.get('hours_str', '-')}"
+            f"- {r['name']} ({r['code']}): {r['status'].upper()} | In: {r['first_in']} | Out: {r['last_out']} | Breaks: {r.get('break_str', '0m')} | Worked: {r.get('hours_str', '-')}"
         )
     plain_body = "\n".join(lines)
 

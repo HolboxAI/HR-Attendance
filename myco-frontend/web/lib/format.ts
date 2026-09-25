@@ -102,6 +102,25 @@ export function hours(min: number): string {
   return `${Math.floor(min / 60)}h ${String(min % 60).padStart(2, '0')}m`;
 }
 
+export function formatLate(min: number | null | undefined): string {
+  if (!min || min <= 0) return '—';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+export function formatLateLong(min: number | null | undefined): string {
+  if (!min || min <= 0) return '0 minutes';
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m} minute${m !== 1 ? 's' : ''}`;
+  const hStr = `${h} hour${h !== 1 ? 's' : ''}`;
+  if (m === 0) return hStr;
+  return `${hStr} ${m} minute${m !== 1 ? 's' : ''}`;
+}
+
 export function dayMonth(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : `${iso}Z`);

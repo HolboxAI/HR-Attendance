@@ -15,6 +15,8 @@
  */
 import { Platform } from 'react-native';
 
+import { File as ExpoFile } from 'expo-file-system';
+
 import { authHeaders, signOut } from './session';
 import { apiBase } from './config';
 import type {
@@ -67,9 +69,11 @@ export async function getToday(): Promise<TodayStatus> {
       const j = await res.json();
       return {
         direction: j.direction,
+        isCurrentlyIn: j.is_currently_in ?? (j.direction === 'out'),
         checkedInAt: j.checked_in_at,
         checkedOutAt: j.checked_out_at,
         workedMinutes: j.worked_minutes ?? 0,
+        breakMinutes: j.break_minutes ?? 0,
         lateMinutes: j.late_minutes ?? 0,
         shiftLabel: j.shift_label,
         shiftStart: j.shift_start ?? null,
@@ -91,6 +95,61 @@ export async function getToday(): Promise<TodayStatus> {
 
 /* ------------------------------------------------------------------ punch */
 
+async function uriToBlob(photoUri: string, mimeType = 'image/jpeg'): Promise<Blob | any> {
+  // 1. Web, Data URI, or Blob URI
+  if (Platform.OS === 'web' || photoUri.startsWith('data:') || photoUri.startsWith('blob:')) {
+    const res = await fetch(photoUri);
+    return await res.blob();
+  }
+
+  // 2. On native, use ExpoFile directly (0ms overhead)
+  try {
+    const file = new ExpoFile(photoUri);
+    if (file && typeof (file as any).bytes === 'function') {
+      return file;
+    }
+  } catch {
+    // Continue to next fallback
+  }
+
+  // 3. Attempt native fetch(photoUri)
+  try {
+    const res = await fetch(photoUri);
+    const blob = await res.blob();
+    if (blob) return blob;
+  } catch {
+    // Continue to next fallback
+  }
+
+  // 4. Base64 fallback via expo-file-system legacy
+  try {
+    const FileSystem = await import('expo-file-system/legacy');
+    const base64 = await FileSystem.readAsStringAsync(photoUri, {
+      encoding: 'base64' as any,
+    });
+    const byteCharacters = atob(base64);
+    const byteNumbers = new Uint8Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    return new Blob([byteNumbers], { type: mimeType });
+  } catch (err) {
+    console.error('[appendPhotoToFormData] Failed all approaches to convert uri to Blob:', photoUri, err);
+    throw new Error('Could not process photo for upload. Please try again.');
+  }
+}
+
+async function appendPhotoToFormData(
+  form: FormData,
+  fieldName: string,
+  photoUri: string,
+  fileName = 'photo.jpg',
+  mimeType = 'image/jpeg'
+): Promise<void> {
+  const blob = await uriToBlob(photoUri, mimeType);
+  form.append(fieldName, blob, fileName);
+}
+
 export async function submitPunch(args: {
   photoUri: string;
   lat: number | null;
@@ -103,20 +162,7 @@ export async function submitPunch(args: {
   const now = new Date();
   try {
     const form = new FormData();
-    if (Platform.OS === 'web') {
-      // The {uri, name, type} file part is a React Native convention; a
-      // browser's fetch serializes that object to "[object Object]", the
-      // server receives a string where it expects an image, refuses with a
-      // validation error - and the person is told their punch failed for
-      // "signal" reasons when the request never carried a photo at all. On
-      // web the blob: URI has to be fetched back into an actual Blob.
-      const blob = await (await fetch(args.photoUri)).blob();
-      form.append('selfie', blob, 'punch.jpg');
-    } else {
-      form.append('selfie', {
-        uri: args.photoUri, name: 'punch.jpg', type: 'image/jpeg',
-      } as unknown as Blob);
-    }
+    await appendPhotoToFormData(form, 'selfie', args.photoUri, 'punch.jpg');
     form.append('lat', String(args.lat ?? ''));
     form.append('lng', String(args.lng ?? ''));
     form.append('accuracy_m', String(args.accuracyM ?? ''));
@@ -188,12 +234,19 @@ export async function getMyLeave(): Promise<LeaveRequestItem[]> {
     const res = await authed('/api/v1/leave/my-requests');
     if (res.ok) {
       const rows = await res.json();
-      return rows.map((r: Record<string, string | number>) => ({
-        id: r.id as string, code: r.leave_type_code as string,
-        fromDate: r.from_date as string, toDate: r.to_date as string,
-        days: r.days as number, status: r.status as LeaveRequestItem['status'],
+      return rows.map((r: Record<string, unknown>) => ({
+        id: r.id as string,
+        code: r.leave_type_code as string,
+        fromDate: r.from_date as string,
+        toDate: r.to_date as string,
+        days: r.days as number,
+        status: r.status as LeaveRequestItem['status'],
         category: (r.category ?? null) as string | null,
         note: (r.decided_note ?? r.reason ?? null) as string | null,
+        medicalDocumentRequired: Boolean(r.medical_document_required),
+        medicalDocumentDeadline: (r.medical_document_deadline ?? null) as string | null,
+        medicalDocumentUrl: (r.medical_document_url ?? null) as string | null,
+        medicalDocumentSubmittedAt: (r.medical_document_submitted_at ?? null) as string | null,
       }));
     }
     throw new Error(await detail(res, `Could not load requests (${res.status})`));
@@ -219,11 +272,7 @@ export async function applyForLeave(args: {
       if (Platform.OS === 'web' && args.webFile) {
         formData.append('file', args.webFile);
       } else {
-        formData.append('file', {
-          uri: args.fileUri,
-          type: args.fileType,
-          name: args.fileName,
-        } as any);
+        await appendPhotoToFormData(formData, 'file', args.fileUri, args.fileName, args.fileType);
       }
     }
 
@@ -334,14 +383,7 @@ export async function getEnrolmentStatus(): Promise<EnrolmentStatus> {
  */
 export async function submitEnrolmentPhoto(photoUri: string): Promise<EnrolmentStatus> {
   const form = new FormData();
-  if (Platform.OS === 'web') {
-    const blob = await (await fetch(photoUri)).blob();
-    form.append('photo', blob, 'me.jpg');
-  } else {
-    form.append('photo', {
-      uri: photoUri, name: 'me.jpg', type: 'image/jpeg',
-    } as unknown as Blob);
-  }
+  await appendPhotoToFormData(form, 'photo', photoUri, 'me.jpg');
   const res = await authed('/api/v1/mobile/enrolment', { method: 'POST', body: form });
   if (!res.ok) throw new Error(await detail(res, `Could not submit (${res.status})`));
   return toEnrolmentStatus(await res.json());
@@ -429,14 +471,10 @@ export async function markNotificationRead(id: string): Promise<void> {
 export async function uploadLeaveDocument(id: string, args: { fileUri: string; fileType: string; fileName: string; webFile?: any }): Promise<string | null> {
   try {
     const formData = new FormData();
-    if (Platform.OS === 'web' && args.webFile) {
+    if (args.webFile) {
       formData.append('file', args.webFile);
     } else {
-      formData.append('file', {
-        uri: args.fileUri,
-        type: args.fileType,
-        name: args.fileName,
-      } as any);
+      await appendPhotoToFormData(formData, 'file', args.fileUri, args.fileName || 'document.jpg', args.fileType || 'image/jpeg');
     }
 
     const res = await authed(`/api/v1/leave/${id}/document`, {

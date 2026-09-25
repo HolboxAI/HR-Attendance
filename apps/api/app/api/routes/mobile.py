@@ -54,9 +54,11 @@ class TodayResponse(BaseModel):
     employee_code: str
     full_name: str
     direction: PunchDirection
+    is_currently_in: bool = False
     checked_in_at: str | None
     checked_out_at: str | None
     worked_minutes: int
+    break_minutes: int = 0
     late_minutes: int = 0
     shift_label: str
     shift_start: str | None = None
@@ -85,13 +87,18 @@ def me(
     day = recompute_day(db, emp, today)
     db.commit()
 
+    next_dir = next_direction(db, emp, today)
+    is_in = (next_dir == PunchDirection.OUT)
+
     return TodayResponse(
         employee_code=emp.emp_code,
         full_name=emp.full_name,
-        direction=next_direction(db, emp, today),
+        direction=next_dir,
+        is_currently_in=is_in,
         checked_in_at=day.first_in.isoformat() if day.first_in else None,
         checked_out_at=day.last_out.isoformat() if day.last_out else None,
         worked_minutes=day.worked_minutes,
+        break_minutes=day.break_minutes,
         late_minutes=day.late_minutes,
         shift_label=f"{policy.start_time:%H:%M} - {policy.end_time:%H:%M}",
         shift_start=f"{policy.start_time:%H:%M}",
@@ -316,16 +323,17 @@ async def punch(
     # Only fire Late Arrival alert on the FIRST accepted IN punch of the day
     if direction == PunchDirection.IN and day.punch_count == 1 and day.late_minutes > 0:
         from app.services.notifications import notify_hr
+        from app.services.slack import format_duration_human, post_late_arrival_alert
+        from threading import Thread
+        dur_str = format_duration_human(day.late_minutes)
         notify_hr(
             db,
             org_id=emp.org_id,
             category="attendance.late_arrival",
             title=f"Late Arrival: {emp.full_name}",
-            body=f"{emp.full_name} arrived late at {punch_time_str} ({day.late_minutes} minutes late) for their shift on {shift_date.isoformat()}.",
+            body=f"{emp.full_name} arrived late at {punch_time_str} ({dur_str} late) for their shift on {shift_date.isoformat()}.",
             data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
         )
-        from app.services.slack import post_late_arrival_alert
-        from threading import Thread
         Thread(target=post_late_arrival_alert, args=(emp.full_name, punch_time_str, day.late_minutes, shift_date.isoformat()), daemon=True).start()
         db.commit()
 
@@ -338,16 +346,17 @@ async def punch(
 
         if early_minutes > 0:
             from app.services.notifications import notify_hr
+            from app.services.slack import format_duration_human, post_early_leave_alert
+            from threading import Thread
+            dur_str = format_duration_human(early_minutes)
             notify_hr(
                 db,
                 org_id=emp.org_id,
                 category="attendance.early_leave",
                 title=f"Early Leave: {emp.full_name}",
-                body=f"{emp.full_name} left early at {punch_time_str} ({early_minutes} minutes early) for their shift on {shift_date.isoformat()}.",
+                body=f"{emp.full_name} left early at {punch_time_str} ({dur_str} early) for their shift on {shift_date.isoformat()}.",
                 data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
             )
-            from app.services.slack import post_early_leave_alert
-            from threading import Thread
             Thread(target=post_early_leave_alert, args=(emp.full_name, punch_time_str, early_minutes, shift_date.isoformat()), daemon=True).start()
             db.commit()
 

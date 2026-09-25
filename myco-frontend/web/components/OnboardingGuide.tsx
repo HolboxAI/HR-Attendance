@@ -12,14 +12,12 @@ interface OnboardingGuideProps {
   employeeName: string | null;
   employeeCode: string | null;
   onCompleted: () => void;
-  onSkip?: () => void;
 }
 
 export function OnboardingGuide({
   employeeName,
   employeeCode,
   onCompleted,
-  onSkip,
 }: OnboardingGuideProps) {
   // Stages: 1 = Briefing, 2 = Biometric Capture / Upload, 3 = Mission Complete
   const [stage, setStage] = useState<1 | 2 | 3>(1);
@@ -352,15 +350,6 @@ export function OnboardingGuide({
                 <span>Start Mission: Enroll Face Biometrics</span>
                 <ArrowRight className="size-4" />
               </button>
-              {onSkip && (
-                <button
-                  type="button"
-                  onClick={onSkip}
-                  className="w-full h-10 rounded-2xl text-ink-3 hover:text-ink text-xs font-semibold transition-colors cursor-pointer"
-                >
-                  Skip for now — open the dashboard
-                </button>
-              )}
             </motion.div>
           )}
 

@@ -14,6 +14,8 @@ interface OnboardingGuideModalProps {
   employeeName: string | null;
   employeeCode: string | null;
   onCompleted: () => void;
+  onClose?: () => void;
+  onSignOut?: () => void;
 }
 
 export function OnboardingGuideModal({
@@ -21,6 +23,8 @@ export function OnboardingGuideModal({
   employeeName,
   employeeCode,
   onCompleted,
+  onClose,
+  onSignOut,
 }: OnboardingGuideModalProps) {
   const { c } = useTheme();
 
@@ -106,7 +110,19 @@ export function OnboardingGuideModal({
               <View style={s.pingDot} />
               <Text style={s.questBadgeText}>NEW EMPLOYEE QUEST • MISSION 1</Text>
             </View>
-            <Text style={s.stepCounter}>Step {stage} of 2</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={s.stepCounter}>Step {stage} of 2</Text>
+              {onClose && (
+                <Pressable
+                  onPress={onClose}
+                  hitSlop={12}
+                  style={s.closeModalBtn}
+                  accessibilityLabel="Close modal"
+                >
+                  <Text style={s.closeModalIcon}>✕</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
 
           {/* STAGE 1: Briefing */}
@@ -147,6 +163,27 @@ export function OnboardingGuideModal({
               >
                 <Text style={s.actionBtnPrimaryText}>Start Mission: Register Face  →</Text>
               </Pressable>
+
+              <View style={s.footerActionsRow}>
+                {onSignOut && (
+                  <Pressable
+                    style={s.signOutBtn}
+                    onPress={onSignOut}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.signOutBtnText}>🚪 Log Out / Switch Email</Text>
+                  </Pressable>
+                )}
+                {onClose && (
+                  <Pressable
+                    style={s.skipBtn}
+                    onPress={onClose}
+                    accessibilityRole="button"
+                  >
+                    <Text style={s.skipBtnText}>Skip for now</Text>
+                  </Pressable>
+                )}
+              </View>
             </View>
           )}
 
@@ -228,6 +265,29 @@ export function OnboardingGuideModal({
                 <View style={s.busyRow}>
                   <ActivityIndicator color="#10B981" />
                   <Text style={s.busyText}>Verifying biometric quality…</Text>
+                </View>
+              )}
+
+              {!cameraActive && (
+                <View style={s.footerActionsRow}>
+                  {onSignOut && (
+                    <Pressable
+                      style={s.signOutBtn}
+                      onPress={onSignOut}
+                      accessibilityRole="button"
+                    >
+                      <Text style={s.signOutBtnText}>🚪 Log Out / Switch Email</Text>
+                    </Pressable>
+                  )}
+                  {onClose && (
+                    <Pressable
+                      style={s.skipBtn}
+                      onPress={onClose}
+                      accessibilityRole="button"
+                    >
+                      <Text style={s.skipBtnText}>Skip for now</Text>
+                    </Pressable>
+                  )}
                 </View>
               )}
             </View>
@@ -531,6 +591,53 @@ const s = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.75)',
     fontSize: 11.5,
     lineHeight: 16,
+  },
+  closeModalBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeModalIcon: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  footerActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 14,
+  },
+  signOutBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  signOutBtnText: {
+    color: '#F87171',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  skipBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    alignItems: 'center',
+  },
+  skipBtnText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 
 import { getMonth } from './api';
-import { hhmm, hoursLabel, monthTitle, plainDate, STATUS_META } from './format';
+import { formatHoursMins, hhmm, hoursLabel, monthTitle, plainDate, STATUS_META } from './format';
 import { useTheme } from './ThemeContext';
 import { theme, type ThemeColors } from './theme';
 import type { MonthData, MonthDay } from './types';
@@ -135,10 +135,10 @@ export default function MonthScreen({
                         <Detail label="In" value={hhmm(d.first_in)} />
                         <Detail label="Out" value={hhmm(d.last_out)} />
                         {d.late_minutes > 0 && (
-                          <Detail label="Late by" value={`${d.late_minutes}m`} />
+                          <Detail label="Late by" value={formatHoursMins(d.late_minutes)} />
                         )}
                         {d.overtime_minutes > 0 && (
-                          <Detail label="Overtime" value={`${d.overtime_minutes}m`} />
+                          <Detail label="Overtime" value={formatHoursMins(d.overtime_minutes)} />
                         )}
                         {d.exception_note && (
                           <Text style={s.note}>⚠ {d.exception_note}</Text>

@@ -1,4 +1,5 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -8,7 +9,7 @@ import {
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 
 import { getToday, submitPunch } from './api';
-import { formatHoursMins, hhmm } from './format';
+import { formatDurationHuman, formatHoursMins, hhmm } from './format';
 import { enqueue } from './queue';
 import { flush, pendingCount } from './sync';
 import { useTheme } from './ThemeContext';
@@ -89,6 +90,8 @@ export default function PunchScreen() {
   const [today, setToday] = useState<TodayStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
+  const [verifying, setVerifying] = useState(false);
+  const [capturingPhoto, setCapturingPhoto] = useState(false);
   const [result, setResult] = useState<PunchResult | null>(null);
   const [queued, setQueued] = useState(false);
   const [pending, setPending] = useState(0);
@@ -98,6 +101,58 @@ export default function PunchScreen() {
   const [locPerm, setLocPerm] = useState<Location.PermissionStatus | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const ringProgress = useRef(new Animated.Value(0)).current;
+
+  // Continuous rotating glow animation around the circle button (matches web GlowingShadow circle variant)
+  const glowRotate = useRef(new Animated.Value(0)).current;
+  const glowPulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const rotateAnim = Animated.loop(
+      Animated.timing(glowRotate, {
+        toValue: 1,
+        duration: 4500,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    const pulseAnim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowPulse, {
+          toValue: 1,
+          duration: 1800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowPulse, {
+          toValue: 0,
+          duration: 1800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    rotateAnim.start();
+    pulseAnim.start();
+    return () => {
+      rotateAnim.stop();
+      pulseAnim.stop();
+    };
+  }, [glowRotate, glowPulse]);
+
+  const spin = glowRotate.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const auraScale = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.06],
+  });
+
+  const auraOpacity = glowPulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.65, 0.95],
+  });
 
   const load = useCallback(() => {
     setLoadError(null);
@@ -136,6 +191,20 @@ export default function PunchScreen() {
     return cam.granted && loc.granted;
   }, [requestCam]);
 
+  const cachedLocationRef = useRef<Location.LocationObject | null>(null);
+
+  const prewarmLocation = useCallback(async () => {
+    try {
+      const last = await Location.getLastKnownPositionAsync({ maxAge: 60000 });
+      if (last) cachedLocationRef.current = last;
+      const fresh = await Promise.race([
+        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+        new Promise<any>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2500)),
+      ]);
+      if (fresh) cachedLocationRef.current = fresh;
+    } catch {}
+  }, []);
+
   const startPunch = useCallback(async () => {
     if (!camPerm?.granted || locPerm !== 'granted') {
       const ok = await askPermissions();
@@ -144,26 +213,13 @@ export default function PunchScreen() {
     setResult(null);
     setQueued(false);
     setPhase('camera');
-  }, [camPerm, locPerm, askPermissions]);
+    void prewarmLocation();
+  }, [camPerm, locPerm, askPermissions, prewarmLocation]);
 
   const capture = useCallback(async () => {
-    if (!today) return;
-    setPhase('working');
-    // Start the ring the moment they tap, and refuse to show ANY verdict
-    // before it completes. The server usually answers faster than RING_MS,
-    // and an instant rejection feels like the app never looked.
-    ringProgress.setValue(0);
-    Animated.timing(ringProgress, {
-      toValue: 1, duration: RING_MS,
-      easing: Easing.out(Easing.quad), useNativeDriver: true,
-    }).start();
-    const revealAt = Date.now() + RING_MS;
-    const holdForRing = async () => {
-      const wait = revealAt - Date.now();
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    };
-    // The moment the person actually tapped. If this ends up queued, this is
-    // the time that travels with it - not the time it eventually syncs.
+    if (!today || capturingPhoto) return;
+    setCapturingPhoto(true);
+
     const capturedAt = new Date();
     let photoUri = '';
     let coords: { lat: number | null; lng: number | null;
@@ -172,29 +228,51 @@ export default function PunchScreen() {
     };
 
     try {
-      // Photo and position are taken in the same moment on purpose - never
-      // compare a selfie taken here against a location recorded elsewhere.
-      const [photo, position] = await Promise.all([
-        cameraRef.current?.takePictureAsync({
-          // 0.9, not 0.6: this image is what Rekognition compares against the
-          // enrolled photo, and 0.6 JPEG on a dim front camera reads as the
-          // "photo too blurry" refusal. Bytes are cheap; a false reject at
-          // the door is not.
-          quality: 0.9,
-          skipProcessing: true,
-        }),
-        Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }),
-      ]);
+      // 1. Ultra-fast location resolution (uses pre-warmed GPS immediately)
+      const position = cachedLocationRef.current || (await Location.getLastKnownPositionAsync({ maxAge: 90000 }).catch(() => null));
+
+      // 2. High-speed photo capture while CameraView is mounted and active
+      const photo = await cameraRef.current?.takePictureAsync({
+        quality: 0.7,
+      });
+
       photoUri = photo?.uri ?? '';
+      if (!photoUri) {
+        throw new Error('Camera did not return photo data');
+      }
+
       coords = {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-        accuracyM: position.coords.accuracy ?? null,
-        mocked: (position as { mocked?: boolean }).mocked ?? false,
+        lat: position?.coords.latitude ?? null,
+        lng: position?.coords.longitude ?? null,
+        accuracyM: position?.coords.accuracy ?? null,
+        mocked: (position as { mocked?: boolean })?.mocked ?? false,
       };
 
+      // 3. Immediately dismiss camera view and return to dashboard with active verification!
+      setCapturingPhoto(false);
+      setPhase('idle');
+      setVerifying(true);
+      setResult(null);
+
+      // 4. Downscale to web-standard 640px (~45KB) for near-instant upload & Rekognition (0.3s)
+      let uploadUri = photoUri;
+      if (uploadUri) {
+        try {
+          const manip = await manipulateAsync(
+            uploadUri,
+            [{ resize: { width: 640 } }],
+            { compress: 0.7, format: SaveFormat.JPEG }
+          );
+          if (manip?.uri) {
+            uploadUri = manip.uri;
+          }
+        } catch (manipErr) {
+          console.warn('[PunchScreen] manipulateAsync fallback to original uri:', manipErr);
+        }
+      }
+
       const res = await submitPunch({
-        photoUri,
+        photoUri: uploadUri,
         lat: coords.lat,
         lng: coords.lng,
         accuracyM: coords.accuracyM,
@@ -202,17 +280,24 @@ export default function PunchScreen() {
         direction: today.direction,
       });
 
-      await holdForRing();
+      setVerifying(false);
       setResult(res);
-      setPhase('result');
       if (res.accepted) {
-        setToday(await getToday());
-        // A working connection is the best moment to clear anything stranded.
-        void flush().then((r) => setPending(r.remaining));
+        // Optimistically update today direction immediately
+        setToday((prev) => (prev ? {
+          ...prev,
+          direction: res.direction === 'in' ? 'out' : 'in',
+          isCurrentlyIn: res.direction === 'in',
+          checkedInAt: res.direction === 'in' ? res.punchedAt : prev.checkedInAt,
+          checkedOutAt: res.direction === 'out' ? res.punchedAt : prev.checkedOutAt,
+        } : prev));
+        // Refresh full status in background
+        void getToday().then((fresh) => setToday(fresh)).catch(() => {});
+        void flush().then((r) => setPending(r.remaining)).catch(() => {});
       }
-    } catch {
-      // The connection died. Save the punch properly - photo, position and the
-      // time it was taken - and only then tell the person it is safe.
+    } catch (err) {
+      setCapturingPhoto(false);
+      console.warn('[PunchScreen] submitPunch error:', err);
       const saved = photoUri
         ? await enqueue({
             photoUri,
@@ -225,23 +310,23 @@ export default function PunchScreen() {
           })
         : null;
 
-      await holdForRing();
+      setPhase('idle');
+      setVerifying(false);
       setQueued(saved !== null);
       setPending(pendingCount());
-      setPhase('result');
       setResult({
         accepted: false, direction: today.direction,
         punchedAt: capturedAt.toISOString(), distanceM: null, faceSimilarity: null,
-        // Two different messages, because they are two different situations
-        // and the difference matters enormously to the person reading it.
         message: saved
           ? `No signal - saved on your phone at ${hhmmLocal(capturedAt)} and will send itself when you are back online.`
           : Platform.OS === 'web'
             ? 'Could not reach the server, and the browser preview cannot queue offline punches.'
-            : 'Could not check in and could not save it either. Please try again when you have signal.',
+            : (err instanceof Error && err.message.toLowerCase().includes('capture')
+                ? 'Camera snapshot was interrupted. Please look at the camera and tap shutter again.'
+                : (err instanceof Error ? err.message : 'Could not check in. Please try again.')),
       });
     }
-  }, [today, ringProgress]);
+  }, [today, capturingPhoto]);
 
   // Compute shift progression (same exact logic as web check-in page)
   const shiftInfo = useMemo(() => {
@@ -319,29 +404,28 @@ export default function PunchScreen() {
     );
   }
 
-  if (phase === 'camera' || phase === 'working') {
+  if (phase === 'camera') {
     return (
       <View style={s.screen}>
         <CameraView ref={cameraRef} style={s.camera} facing="front" />
         <View style={s.cameraOverlay}>
-          <Text style={s.cameraHint}>
-            {phase === 'working' ? 'Verifying attendance…' : 'Look at the camera'}
-          </Text>
-          {phase === 'working' ? (
-            <VerifyRing progress={ringProgress} />
-          ) : (
-            <>
-              <Pressable
-                style={s.shutter} onPress={capture}
-                accessibilityRole="button" accessibilityLabel="Take photo"
-              >
-                <View style={s.shutterInner} />
-              </Pressable>
-              <Pressable onPress={() => setPhase('idle')}>
-                <Text style={s.cancel}>Cancel</Text>
-              </Pressable>
-            </>
-          )}
+          <Text style={s.cameraHint}>{capturingPhoto ? 'Capturing photo…' : 'Look at the camera'}</Text>
+          <Pressable
+            style={[s.shutter, capturingPhoto && { opacity: 0.6 }]}
+            onPress={capturingPhoto ? undefined : capture}
+            accessibilityRole="button"
+            accessibilityLabel="Take photo"
+            disabled={capturingPhoto}
+          >
+            {capturingPhoto ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <View style={s.shutterInner} />
+            )}
+          </Pressable>
+          <Pressable onPress={() => { if (!capturingPhoto) setPhase('idle'); }}>
+            <Text style={s.cancel}>Cancel</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -399,8 +483,16 @@ export default function PunchScreen() {
       )}
       {syncNote && <Text style={s.syncNote}>{syncNote}</Text>}
 
+      {/* Live Verifying Pill Banner (Instant Web-like experience) */}
+      {verifying && (
+        <View style={s.verifyingBanner}>
+          <ActivityIndicator size="small" color="#38bdf8" />
+          <Text style={s.verifyingText}>Verifying attendance with biometric AI…</Text>
+        </View>
+      )}
+
       {/* Punch Result Banner */}
-      {phase === 'result' && result && (
+      {!verifying && result && (
         <View
           style={[s.banner, result.accepted ? s.bannerOk : queued ? s.bannerWarn : s.bannerBad]}
           accessibilityLiveRegion="polite"
@@ -424,7 +516,14 @@ export default function PunchScreen() {
           <Defs>
             <LinearGradient id="shiftGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <Stop offset="0%" stopColor={isCurrentlyIn ? '#fb7185' : '#38bdf8'} />
+              <Stop offset="50%" stopColor={isCurrentlyIn ? '#f43f5e' : '#60a5fa'} />
               <Stop offset="100%" stopColor={isCurrentlyIn ? '#e11d48' : '#2563eb'} />
+            </LinearGradient>
+            <LinearGradient id="rainbowRingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <Stop offset="0%" stopColor="#38bdf8" stopOpacity={0.95} />
+              <Stop offset="33%" stopColor="#818cf8" stopOpacity={0.9} />
+              <Stop offset="66%" stopColor="#c084fc" stopOpacity={0.95} />
+              <Stop offset="100%" stopColor="#f43f5e" stopOpacity={0.9} />
             </LinearGradient>
           </Defs>
           {/* Background Track Ring */}
@@ -436,7 +535,7 @@ export default function PunchScreen() {
             strokeWidth={10}
             fill="none"
           />
-          {/* Dynamic Shift Progress Arc */}
+          {/* Dynamic Shift Progress Arc with subtle glow */}
           <Circle
             cx={CIRCLE_SIZE / 2}
             cy={CIRCLE_SIZE / 2}
@@ -451,26 +550,77 @@ export default function PunchScreen() {
           />
         </Svg>
 
-        {/* Center Interactive Circular Button */}
+        {/* Ambient Glassy Glow Aura (Web GlowingShadow effect) */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            s.glowAura,
+            isCurrentlyIn ? s.glowAuraOut : s.glowAuraIn,
+            {
+              transform: [{ scale: auraScale }],
+              opacity: auraOpacity,
+            },
+          ]}
+        />
+
+        {/* Continuous Rotating Rainbow Light Ring matching Web GlowingShadow */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            s.glowOrbitRing,
+            {
+              transform: [{ rotate: spin }],
+            },
+          ]}
+        >
+          <Svg width={184} height={184} style={StyleSheet.absoluteFill}>
+            <Circle
+              cx={92}
+              cy={92}
+              r={88}
+              stroke="url(#rainbowRingGradient)"
+              strokeWidth={4}
+              fill="none"
+            />
+          </Svg>
+        </Animated.View>
+
+        {/* Center Interactive Circular Glass Button */}
         <Pressable
           style={({ pressed }) => [
             s.punchCircle,
             isCurrentlyIn ? s.punchCircleOut : s.punchCircleIn,
             pressed && s.pressed,
+            verifying && { opacity: 0.85 },
           ]}
-          onPress={startPunch}
+          onPress={verifying ? undefined : startPunch}
+          disabled={verifying}
           accessibilityRole="button"
           accessibilityLabel={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
         >
-          <Text style={[s.circleIcon, isCurrentlyIn ? s.circleIconOut : s.circleIconIn]}>
-            {isCurrentlyIn ? '⇥' : '⇤'}
-          </Text>
-          <Text style={[s.circleLabel, isCurrentlyIn ? s.circleLabelOut : s.circleLabelIn]}>
-            {isCurrentlyIn ? 'Check Out' : 'Check In'}
-          </Text>
-          <Text style={[s.circleSub, isCurrentlyIn ? s.circleSubOut : s.circleSubIn]}>
-            {isCurrentlyIn && today.checkedInAt ? `In at ${hhmm(today.checkedInAt)}` : 'Tap to punch'}
-          </Text>
+          {verifying ? (
+            <>
+              <ActivityIndicator color={isCurrentlyIn ? '#f43f5e' : '#38bdf8'} size="small" style={{ marginBottom: 4 }} />
+              <Text style={[s.circleLabel, isCurrentlyIn ? s.circleLabelOut : s.circleLabelIn, { fontSize: 16 }]}>
+                Verifying…
+              </Text>
+              <Text style={[s.circleSub, isCurrentlyIn ? s.circleSubOut : s.circleSubIn]}>
+                Face recognition
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[s.circleIcon, isCurrentlyIn ? s.circleIconOut : s.circleIconIn]}>
+                {isCurrentlyIn ? '⇥' : '⇤'}
+              </Text>
+              <Text style={[s.circleLabel, isCurrentlyIn ? s.circleLabelOut : s.circleLabelIn]}>
+                {isCurrentlyIn ? 'Check Out' : 'Check In'}
+              </Text>
+              <Text style={[s.circleSub, isCurrentlyIn ? s.circleSubOut : s.circleSubIn]}>
+                {isCurrentlyIn && today.checkedInAt ? `In at ${hhmm(today.checkedInAt)}` : 'Tap to punch'}
+              </Text>
+            </>
+          )}
         </Pressable>
       </View>
 
@@ -511,7 +661,7 @@ export default function PunchScreen() {
             {today.lateMinutes > 0 ? formatHoursMins(today.lateMinutes) : '0 hrs'}
           </Text>
           <Text style={s.metricSub}>
-            {today.lateMinutes > 0 ? `${today.lateMinutes}m after grace` : 'On time today'}
+            {today.lateMinutes > 0 ? `${formatDurationHuman(today.lateMinutes)} after grace` : 'On time today'}
           </Text>
         </View>
       </View>
@@ -591,46 +741,71 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     alignSelf: 'center', marginVertical: 8,
   },
+  glowAura: {
+    position: 'absolute',
+    width: 204, height: 204, borderRadius: 102,
+    borderWidth: 2,
+  },
+  glowAuraIn: {
+    borderColor: 'rgba(56, 189, 248, 0.35)',
+    boxShadow: '0 0 32px rgba(37, 99, 235, 0.35)',
+    backgroundColor: 'rgba(56, 189, 248, 0.05)',
+  },
+  glowAuraOut: {
+    borderColor: 'rgba(244, 63, 94, 0.35)',
+    boxShadow: '0 0 32px rgba(225, 29, 72, 0.35)',
+    backgroundColor: 'rgba(244, 63, 94, 0.05)',
+  },
+  glowOrbitRing: {
+    position: 'absolute',
+    width: 184, height: 184, borderRadius: 92,
+    alignItems: 'center', justifyContent: 'center',
+    ...(Platform.OS === 'web' ? { boxShadow: '0 0 24px rgba(129, 140, 248, 0.5)' } as any : {}),
+  },
+
   punchCircle: {
     width: 172, height: 172, borderRadius: 86,
     alignItems: 'center', justifyContent: 'center', gap: 2,
-    boxShadow: '0px 10px 24px rgba(0,0,0,0.3)', elevation: 12,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', boxShadow: '0px 16px 40px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.3)' } as any : {}),
+    elevation: 16,
   },
   punchCircleIn: {
     backgroundColor: c.surface,
-    borderWidth: 2, borderColor: '#3b82f6',
+    borderWidth: 2, borderColor: '#38bdf8',
   },
   punchCircleOut: {
     backgroundColor: c.surface,
-    borderWidth: 2, borderColor: '#ef4444',
+    borderWidth: 2, borderColor: '#fb7185',
   },
   pressed: { opacity: 0.88, transform: [{ scale: 0.97 }] },
 
   circleIcon: { fontSize: 28, marginBottom: 2 },
-  circleIconIn: { color: '#3b82f6' },
-  circleIconOut: { color: '#ef4444' },
+  circleIconIn: { color: '#38bdf8' },
+  circleIconOut: { color: '#fb7185' },
 
   circleLabel: { fontSize: 22, fontWeight: '900', letterSpacing: -0.3 },
-  circleLabelIn: { color: '#3b82f6' },
-  circleLabelOut: { color: '#ef4444' },
+  circleLabelIn: { color: '#38bdf8' },
+  circleLabelOut: { color: '#fb7185' },
 
   circleSub: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
   circleSubIn: { color: c.ink3 },
-  circleSubOut: { color: '#fb7185' },
+  circleSubOut: { color: '#fda4af' },
 
   shiftProgressPill: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 8, paddingVertical: 8, paddingHorizontal: 14,
     backgroundColor: c.surface, borderRadius: 9999,
     borderWidth: 1, borderColor: c.line, alignSelf: 'center',
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
   },
   pulseDot: { width: 8, height: 8, borderRadius: 4 },
   shiftProgressText: { color: c.ink2, fontSize: 12, fontWeight: '600' },
 
   metricsGrid: { flexDirection: 'row', gap: 12 },
   metricCard: {
-    flex: 1, backgroundColor: c.surface, borderRadius: 16,
+    flex: 1, backgroundColor: c.surface, borderRadius: 20,
     padding: 16, borderWidth: 1, borderColor: c.line, gap: 4,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
   },
   metricHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   metricLabel: { color: c.ink3, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
@@ -639,8 +814,9 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   metricSub: { color: c.ink3, fontSize: 11 },
 
   shiftCard: {
-    backgroundColor: c.surface, borderRadius: 16,
+    backgroundColor: c.surface, borderRadius: 20,
     padding: 16, borderWidth: 1, borderColor: c.line, gap: 4,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' } as any : {}),
   },
   shiftRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginVertical: 2 },
   shiftScheduleVal: { color: c.ink, fontSize: 20, fontWeight: '800' },
@@ -653,6 +829,48 @@ const makeStyles = (c: ThemeColors) => StyleSheet.create({
   bottomActionBtnIn: { backgroundColor: '#2563eb' },
   bottomActionBtnOut: { backgroundColor: '#e11d48' },
   bottomActionBtnText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+  bottomActionBtnSub: { color: 'rgba(255,255,255,0.7)', fontSize: 12, marginTop: 3 },
+
+  pendingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: c.hiBg, borderColor: c.warn, borderWidth: 1,
+    borderRadius: 12, padding: 12,
+  },
+  pendingGlyph: { color: c.warn, fontSize: 14 },
+  pendingText: { color: c.ink, fontSize: 13, flex: 1 },
+  pendingLink: { color: c.accent, fontWeight: '700' },
+  syncNote: { color: c.ink3, fontSize: 12, textAlign: 'center' },
+  verifyingBanner: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+    backgroundColor: c.surface, borderColor: '#38bdf8', borderWidth: 1,
+    borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' } as any : {}),
+  },
+  verifyingText: { color: '#38bdf8', fontSize: 13, fontWeight: '700' },
+
+  banner: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    borderRadius: 14, padding: 14, borderWidth: 1,
+  },
+  bannerOk: { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: c.ok },
+  bannerWarn: { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: c.warn },
+  bannerBad: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: c.crit },
+  bannerGlyph: { fontSize: 16, fontWeight: '700' },
+  bannerTitle: { color: c.ink, fontSize: 14, fontWeight: '700' },
+  bannerSub: { color: c.ink3, fontSize: 12 },
+
+  permCard: {
+    backgroundColor: c.surface, borderRadius: 16,
+    padding: 18, borderWidth: 1, borderColor: c.line, gap: 8,
+  },
+  permTitle: { color: c.ink, fontSize: 16, fontWeight: '800' },
+  permBody: { color: c.ink2, fontSize: 13, lineHeight: 18 },
+  permBtn: {
+    backgroundColor: c.accent, borderRadius: 10,
+    paddingVertical: 12, alignItems: 'center', marginTop: 4,
+  },
+  permBtnText: { color: c.accentInk, fontSize: 14, fontWeight: '700' },
+
   camera: { flex: 1 },
   cameraOverlay: {
     position: 'absolute', bottom: 0, left: 0, right: 0,

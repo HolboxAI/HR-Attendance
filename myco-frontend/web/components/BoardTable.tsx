@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { ArrowUpRight } from 'lucide-react';
 import { HoverProfile } from '@/components/HoverProfile';
 
-import { hhmm, hours, type BoardRow } from '@/lib/format';
+import { hhmm, hours, formatLate, type BoardRow } from '@/lib/format';
 import { Avatar } from './Avatar';
 import { Status } from './Status';
 import { LocationDetailDialog } from './LocationDetailDialog';
@@ -91,7 +91,7 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                 <td className="tnum px-5 py-3.5 font-mono text-xs text-ink">{hhmm(r.first_in)}</td>
                 <td className="tnum px-5 py-3.5 font-mono text-xs text-ink">{hhmm(r.last_out)}</td>
                 <td className="tnum px-5 py-3.5 font-mono text-xs font-semibold text-ink">{hours(r.worked_minutes)}</td>
-                <td className="tnum px-5 py-3.5 font-mono text-xs text-ink-2 font-medium">{r.late_minutes ? `${r.late_minutes}m` : '—'}</td>
+                <td className="tnum px-5 py-3.5 font-mono text-xs text-ink-2 font-medium">{formatLate(r.late_minutes)}</td>
                 <td className="tnum px-5 py-3.5 font-mono text-xs text-ink-2 font-medium">{r.overtime_minutes ? `${r.overtime_minutes}m` : '—'}</td>
                 <td className="px-5 py-3.5 text-xs text-ink-3 font-mono">{r.exception_note ?? ''}</td>
               </tr>
