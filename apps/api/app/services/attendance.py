@@ -60,7 +60,7 @@ def dedupe_hash(
 
 
 def resolve_shift(
-    db: Session, employee: Employee, on: date
+    db: Session, employee: Employee | uuid.UUID, on: date
 ) -> tuple[ShiftTemplate | None, str, str | None, uuid.UUID | None]:
     """Resolves the shift template for an employee on a given date following PRD §8.5:
     1. Employee-specific shift assignment (direct override)
@@ -70,13 +70,19 @@ def resolve_shift(
     Returns: (template, source, group_name, assignment_id)
     where source is "direct" | "group" | "default" | "fallback"
     """
+    emp_id = employee.id if hasattr(employee, "id") else (uuid.UUID(str(employee)) if not isinstance(employee, uuid.UUID) else employee)
+    emp_org_id = getattr(employee, "org_id", None)
+    if emp_org_id is None:
+        emp_obj = db.get(Employee, emp_id)
+        emp_org_id = emp_obj.org_id if emp_obj else None
+
     # 1. Direct employee assignment
     stmt = (
         select(ShiftTemplate, ShiftAssignment.id, ShiftAssignment.created_at)
         .join(ShiftAssignment, ShiftAssignment.shift_template_id == ShiftTemplate.id)
         .where(
             and_(
-                ShiftAssignment.employee_id == employee.id,
+                ShiftAssignment.employee_id == emp_id,
                 ShiftAssignment.effective_from <= on,
                 (ShiftAssignment.effective_to.is_(None) | (ShiftAssignment.effective_to >= on)),
             )
@@ -92,8 +98,8 @@ def resolve_shift(
         .join(ShiftGroupMember, ShiftGroupMember.shift_group_id == ShiftGroup.id)
         .where(
             and_(
-                ShiftGroupMember.employee_id == employee.id,
-                ShiftGroup.org_id == employee.org_id,
+                ShiftGroupMember.employee_id == emp_id,
+                ShiftGroup.org_id == emp_org_id,
                 ShiftGroup.deleted_at.is_(None),
             )
         )
@@ -117,12 +123,12 @@ def resolve_shift(
         return group_row[0], "group", group_row[1], None
 
     # 3. Organization default shift
-    org = db.get(Organization, employee.org_id)
+    org = db.get(Organization, emp_org_id) if emp_org_id else None
     default_id = org.settings.get("default_shift_template_id") if org and org.settings else None
     if default_id:
         try:
             tpl = db.get(ShiftTemplate, uuid.UUID(str(default_id)))
-            if tpl and tpl.org_id == employee.org_id:
+            if tpl and tpl.org_id == emp_org_id:
                 return tpl, "default", None, None
         except (ValueError, TypeError):
             pass
