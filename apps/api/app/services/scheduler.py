@@ -222,7 +222,7 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
-    """Alerts Slack if an employee has stepped out on break for >= 40 minutes during active shift."""
+    """Alerts Slack if an employee has stepped out on break for >= 45 minutes during active shift."""
     nudged: list[str] = []
     tz = ZoneInfo(org.timezone or "Asia/Kolkata")
     local_now = now.astimezone(tz)
@@ -243,7 +243,7 @@ def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> 
         last = punches[-1]
         if last.direction == PunchDirection.OUT:
             time_since_out = (now - last.ts_utc).total_seconds() / 60
-            if time_since_out >= 40:
+            if time_since_out >= 45:
                 key = f"break_exceeded:{emp.emp_code}:{today.isoformat()}:{int(last.ts_utc.timestamp())}"
                 if _claim(db, org_id=org.id, job="break_exceeded", key=key,
                           detail={"employee": emp.emp_code, "minutes": int(time_since_out)}) is None:
@@ -426,6 +426,12 @@ def run_shift_end_summaries(
             else:
                 late_str = "On Time"
 
+            break_m = day.break_minutes or 0 if day else 0
+            if break_m >= 60:
+                break_str = f"{break_m // 60}h {break_m % 60}m"
+            else:
+                break_str = f"{break_m}m"
+
             roster.append({
                 "id": str(emp.id),
                 "code": emp.emp_code,
@@ -436,8 +442,8 @@ def run_shift_end_summaries(
                 "late_minutes": late_mins,
                 "late_str": late_str,
                 "hours_str": hours_str,
-                "break_str": f"{day.break_minutes}m" if (day and day.break_minutes) else "0m",
-                "break_minutes": day.break_minutes if day else 0,
+                "break_str": break_str,
+                "break_minutes": break_m,
             })
 
         if not roster and not force_template_id:

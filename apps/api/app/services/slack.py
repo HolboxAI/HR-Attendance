@@ -547,7 +547,7 @@ def post_missed_checkout_alert(employee_name: str, email: str | None, shift_date
 
 
 def post_break_exceeded_alert(employee_name: str, email: str | None, minutes_out: int) -> None:
-    """Send a friendly reminder in Slack if an employee has been on break for >= 40 minutes."""
+    """Send a friendly reminder in Slack if an employee has been on break for >= 45 minutes."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
@@ -615,6 +615,7 @@ def post_shift_summary_to_slack(
 
     absent_list = [r for r in roster if r.get("status") == "absent"]
     late_list = [r for r in roster if r.get("status") == "late"]
+    leave_list = [r for r in roster if r.get("status") in ("on_leave", "leave", "half_day")]
     present_list = [r for r in roster if r.get("status") in ("present", "early")]
 
     blocks: list[dict] = [
@@ -670,7 +671,7 @@ def post_shift_summary_to_slack(
 
     if late_list:
         late_lines = "\n".join(
-            f"• *{r['name']}* ({r['code']}): In at `{r.get('first_in') or '—'}` ({r.get('late_str') or ''})"
+            f"• *{r['name']}* ({r['code']}): In: `{r.get('first_in') or '—'}` | Out: `{r.get('last_out') or '—'}` | ☕ Breaks: *{r.get('break_str') or '0m'}* | ⏱️ Worked: *{r.get('hours_str') or '—'}* ({r.get('late_str') or ''})"
             for r in late_list
         )
         blocks.append({
@@ -683,7 +684,7 @@ def post_shift_summary_to_slack(
 
     if present_list:
         present_lines = "\n".join(
-            f"• *{r['name']}* ({r['code']}): In: `{r.get('first_in') or '—'}` | Out: `{r.get('last_out') or '—'}` | Breaks: `{r.get('break_str') or '0m'}` | Worked: *{r.get('hours_str') or '—'}*"
+            f"• *{r['name']}* ({r['code']}): In: `{r.get('first_in') or '—'}` | Out: `{r.get('last_out') or '—'}` | ☕ Breaks: *{r.get('break_str') or '0m'}* | ⏱️ Worked: *{r.get('hours_str') or '—'}*"
             for r in present_list
         )
         blocks.append({
@@ -691,6 +692,19 @@ def post_shift_summary_to_slack(
             "text": {
                 "type": "mrkdwn",
                 "text": f"✅ *Present ({len(present_list)}):*\n{present_lines}",
+            },
+        })
+
+    if leave_list:
+        leave_lines = "\n".join(
+            f"• *{r['name']}* ({r['code']}) — Status: `{r.get('status', '').upper()}`"
+            for r in leave_list
+        )
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"🌴 *On Leave / Half Day ({len(leave_list)}):*\n{leave_lines}",
             },
         })
 
