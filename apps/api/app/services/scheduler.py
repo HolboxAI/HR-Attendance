@@ -212,18 +212,57 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
                 body=f"{emp.full_name} has not checked in for their shift on {shift_date:%d %b} (started at {local_start}).",
                 data={"employee": emp.emp_code, "shift_date": shift_date.isoformat()}
             )
-            
-            # Fire the Slack absence alert
-            from app.services.slack import post_absence_alert
-            from threading import Thread
-            Thread(target=post_absence_alert, args=(emp.full_name, local_start), daemon=True).start()
-            
+
             nudged.append(key)
     return nudged
 
 
 # ---------------------------------------------------------------------------
-# Job 3: missing punch-out nudge
+# Job 3: break exceeded alert (> 40 mins)
+# ---------------------------------------------------------------------------
+
+def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
+    """Alerts Slack if an employee has stepped out on break for >= 40 minutes during active shift."""
+    nudged: list[str] = []
+    tz = ZoneInfo(org.timezone or "Asia/Kolkata")
+    local_now = now.astimezone(tz)
+    today = local_now.date()
+
+    for emp in _active_employees(db, org.id):
+        policy, _tpl = policy_for(db, emp, today)
+        if today.weekday() not in policy.working_days:
+            continue
+        start, end = shift_bounds(policy, today)
+        if not (start <= local_now < end):
+            continue
+
+        punches = _accepted_punches(db, emp, policy, today)
+        if not punches:
+            continue
+
+        last = punches[-1]
+        if last.direction == PunchDirection.OUT:
+            time_since_out = (now - last.ts_utc).total_seconds() / 60
+            if time_since_out >= 40:
+                key = f"break_exceeded:{emp.emp_code}:{today.isoformat()}:{int(last.ts_utc.timestamp())}"
+                if _claim(db, org_id=org.id, job="break_exceeded", key=key,
+                          detail={"employee": emp.emp_code, "minutes": int(time_since_out)}) is None:
+                    continue
+
+                from app.services.slack import post_break_exceeded_alert
+                from threading import Thread
+                Thread(
+                    target=post_break_exceeded_alert,
+                    args=(emp.full_name, emp.email, int(time_since_out)),
+                    daemon=True,
+                ).start()
+                nudged.append(key)
+
+    return nudged
+
+
+# ---------------------------------------------------------------------------
+# Job 4: missing punch-out nudge
 # ---------------------------------------------------------------------------
 
 def run_punch_out_nudges(db: Session, org: Organization, now: datetime) -> list[str]:
@@ -272,6 +311,17 @@ def run_punch_out_nudges(db: Session, org: Organization, now: datetime) -> list[
                           "submit a correction with the time you actually left."),
                     data={"shift_date": shift_date.isoformat()},
                 )
+
+            # Also tag the employee in Slack
+            from app.services.slack import post_missed_checkout_alert
+            from threading import Thread
+            local_end_str = end.strftime("%I:%M %p").lstrip("0")
+            Thread(
+                target=post_missed_checkout_alert,
+                args=(emp.full_name, emp.email, shift_date.isoformat(), local_end_str),
+                daemon=True,
+            ).start()
+
             nudged.append(key)
     return nudged
 
@@ -311,8 +361,8 @@ def run_shift_end_summaries(
         if end_dt <= start_dt:
             end_dt += timedelta(days=1)
 
-        # Trigger 5 minutes after shift ends (e.g. 20:05 for an 20:00 shift)
-        trigger_dt = end_dt + timedelta(minutes=5)
+        # Trigger 10 minutes after shift ends (e.g. 21:10 for a 21:00 shift)
+        trigger_dt = end_dt + timedelta(minutes=10)
         cutoff_dt = end_dt + timedelta(hours=4)
 
         # If not forcing on-demand, verify the window and claim the dedupe row
@@ -409,6 +459,16 @@ def run_shift_end_summaries(
             stats=stats,
             roster=roster,
         )
+
+        # Post shift summary to Slack attendance channel
+        from app.services.slack import post_shift_summary_to_slack
+        from threading import Thread
+        Thread(
+            target=post_shift_summary_to_slack,
+            args=(tmpl.name, timing_str, target_date, stats, roster),
+            daemon=True,
+        ).start()
+
         summarized.append(key)
 
     return summarized
@@ -433,6 +493,7 @@ def tick(db: Session, now: datetime | None = None) -> dict:
     jobs = (
         ("monthly_accrual", run_monthly_accrual),
         ("late_alert", run_late_alerts),
+        ("break_exceeded", run_break_exceeded_alerts),
         ("punch_out_nudge", run_punch_out_nudges),
         ("shift_end_summary", run_shift_end_summaries),
     )

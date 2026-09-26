@@ -359,6 +359,10 @@ async def punch(
             )
             Thread(target=post_early_leave_alert, args=(emp.full_name, punch_time_str, early_minutes, shift_date.isoformat()), daemon=True).start()
             db.commit()
+        else:
+            from app.services.slack import post_checkout_alert
+            from threading import Thread
+            Thread(target=post_checkout_alert, args=(emp.full_name, punch_time_str, shift_date.isoformat()), daemon=True).start()
 
     return PunchResponse(
         accepted=True,

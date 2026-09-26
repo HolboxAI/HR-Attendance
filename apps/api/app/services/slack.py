@@ -483,6 +483,235 @@ def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: i
         logger.error(f"Failed to post early leave alert to Slack: {e}")
 
 
+_SLACK_USER_CACHE: dict[str, str | None] = {}
+
+
+def get_slack_user_id_by_email(email: str) -> str | None:
+    """Look up a user's Slack ID using their email address with in-memory caching."""
+    if not settings.slack_bot_token or not email:
+        return None
+    email_clean = email.strip().lower()
+    if email_clean in _SLACK_USER_CACHE:
+        return _SLACK_USER_CACHE[email_clean]
+    try:
+        resp = httpx.get(
+            "https://slack.com/api/users.lookupByEmail",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            params={"email": email_clean},
+            timeout=5.0,
+        )
+        data = resp.json()
+        if data.get("ok"):
+            user_id = data.get("user", {}).get("id")
+            _SLACK_USER_CACHE[email_clean] = user_id
+            return user_id
+        else:
+            _SLACK_USER_CACHE[email_clean] = None
+    except Exception as e:
+        logger.warning("Error looking up Slack user by email %s: %s", email_clean, e)
+    return None
+
+
+def format_slack_mention(name: str, email: str | None = None) -> str:
+    """Return a Slack mention <@USER_ID> if found by email, else bold name *Name*."""
+    if email:
+        slack_id = get_slack_user_id_by_email(email)
+        if slack_id:
+            return f"<@{slack_id}>"
+    return f"*{name}*"
+
+
+def post_missed_checkout_alert(employee_name: str, email: str | None, shift_date: str, shift_end_str: str) -> None:
+    """Tag an employee in Slack if their shift has ended but they haven't punched out."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    mention = format_slack_mention(employee_name, email)
+    text = f"⚠️ *Missed Check-Out:* {mention} You haven't checked out yet for your shift ({shift_end_str}) on {shift_date}. Please remember to clock out."
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": text,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_missed_checkout_alert: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post missed checkout alert to Slack: %s", e)
+
+
+def post_break_exceeded_alert(employee_name: str, email: str | None, minutes_out: int) -> None:
+    """Send a friendly reminder in Slack if an employee has been on break for >= 40 minutes."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    mention = format_slack_mention(employee_name, email)
+    text = f"☕ *Break Reminder:* {mention} You have been on break for {int(minutes_out)} minutes."
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": text,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_break_exceeded_alert: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post break exceeded alert to Slack: %s", e)
+
+
+def post_checkout_alert(employee_name: str, punch_time_str: str, shift_date: str) -> None:
+    """Post a neutral check-out update to Slack when an employee clocks out after shift hours."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    text = f"✅ *Check-Out Update:* {employee_name} checked out at {punch_time_str} for their shift on {shift_date}."
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": text,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_checkout_alert: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post check-out alert to Slack: %s", e)
+
+
+def post_shift_summary_to_slack(
+    shift_name: str,
+    shift_timing: str,
+    shift_date: date,
+    stats: dict,
+    roster: list[dict],
+) -> None:
+    """Post a structured shift-end attendance summary to the Slack attendance channel."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    date_str = shift_date.strftime("%A, %d %B %Y")
+    total = stats.get("total", 0)
+    present = stats.get("present", 0)
+    late = stats.get("late", 0)
+    absent = stats.get("absent", 0)
+    leave = stats.get("leave", 0)
+
+    absent_list = [r for r in roster if r.get("status") == "absent"]
+    late_list = [r for r in roster if r.get("status") == "late"]
+    present_list = [r for r in roster if r.get("status") in ("present", "early")]
+
+    blocks: list[dict] = [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": f"📋 Shift Attendance Summary — {shift_name}",
+                "emoji": True,
+            },
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": f"🕒 *Timing:* {shift_timing}  •  📅 *Date:* {date_str}",
+                }
+            ],
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    f"👥 *Overview:* Total: *{total}*  |  "
+                    f"✅ Present: *{present}*  |  "
+                    f"⏳ Late: *{late}*  |  "
+                    f"❌ Absent: *{absent}*  |  "
+                    f"🌴 Leave: *{leave}*"
+                ),
+            },
+        },
+    ]
+
+    if absent_list:
+        absent_lines = "\n".join(f"• *{r['name']}* ({r['code']})" for r in absent_list)
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"❌ *Absent ({len(absent_list)}):*\n{absent_lines}",
+            },
+        })
+    else:
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "❌ *Absent:* None (All scheduled members reported)",
+            },
+        })
+
+    if late_list:
+        late_lines = "\n".join(
+            f"• *{r['name']}* ({r['code']}): In at `{r.get('first_in') or '—'}` ({r.get('late_str') or ''})"
+            for r in late_list
+        )
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"⏳ *Late Arrivals ({len(late_list)}):*\n{late_lines}",
+            },
+        })
+
+    if present_list:
+        present_lines = "\n".join(
+            f"• *{r['name']}* ({r['code']}): In: `{r.get('first_in') or '—'}` | Out: `{r.get('last_out') or '—'}` | Breaks: `{r.get('break_str') or '0m'}` | Worked: *{r.get('hours_str') or '—'}*"
+            for r in present_list
+        )
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"✅ *Present ({len(present_list)}):*\n{present_lines}",
+            },
+        })
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": f"📋 Shift Attendance Summary: {shift_name} ({date_str})",
+                "blocks": blocks,
+            },
+            timeout=10.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_shift_summary_to_slack: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post shift summary to Slack: %s", e)
+
+
 def post_signup_request_alert(
     full_name: str,
     email: str,
