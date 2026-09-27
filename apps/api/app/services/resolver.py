@@ -216,31 +216,19 @@ def resolve_day(
         # let a human decide which one was the mistake.
         day.has_exception = True
         day.exception_note = "Worked on an approved leave day - HR to confirm"
-    elif on_leave and day.worked_minutes >= policy.half_day_after_minutes:
-        # Half leave + half worked = a full day.
+    elif on_leave and (day.worked_minutes > 0 or day.punch_count >= 2):
+        # Half leave + worked = full day present
         day.status = "present"
     elif on_leave:
         day.status = "half_day"
-    elif day.worked_minutes >= policy.full_day_after_minutes:
+    elif day.worked_minutes > 0 or (day.first_in and day.last_out and day.punch_count >= 2):
+        # Option A: Any employee who checks in and checks out is marked Present
         day.status = "present"
-    elif day.worked_minutes >= policy.half_day_after_minutes:
-        day.status = "half_day"
     elif day.has_exception or not shift_over:
-        # Someone who punched in an hour ago is at work, not absent.
+        # Someone who punched in and shift is active, or single punch exception
         day.status = "not_marked"
     else:
         day.status = "absent"
-        if day.punch_count > 0:
-            # They showed up and it still did not count. That sentence must
-            # finish itself: an unexplained "absent" beside a visible check-in
-            # reads as the system losing a punch, and the first place anyone
-            # looks is the pipeline rather than the threshold.
-            worked_h, worked_m = divmod(day.worked_minutes, 60)
-            need_h, need_m = divmod(policy.half_day_after_minutes, 60)
-            day.exception_note = (
-                f"Punched, but worked {worked_h}h{worked_m:02d} - "
-                f"a half day needs at least {need_h}h{need_m:02d}"
-            )
 
     return day
 

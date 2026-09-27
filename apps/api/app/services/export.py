@@ -23,6 +23,9 @@ import csv
 import io
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -276,6 +279,21 @@ def to_csv(rows: list[Row], *, year: int, month: int, org_name: str) -> str:
     return buf.getvalue()
 
 
+
+def _format_time_ist(t_val, tz: ZoneInfo = IST) -> str:
+    if not t_val:
+        return "-"
+    if isinstance(t_val, str):
+        try:
+            t_val = datetime.fromisoformat(t_val.replace("Z", "+00:00"))
+        except Exception:
+            return t_val[11:16]
+    if hasattr(t_val, "tzinfo"):
+        if t_val.tzinfo is None:
+            t_val = t_val.replace(tzinfo=timezone.utc)
+        return t_val.astimezone(tz).strftime("%I:%M %p")
+    return "-"
+
 def _clean_pdf_text(text: str | None) -> str:
     if not text:
         return ""
@@ -456,10 +474,8 @@ def employee_to_pdf(
         pdf.cell(34, 6, _clean_pdf_text(st_label), border=1, fill=True, align="L")
         
         pdf.set_text_color(30, 35, 45)
-        in_t = d.get("first_in")
-        in_str = in_t[11:16] if in_t and len(in_t) >= 16 else "-"
-        out_t = d.get("last_out")
-        out_str = out_t[11:16] if out_t and len(out_t) >= 16 else "-"
+        in_str = _format_time_ist(d.get("first_in"))
+        out_str = _format_time_ist(d.get("last_out"))
         pdf.cell(18, 6, in_str, border=1, fill=True, align="C")
         pdf.cell(18, 6, out_str, border=1, fill=True, align="C")
 
@@ -665,21 +681,9 @@ def attendance_history_to_pdf(
             pdf.set_fill_color(255, 255, 255)
             pdf.set_text_color(30, 35, 45)
 
-        # In & Out times
-        def fmt_time(t_val):
-            if not t_val:
-                return "-"
-            if hasattr(t_val, "strftime"):
-                return t_val.strftime("%I:%M %p")
-            if isinstance(t_val, str) and len(t_val) >= 16:
-                try:
-                    return datetime.fromisoformat(t_val.replace("Z", "+00:00")).strftime("%I:%M %p")
-                except Exception:
-                    return t_val[11:16]
-            return "-"
-
-        in_str = fmt_time(r.get("first_in"))
-        out_str = fmt_time(r.get("last_out"))
+        # In & Out times (converted to local IST)
+        in_str = _format_time_ist(r.get("first_in"))
+        out_str = _format_time_ist(r.get("last_out"))
 
         # Worked hours & Late
         w_min = r.get("worked_minutes") or 0

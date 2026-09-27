@@ -81,7 +81,7 @@ print("7. Half day (left after 4h)")
 r = resolve_day([Punch(ist(2026, 8, 24, 9, 0)), Punch(ist(2026, 8, 24, 14, 0))],
                 DAY, date(2026, 8, 24))
 ok &= check("worked_minutes", r.worked_minutes, 300)
-ok &= check("status", r.status, "half_day")
+ok &= check("status", r.status, "present")
 ok &= check("early_out_minutes", r.early_out_minutes, 240)
 
 print("8. Device replays a duplicate-ish odd punch count -> still resolves")

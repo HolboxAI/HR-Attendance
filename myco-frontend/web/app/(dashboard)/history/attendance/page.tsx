@@ -207,7 +207,7 @@ export default async function AttendanceHistoryPage({
             href={pdfDownloadUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-accent text-white px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:bg-accent/90 transition-all active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-ink text-ground px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer"
             title="Download attendance report PDF matching currently applied filters"
           >
             <Download className="size-3.5" />
