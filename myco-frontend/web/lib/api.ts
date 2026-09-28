@@ -117,3 +117,28 @@ export type SignupsData = {
 };
 
 export const getPendingSignups = () => apiFetch<SignupsData>('/api/v1/admin/signups');
+
+/* ----------------------------------------------------------- admin employees */
+
+export type EmployeeAdminRow = {
+  emp_code: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  department: string | null;
+  designation: string | null;
+  manager_code: string | null;
+  date_of_joining: string | null;
+  date_of_exit: string | null;
+  is_active: boolean;
+  role: string | null;
+  has_login: boolean;
+  correction_limit: number | null;
+  avatar_url?: string | null;
+};
+
+export const getEmployeeAdmin = (code: string) =>
+  apiFetch<EmployeeAdminRow>(`/api/v1/admin/employees/${encodeURIComponent(code)}`);
+
+export const getEmployeesAdmin = () =>
+  apiFetch<EmployeeAdminRow[]>('/api/v1/admin/employees');

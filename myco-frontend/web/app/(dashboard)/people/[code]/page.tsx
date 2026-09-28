@@ -4,13 +4,18 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Avatar } from '@/components/Avatar';
 import { ErrorState } from '@/components/ErrorState';
 import { MonthCalendar } from '@/components/MonthCalendar';
-import { ResetPasswordButton, SendMessageButton, EditCorrectionLimitButton } from '@/components/PeopleAdmin';
+import {
+  ResetPasswordButton,
+  SendMessageButton,
+  EditCorrectionLimitButton,
+  ChangeRoleButton,
+} from '@/components/PeopleAdmin';
 import { EmployeeLeaveEditor } from '@/components/EditLeaveBalances';
 import { Status } from '@/components/Status';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity } from '@/lib/session';
 import {
-  getBoard, getCorrectionsPending, getDevices, getEnrolments, getMonth,
+  getBoard, getCorrectionsPending, getDevices, getEmployeeAdmin, getEnrolments, getMonth,
   getRejected, getTeamBalances, hhmm, hours, monthLabel,
 } from '@/lib/api';
 import { dayMonth, plainDate } from '@/lib/format';
@@ -66,8 +71,13 @@ export default async function EmployeeDetailPage({
     );
   }
 
-  const [enrolments, devices, pendingCorrections, balances, rejected] = await Promise.all([
-    getEnrolments(), getDevices(), getCorrectionsPending(), getTeamBalances(), getRejected(30),
+  const [enrolments, devices, pendingCorrections, balances, rejected, adminEmp] = await Promise.all([
+    getEnrolments(),
+    getDevices(),
+    getCorrectionsPending(),
+    getTeamBalances(),
+    getRejected(30),
+    caps.canManagePeople ? getEmployeeAdmin(code) : Promise.resolve(null),
   ]);
 
   const enrolment = enrolments?.rows.find((r) => r.employee_code === code) ?? null;
@@ -94,11 +104,34 @@ export default async function EmployeeDetailPage({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-bold tracking-tight">{monthData.full_name}</h1>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h1 className="font-display text-2xl font-bold tracking-tight">{monthData.full_name}</h1>
+            {adminEmp?.ok && adminEmp.data.role && (
+              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                adminEmp.data.role === 'hr_admin' || adminEmp.data.role === 'super_admin'
+                  ? 'bg-purple-500/10 text-purple-600 border-purple-500/25 dark:text-purple-400'
+                  : adminEmp.data.role === 'manager'
+                  ? 'bg-blue-500/10 text-blue-600 border-blue-500/25 dark:text-blue-400'
+                  : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/25 dark:text-emerald-400'
+              }`}>
+                {adminEmp.data.role === 'hr_admin' || adminEmp.data.role === 'super_admin'
+                  ? 'Admin'
+                  : adminEmp.data.role === 'manager'
+                  ? 'Manager'
+                  : 'Employee'}
+              </span>
+            )}
+            {adminEmp?.ok && !adminEmp.data.has_login && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono bg-st-late/10 text-st-late border border-st-late/25">
+                No Login Account
+              </span>
+            )}
+          </div>
           <p className="text-sm text-ink-3">
             {code}
             {todayRow?.department ? ` · ${todayRow.department}` : ''}
             {todayRow ? ` · shift ${todayRow.shift_label}` : ''}
+            {adminEmp?.ok && adminEmp.data.email ? ` · ${adminEmp.data.email}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
@@ -127,6 +160,12 @@ export default async function EmployeeDetailPage({
           <SendMessageButton code={code} name={monthData.full_name} />
           {caps.canManagePeople && (
             <>
+              <ChangeRoleButton
+                code={code}
+                name={monthData.full_name}
+                currentRole={adminEmp?.ok ? adminEmp.data.role : null}
+                isSelf={me?.employee_code === code}
+              />
               <ResetPasswordButton code={code} name={monthData.full_name} />
               <EditCorrectionLimitButton code={code} currentLimit={monthData.correction_limit} />
             </>

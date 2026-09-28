@@ -35,6 +35,8 @@ export type DirectoryRow = {
   currentlyIn: boolean;
   enrolled: boolean | null;   // null = viewer can't see enrolment (not HR)
   deviceBound: boolean | null; // null = viewer can't see devices (not HR)
+  role?: string | null;
+  email?: string | null;
 };
 
 interface DirectoryProps {
@@ -500,10 +502,25 @@ export function Directory({
                               <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
                                 {r.name}
                                 {r.currentlyIn && <span className="sr-only"> (currently in the office)</span>}
+                                {r.role && (
+                                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                    r.role === 'hr_admin' || r.role === 'super_admin'
+                                      ? 'bg-purple-500/10 text-purple-600 border-purple-500/25 dark:text-purple-400'
+                                      : r.role === 'manager'
+                                      ? 'bg-blue-500/10 text-blue-600 border-blue-500/25 dark:text-blue-400'
+                                      : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/25 dark:text-emerald-400'
+                                  }`}>
+                                    {r.role === 'hr_admin' || r.role === 'super_admin'
+                                      ? 'Admin'
+                                      : r.role === 'manager'
+                                      ? 'Manager'
+                                      : 'Employee'}
+                                  </span>
+                                )}
                                 <ArrowUpRight className="size-3.5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-ink shrink-0" aria-hidden />
                               </span>
                               <span className="block text-xs font-mono text-ink-3">
-                                {r.code}{r.department ? ` · ${r.department}` : ''}
+                                {r.code}{r.department ? ` · ${r.department}` : ''}{r.email ? ` · ${r.email}` : ''}
                               </span>
                             </span>
                           </Link>
@@ -585,7 +602,24 @@ export function Directory({
                         />
                       </span>
                       <span className="min-w-0 flex-1 transition-transform duration-300 group-hover:translate-x-2.5">
-                        <span className="block truncate text-sm font-semibold text-ink">{r.name}</span>
+                        <span className="flex items-center gap-1.5 flex-wrap text-sm font-semibold text-ink">
+                          <span className="truncate">{r.name}</span>
+                          {r.role && (
+                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                              r.role === 'hr_admin' || r.role === 'super_admin'
+                                ? 'bg-purple-500/10 text-purple-600 border-purple-500/25 dark:text-purple-400'
+                                : r.role === 'manager'
+                                ? 'bg-blue-500/10 text-blue-600 border-blue-500/25 dark:text-blue-400'
+                                : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/25 dark:text-emerald-400'
+                            }`}>
+                              {r.role === 'hr_admin' || r.role === 'super_admin'
+                                ? 'Admin'
+                                : r.role === 'manager'
+                                ? 'Manager'
+                                : 'Employee'}
+                            </span>
+                          )}
+                        </span>
                         <span className="block text-xs font-mono text-ink-3">
                           {r.code}{r.department ? ` · ${r.department}` : ''}
                         </span>

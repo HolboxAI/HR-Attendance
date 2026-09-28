@@ -281,14 +281,29 @@ def update(
 
     user = db.scalar(select(User).where(User.employee_id == employee.id))
 
-    if role is not None and user is not None and user.role != role:
+    if role is not None:
         if actor.role not in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN):
             return EmployeeOutcome(False, reason="Only an admin can change a role")
-        if user.id == actor.id:
+        if user is not None and user.id == actor.id:
             # Nobody edits their own access. Same rule as leave approvals.
             return EmployeeOutcome(False, reason="You cannot change your own role")
-        recorded["role"] = {"old": user.role.value, "new": role.value}
-        user.role = role
+        if user is not None:
+            if user.role != role:
+                recorded["role"] = {"old": user.role.value, "new": role.value}
+                user.role = role
+        else:
+            temp_pass = new_password()
+            user = User(
+                org_id=employee.org_id,
+                employee_id=employee.id,
+                email=employee.email or f"{employee.emp_code.lower()}@boxcode.ai",
+                role=role,
+                password_hash=hash_password(temp_pass),
+                is_active=True,
+            )
+            db.add(user)
+            db.flush()
+            recorded["role"] = {"old": None, "new": role.value}
 
     # The login follows the employee's address, or the two drift and the person
     # can no longer sign in with the address HR thinks they have.
@@ -338,19 +353,31 @@ def deactivate(
     return EmployeeOutcome(True, employee=employee)
 
 
-def reset_password(db: Session, *, actor: User, employee: Employee) -> EmployeeOutcome:
-    """Re-issue a temporary password. Used for onboarding and for lockouts."""
+def reset_password(
+    db: Session, *, actor: User, employee: Employee, new_password_val: str | None = None
+) -> EmployeeOutcome:
+    """Re-issue a temporary or custom password. Used for onboarding and for lockouts."""
     user = db.scalar(select(User).where(User.employee_id == employee.id))
-    if user is None:
-        return EmployeeOutcome(False, reason=f"{employee.emp_code} has no login account")
+    password = new_password_val or new_password()
 
-    password = new_password()
-    user.password_hash = hash_password(password)
-    user.is_active = True
+    if user is None:
+        user = User(
+            org_id=employee.org_id,
+            employee_id=employee.id,
+            email=employee.email or f"{employee.emp_code.lower()}@boxcode.ai",
+            role=UserRole.EMPLOYEE,
+            password_hash=hash_password(password),
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+    else:
+        user.password_hash = hash_password(password)
+        user.is_active = True
 
     audit(db, org_id=employee.org_id, actor=actor, entity="employee",
           entity_id=employee.id, action="password_reset",
-          note="temporary password issued")
+          note="password reset by admin")
 
     return EmployeeOutcome(True, employee=employee, temporary_password=password)
 

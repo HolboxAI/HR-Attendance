@@ -2,7 +2,7 @@ import { Directory, type DirectoryRow } from '@/components/Directory';
 import { ErrorState } from '@/components/ErrorState';
 import { PageHeader } from '@/components/PageHeader';
 import { AddEmployeeButton } from '@/components/PeopleAdmin';
-import { getBoard, getDevices, getEnrolments, getPendingSignups } from '@/lib/api';
+import { getBoard, getDevices, getEmployeesAdmin, getEnrolments, getPendingSignups } from '@/lib/api';
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity } from '@/lib/session';
 
@@ -11,17 +11,18 @@ export const dynamic = 'force-dynamic';
 /**
  * Scoped automatically by the API: a manager's board only contains their
  * reports, so their directory only contains their reports. HR-only facts
- * (enrolment, device binding, signup approvals) merge in when those calls succeed
+ * (enrolment, device binding, signup approvals, roles) merge in when those calls succeed
  * and simply stay absent when they don't.
  */
 export default async function PeoplePage() {
   const me = await currentIdentity();
   const caps = capabilitiesFor(me?.role);
-  const [board, enrolments, devices, signupsRes] = await Promise.all([
+  const [board, enrolments, devices, signupsRes, adminEmps] = await Promise.all([
     getBoard(),
     getEnrolments(),
     getDevices(),
     caps.canManagePeople ? getPendingSignups() : Promise.resolve(null),
+    caps.canManagePeople ? getEmployeesAdmin() : Promise.resolve(null),
   ]);
 
   if (!board.ok) {
@@ -37,17 +38,25 @@ export default async function PeoplePage() {
   const deviceBy = devices.ok
     ? new Map(devices.data.map((d) => [d.employee_code, d.bound]))
     : null;
+  const adminEmpBy = adminEmps?.ok
+    ? new Map(adminEmps.data.map((e) => [e.emp_code, e]))
+    : null;
 
-  const rows: DirectoryRow[] = board.data.rows.map((r) => ({
-    code: r.employee_code,
-    name: r.full_name,
-    department: r.department,
-    shift: r.shift_label,
-    status: r.status,
-    currentlyIn: r.currently_in,
-    enrolled: enrolments ? (enrolledBy.get(r.employee_code) ?? false) : null,
-    deviceBound: deviceBy ? (deviceBy.get(r.employee_code) ?? false) : null,
-  }));
+  const rows: DirectoryRow[] = board.data.rows.map((r) => {
+    const adminData = adminEmpBy?.get(r.employee_code);
+    return {
+      code: r.employee_code,
+      name: r.full_name,
+      department: r.department,
+      shift: r.shift_label,
+      status: r.status,
+      currentlyIn: r.currently_in,
+      enrolled: enrolments ? (enrolledBy.get(r.employee_code) ?? false) : null,
+      deviceBound: deviceBy ? (deviceBy.get(r.employee_code) ?? false) : null,
+      role: adminData?.role ?? null,
+      email: adminData?.email ?? null,
+    };
+  });
 
   return (
     <div className="space-y-6">

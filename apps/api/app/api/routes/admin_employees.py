@@ -206,12 +206,20 @@ def deactivate_employee(
     return to_out(db, emp)
 
 
+class ResetPasswordRequest(BaseModel):
+    password: str | None = None
+
+
 @router.post("/{employee_code}/reset-password", response_model=CreatedResponse)
 def reset_password(
-    employee_code: str, db: Session = Depends(get_db), actor: User = hr_only,
+    employee_code: str,
+    body: ResetPasswordRequest | None = None,
+    db: Session = Depends(get_db),
+    actor: User = hr_only,
 ):
     emp = _find(db, employee_code)
-    result = employee_service.reset_password(db, actor=actor, employee=emp)
+    custom_pass = body.password.strip() if (body and body.password and body.password.strip()) else None
+    result = employee_service.reset_password(db, actor=actor, employee=emp, new_password_val=custom_pass)
     if not result.ok:
         db.rollback()
         raise HTTPException(409, result.reason or "Could not reset that password")
