@@ -437,27 +437,146 @@ def format_duration_human(minutes: int) -> str:
     return f"{hour_part} {m} minute{'s' if m != 1 else ''}"
 
 
-def post_late_arrival_alert(employee_name: str, arrive_time: str, late_minutes: int, shift_date: str) -> None:
-    """Post a late arrival alert to Slack."""
+def post_checkin_alert(
+    employee_name: str,
+    emp_code: str,
+    punch_time_str: str,
+    shift_date: str,
+    late_minutes: int = 0,
+    email: str | None = None,
+) -> None:
+    """Post a classy check-in / arrival alert to Slack."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
-    dur_str = format_duration_human(late_minutes)
+    mention = format_slack_mention(employee_name, email)
+    if late_minutes > 0:
+        dur_str = format_duration_human(late_minutes)
+        main_text = f"⏳ *Check-In (Late Arrival)*\n{mention} (`{emp_code}`) clocked in at *{punch_time_str}* · ⚠️ *{dur_str} late*"
+        fallback = f"⏳ Late Arrival: {employee_name} ({emp_code}) clocked in at {punch_time_str} ({dur_str} late) on {shift_date}."
+    else:
+        main_text = f"🟢 *Check-In*\n{mention} (`{emp_code}`) clocked in at *{punch_time_str}* ✨"
+        fallback = f"🟢 Check-In: {employee_name} ({emp_code}) clocked in at {punch_time_str} on {shift_date}."
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": main_text,
+            },
+        }
+    ]
+
     try:
         response = httpx.post(
             "https://slack.com/api/chat.postMessage",
             headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
             json={
                 "channel": settings.slack_channel_id,
-                "text": f"⏳ *Late Arrival:* {employee_name} arrived late at {arrive_time} ({dur_str} late) for their shift on {shift_date}.",
+                "text": fallback,
+                "blocks": blocks,
             },
             timeout=5.0,
         )
         res_data = response.json()
         if not res_data.get("ok"):
-            logger.error(f"Slack API error in post_late_arrival_alert: {res_data.get('error')}")
+            logger.error("Slack API error in post_checkin_alert: %s", res_data.get("error"))
     except Exception as e:
-        logger.error(f"Failed to post late arrival alert to Slack: {e}")
+        logger.error("Failed to post check-in alert to Slack: %s", e)
+
+
+def post_late_arrival_alert(employee_name: str, arrive_time: str, late_minutes: int, shift_date: str) -> None:
+    """Legacy alias for post_checkin_alert with late status."""
+    post_checkin_alert(employee_name, "", arrive_time, shift_date, late_minutes=late_minutes)
+
+
+def post_break_started_alert(
+    employee_name: str,
+    emp_code: str,
+    punch_time_str: str,
+    shift_date: str,
+    email: str | None = None,
+) -> None:
+    """Post a break started alert to Slack."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    mention = format_slack_mention(employee_name, email)
+    main_text = f"☕ *Break Started*\n{mention} (`{emp_code}`) clocked out for a break at *{punch_time_str}*."
+    fallback = f"☕ Break Started: {employee_name} ({emp_code}) clocked out for a break at {punch_time_str}."
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": main_text,
+            },
+        }
+    ]
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": fallback,
+                "blocks": blocks,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_break_started_alert: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post break started alert to Slack: %s", e)
+
+
+def post_break_ended_alert(
+    employee_name: str,
+    emp_code: str,
+    punch_time_str: str,
+    break_minutes: int,
+    shift_date: str,
+    email: str | None = None,
+) -> None:
+    """Post a break ended alert to Slack."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    mention = format_slack_mention(employee_name, email)
+    dur_str = format_duration_human(break_minutes) if break_minutes > 0 else "< 1 minute"
+    main_text = f"✨ *Break Completed*\n{mention} (`{emp_code}`) returned from break and clocked in at *{punch_time_str}* · ⏱️ *Duration: {dur_str}*"
+    fallback = f"✨ Break Completed: {employee_name} ({emp_code}) returned from break at {punch_time_str} (Break duration: {dur_str})."
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": main_text,
+            },
+        }
+    ]
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": fallback,
+                "blocks": blocks,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_break_ended_alert: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post break ended alert to Slack: %s", e)
 
 
 def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: int, shift_date: str) -> None:
@@ -472,7 +591,7 @@ def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: i
             headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
             json={
                 "channel": settings.slack_channel_id,
-                "text": f"🏃 *Early Leave:* {employee_name} left early at {leave_time} ({dur_str} early) for their shift on {shift_date}.",
+                "text": f"🏃 *Early Leave:* *{employee_name}* left early at *{leave_time}* ({dur_str} early) for their shift on {shift_date}.",
             },
             timeout=5.0,
         )
@@ -571,12 +690,39 @@ def post_break_exceeded_alert(employee_name: str, email: str | None, minutes_out
         logger.error("Failed to post break exceeded alert to Slack: %s", e)
 
 
-def post_checkout_alert(employee_name: str, punch_time_str: str, shift_date: str) -> None:
-    """Post a neutral check-out update to Slack when an employee clocks out after shift hours."""
+def post_checkout_alert(
+    employee_name: str,
+    emp_code: str,
+    punch_time_str: str,
+    shift_date: str,
+    worked_minutes: int = 0,
+    break_minutes: int = 0,
+    email: str | None = None,
+) -> None:
+    """Post a classy check-out update to Slack when an employee clocks out."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
-    text = f"✅ *Check-Out Update:* {employee_name} checked out at {punch_time_str} for their shift on {shift_date}."
+    mention = format_slack_mention(employee_name, email)
+    worked_str = format_duration_human(worked_minutes) if worked_minutes > 0 else "—"
+    break_str = format_duration_human(break_minutes) if break_minutes > 0 else "0m"
+
+    if worked_minutes > 0:
+        main_text = f"🏁 *Check-Out*\n{mention} (`{emp_code}`) clocked out at *{punch_time_str}*\n⏱️ Total Worked: *{worked_str}* · ☕ Breaks: *{break_str}*"
+        fallback = f"🏁 Check-Out: {employee_name} ({emp_code}) clocked out at {punch_time_str} (Worked: {worked_str}, Breaks: {break_str}) on {shift_date}."
+    else:
+        main_text = f"🏁 *Check-Out*\n{mention} (`{emp_code}`) clocked out at *{punch_time_str}* on {shift_date}."
+        fallback = f"🏁 Check-Out: {employee_name} ({emp_code}) clocked out at {punch_time_str} on {shift_date}."
+
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": main_text,
+            },
+        }
+    ]
 
     try:
         response = httpx.post(
@@ -584,7 +730,8 @@ def post_checkout_alert(employee_name: str, punch_time_str: str, shift_date: str
             headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
             json={
                 "channel": settings.slack_channel_id,
-                "text": text,
+                "text": fallback,
+                "blocks": blocks,
             },
             timeout=5.0,
         )
@@ -602,7 +749,7 @@ def post_shift_summary_to_slack(
     stats: dict,
     roster: list[dict],
 ) -> None:
-    """Post a structured shift-end attendance summary to the Slack attendance channel."""
+    """Post a structured, classy shift-end attendance summary to the Slack attendance channel."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
@@ -623,7 +770,7 @@ def post_shift_summary_to_slack(
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": f"📋 Shift Attendance Summary — {shift_name}",
+                "text": f"📋 Shift Summary — {shift_name}",
                 "emoji": True,
             },
         },
@@ -632,27 +779,51 @@ def post_shift_summary_to_slack(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": f"🕒 *Timing:* {shift_timing}  •  📅 *Date:* {date_str}",
+                    "text": f"🕒 *Timing:* {shift_timing}   •   📅 *Date:* {date_str}",
                 }
             ],
+        },
+        {
+            "type": "divider"
         },
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
                 "text": (
-                    f"👥 *Overview:* Total: *{total}*  |  "
-                    f"✅ Present: *{present}*  |  "
-                    f"⏳ Late: *{late}*  |  "
-                    f"❌ Absent: *{absent}*  |  "
-                    f"🌴 Leave: *{leave}*"
+                    f"👥 *Attendance Overview:*\n"
+                    f"• Scheduled: *{total}*   |   ✅ Present: *{present}*   |   ⏳ Late: *{late}*\n"
+                    f"• ❌ Absent: *{absent}*   |   🌴 On Leave: *{leave}*"
                 ),
             },
         },
+        {
+            "type": "divider"
+        }
     ]
 
+    if present_list or late_list:
+        lines = []
+        for r in present_list:
+            lines.append(
+                f"• *{r['name']}* (`{r['code']}`) — In: *{r.get('first_in') or '—'}* | Out: *{r.get('last_out') or '—'}* | ☕ Break: *{r.get('break_str') or '0m'}* | ⏱️ Net: *{r.get('hours_str') or '—'}*"
+            )
+        for r in late_list:
+            lines.append(
+                f"• *{r['name']}* (`{r['code']}`) — In: *{r.get('first_in') or '—'}* ⏳ ({r.get('late_str') or 'Late'}) | Out: *{r.get('last_out') or '—'}* | ☕ Break: *{r.get('break_str') or '0m'}* | ⏱️ Net: *{r.get('hours_str') or '—'}*"
+            )
+        
+        if lines:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"✅ *Attended ({len(lines)}):*\n" + "\n".join(lines),
+                },
+            })
+
     if absent_list:
-        absent_lines = "\n".join(f"• *{r['name']}* ({r['code']})" for r in absent_list)
+        absent_lines = "\n".join(f"• *{r['name']}* (`{r['code']}`)" for r in absent_list)
         blocks.append({
             "type": "section",
             "text": {
@@ -660,44 +831,10 @@ def post_shift_summary_to_slack(
                 "text": f"❌ *Absent ({len(absent_list)}):*\n{absent_lines}",
             },
         })
-    else:
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "❌ *Absent:* None (All scheduled members reported)",
-            },
-        })
-
-    if late_list:
-        late_lines = "\n".join(
-            f"• *{r['name']}* ({r['code']}): In: `{r.get('first_in') or '—'}` | Out: `{r.get('last_out') or '—'}` | ☕ Breaks: *{r.get('break_str') or '0m'}* | ⏱️ Worked: *{r.get('hours_str') or '—'}* ({r.get('late_str') or ''})"
-            for r in late_list
-        )
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"⏳ *Late Arrivals ({len(late_list)}):*\n{late_lines}",
-            },
-        })
-
-    if present_list:
-        present_lines = "\n".join(
-            f"• *{r['name']}* ({r['code']}): In: `{r.get('first_in') or '—'}` | Out: `{r.get('last_out') or '—'}` | ☕ Breaks: *{r.get('break_str') or '0m'}* | ⏱️ Worked: *{r.get('hours_str') or '—'}*"
-            for r in present_list
-        )
-        blocks.append({
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": f"✅ *Present ({len(present_list)}):*\n{present_lines}",
-            },
-        })
 
     if leave_list:
         leave_lines = "\n".join(
-            f"• *{r['name']}* ({r['code']}) — Status: `{r.get('status', '').upper()}`"
+            f"• *{r['name']}* (`{r['code']}`) — Status: `{r.get('status', '').upper()}`"
             for r in leave_list
         )
         blocks.append({
@@ -707,6 +844,8 @@ def post_shift_summary_to_slack(
                 "text": f"🌴 *On Leave / Half Day ({len(leave_list)}):*\n{leave_lines}",
             },
         })
+
+    blocks.append({"type": "divider"})
 
     try:
         response = httpx.post(

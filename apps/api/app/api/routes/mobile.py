@@ -320,49 +320,89 @@ async def punch(
     local = event_ts.astimezone(local_tz)
     punch_time_str = local.strftime('%I:%M %p').replace(" 0", " ")
 
-    # Only fire Late Arrival alert on the FIRST accepted IN punch of the day
-    if direction == PunchDirection.IN and day.punch_count == 1 and day.late_minutes > 0:
-        from app.services.notifications import notify_hr
-        from app.services.slack import format_duration_human, post_late_arrival_alert
-        from threading import Thread
-        dur_str = format_duration_human(day.late_minutes)
-        notify_hr(
-            db,
-            org_id=emp.org_id,
-            category="attendance.late_arrival",
-            title=f"Late Arrival: {emp.full_name}",
-            body=f"{emp.full_name} arrived late at {punch_time_str} ({dur_str} late) for their shift on {shift_date.isoformat()}.",
-            data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
-        )
-        Thread(target=post_late_arrival_alert, args=(emp.full_name, punch_time_str, day.late_minutes, shift_date.isoformat()), daemon=True).start()
-        db.commit()
+    # Dispatch Slack & in-app alerts based on punch direction and state
+    if direction == PunchDirection.IN:
+        if day.punch_count == 1:
+            # First check-in of the day
+            if day.late_minutes > 0:
+                from app.services.notifications import notify_hr
+                from app.services.slack import format_duration_human
+                dur_str = format_duration_human(day.late_minutes)
+                notify_hr(
+                    db,
+                    org_id=emp.org_id,
+                    category="attendance.late_arrival",
+                    title=f"Late Arrival: {emp.full_name}",
+                    body=f"{emp.full_name} arrived late at {punch_time_str} ({dur_str} late) for their shift on {shift_date.isoformat()}.",
+                    data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
+                )
+                db.commit()
 
-    # Only fire Early Leave alert on an accepted OUT punch that occurs before shift end
+            from app.services.slack import post_checkin_alert
+            from threading import Thread
+            Thread(
+                target=post_checkin_alert,
+                args=(emp.full_name, emp.emp_code, punch_time_str, shift_date.isoformat(), day.late_minutes, emp.email),
+                daemon=True
+            ).start()
+        else:
+            # Resuming work from break
+            from app.services.slack import post_break_ended_alert
+            from threading import Thread
+            from sqlalchemy import and_
+
+            prev_out = db.scalar(
+                select(PunchEvent)
+                .where(
+                    and_(
+                        PunchEvent.employee_id == emp.id,
+                        PunchEvent.direction == PunchDirection.OUT,
+                        PunchEvent.rejection_reason.is_(None),
+                        PunchEvent.event_ts_utc < event.event_ts_utc,
+                    )
+                )
+                .order_by(PunchEvent.event_ts_utc.desc())
+            )
+            break_mins = 0
+            if prev_out and prev_out.event_ts_utc:
+                prev_ts = prev_out.event_ts_utc
+                if prev_ts.tzinfo is None:
+                    prev_ts = prev_ts.replace(tzinfo=timezone.utc)
+                curr_ts = event.event_ts_utc
+                if curr_ts.tzinfo is None:
+                    curr_ts = curr_ts.replace(tzinfo=timezone.utc)
+                break_mins = max(1, int(round((curr_ts - prev_ts).total_seconds() / 60)))
+
+            Thread(
+                target=post_break_ended_alert,
+                args=(emp.full_name, emp.emp_code, punch_time_str, break_mins, shift_date.isoformat(), emp.email),
+                daemon=True
+            ).start()
+
     elif direction == PunchDirection.OUT:
         policy, _ = policy_for(db, emp, shift_date)
         scheduled_start, scheduled_end = shift_bounds(policy, shift_date)
         early_seconds = (scheduled_end - local).total_seconds()
-        early_minutes = max(0, int(early_seconds // 60))
+        early_minutes = int(early_seconds // 60)
 
-        if early_minutes > 0:
-            from app.services.notifications import notify_hr
-            from app.services.slack import format_duration_human, post_early_leave_alert
-            from threading import Thread
-            dur_str = format_duration_human(early_minutes)
-            notify_hr(
-                db,
-                org_id=emp.org_id,
-                category="attendance.early_leave",
-                title=f"Early Leave: {emp.full_name}",
-                body=f"{emp.full_name} left early at {punch_time_str} ({dur_str} early) for their shift on {shift_date.isoformat()}.",
-                data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
-            )
-            Thread(target=post_early_leave_alert, args=(emp.full_name, punch_time_str, early_minutes, shift_date.isoformat()), daemon=True).start()
-            db.commit()
+        from threading import Thread
+
+        if early_minutes > 30:
+            # Mid-shift punch-out -> Break started
+            from app.services.slack import post_break_started_alert
+            Thread(
+                target=post_break_started_alert,
+                args=(emp.full_name, emp.emp_code, punch_time_str, shift_date.isoformat(), emp.email),
+                daemon=True
+            ).start()
         else:
+            # End of shift -> Final check-out
             from app.services.slack import post_checkout_alert
-            from threading import Thread
-            Thread(target=post_checkout_alert, args=(emp.full_name, punch_time_str, shift_date.isoformat()), daemon=True).start()
+            Thread(
+                target=post_checkout_alert,
+                args=(emp.full_name, emp.emp_code, punch_time_str, shift_date.isoformat(), day.worked_minutes, day.break_minutes, emp.email),
+                daemon=True
+            ).start()
 
     return PunchResponse(
         accepted=True,

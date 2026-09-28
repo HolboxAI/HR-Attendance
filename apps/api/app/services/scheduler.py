@@ -408,7 +408,7 @@ def run_shift_end_summaries(
             first_in_str = "—"
             last_out_str = "—"
             late_mins = 0
-            hours_str = "—"
+            hours_str = "0m"
 
             if day:
                 status_str = day.status.value if hasattr(day.status, "value") else str(day.status)
@@ -419,6 +419,12 @@ def run_shift_end_summaries(
                 late_mins = day.late_minutes or 0
                 if late_mins > 0 and status_str == "present":
                     status_str = "late"
+                worked_m = day.worked_minutes or 0
+                if worked_m > 0:
+                    wh = worked_m // 60
+                    wm = worked_m % 60
+                    hours_str = f"{wh}h {wm}m" if wh > 0 and wm > 0 else (f"{wh}h" if wh > 0 else f"{wm}m")
+
             if late_mins > 0:
                 h = late_mins // 60
                 m = late_mins % 60
@@ -429,8 +435,10 @@ def run_shift_end_summaries(
             break_m = day.break_minutes or 0 if day else 0
             if break_m >= 60:
                 break_str = f"{break_m // 60}h {break_m % 60}m"
-            else:
+            elif break_m > 0:
                 break_str = f"{break_m}m"
+            else:
+                break_str = "0m"
 
             roster.append({
                 "id": str(emp.id),
