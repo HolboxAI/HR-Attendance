@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, Copy, KeyRound, RefreshCw, Send, Shield, UserPlus, X } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -336,7 +336,7 @@ export function ChangeRoleButton({
   isSelf?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [selectedRole, setSelectedRole] = useState(currentRole || 'employee');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -347,24 +347,36 @@ export function ChangeRoleButton({
       id: 'hr_admin',
       title: 'Administrator',
       badge: 'Admin',
-      badgeColor: 'bg-purple-500/10 text-purple-600 border-purple-500/20 dark:text-purple-400',
+      badgeColor: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
       description: 'Full access to organization settings, team management, leaves, device enrolments, and employee roles.',
     },
     {
       id: 'manager',
       title: 'Team Manager',
       badge: 'Manager',
-      badgeColor: 'bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400',
+      badgeColor: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
       description: 'Can view team attendance board, approve leave requests for direct reports, and monitor shifts.',
     },
     {
       id: 'employee',
       title: 'Standard Employee',
       badge: 'Employee',
-      badgeColor: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400',
+      badgeColor: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
       description: 'Basic access to mark attendance, apply for leave, submit attendance corrections, and view personal history.',
     },
   ];
+
+  function openModal() {
+    setSelectedRole(currentRole || 'employee');
+    setError(null);
+    setSuccess(null);
+    dialogRef.current?.showModal();
+  }
+
+  function closeModal() {
+    if (busy) return;
+    dialogRef.current?.close();
+  }
 
   async function handleSave() {
     if (isSelf) {
@@ -388,10 +400,10 @@ export function ChangeRoleButton({
 
       setSuccess(`Role updated to ${selectedRole === 'hr_admin' ? 'Admin' : selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)}`);
       setTimeout(() => {
-        setOpen(false);
+        closeModal();
         setSuccess(null);
         router.refresh();
-      }, 1200);
+      }, 900);
     } catch (err: any) {
       setError(err?.message || 'Something went wrong');
     } finally {
@@ -405,121 +417,123 @@ export function ChangeRoleButton({
     <>
       <button
         type="button"
-        onClick={() => {
-          setSelectedRole(currentRole || 'employee');
-          setError(null);
-          setSuccess(null);
-          setOpen(true);
-        }}
+        onClick={openModal}
         disabled={isSelf}
         title={isSelf ? 'You cannot change your own role' : `Change role for ${name}`}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2 transition-all active:scale-95 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
       >
         <Shield className="size-3.5 text-accent" aria-hidden />
         <span>Manage Role ({roleText})</span>
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl border border-line glass-panel bg-surface p-6 shadow-2xl space-y-5">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent">
-                  <Shield className="size-5" />
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-ink text-base">Change Role</h3>
-                  <p className="text-xs text-ink-3">
-                    {name} ({code})
-                  </p>
-                </div>
+      <dialog
+        ref={dialogRef}
+        onCancel={closeModal}
+        className="bx-pop m-auto w-full max-w-lg rounded-2xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/75 backdrop:backdrop-blur-md overflow-hidden bg-surface"
+      >
+        <div className="p-6 space-y-5">
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                <Shield className="size-5" />
               </div>
-              <button
-                type="button"
-                onClick={() => !busy && setOpen(false)}
-                className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
-              >
-                <X className="size-4" />
-              </button>
+              <div>
+                <h3 className="font-display font-bold text-ink text-base">Change Role</h3>
+                <p className="text-xs text-ink-3">
+                  {name} ({code})
+                </p>
+              </div>
             </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={closeModal}
+              className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
 
-            <p className="text-xs text-ink-2 leading-relaxed">
-              Select the system access level for this employee. Upgrading an employee without a login will automatically activate their portal access.
-            </p>
+          <p className="text-xs text-ink-2 leading-relaxed">
+            Select the system access level for this employee. Upgrading an employee without a login will automatically activate their portal access.
+          </p>
 
-            <div className="space-y-2.5">
-              {roles.map((r) => {
-                const active = selectedRole === r.id;
-                return (
-                  <div
-                    key={r.id}
-                    onClick={() => !busy && setSelectedRole(r.id)}
-                    className={`cursor-pointer rounded-xl border p-3.5 transition-all text-left flex items-start gap-3 ${
-                      active
-                        ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
-                        : 'border-line hover:border-line-2 hover:bg-surface-2/40'
-                    }`}
-                  >
-                    <div className="pt-0.5">
-                      <div
-                        className={`size-4 rounded-full border flex items-center justify-center transition-all ${
-                          active ? 'border-accent bg-accent' : 'border-line bg-surface'
-                        }`}
-                      >
-                        {active && <span className="size-1.5 rounded-full bg-white" />}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-ink">{r.title}</span>
-                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${r.badgeColor}`}>
-                          {r.badge}
-                        </span>
-                      </div>
-                      <p className="text-xs text-ink-3 mt-1 leading-normal">
-                        {r.description}
-                      </p>
+          {/* Role selection options */}
+          <div className="space-y-2.5">
+            {roles.map((r) => {
+              const active = selectedRole === r.id;
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => !busy && setSelectedRole(r.id)}
+                  className={`cursor-pointer rounded-xl border p-4 transition-all text-left flex items-start gap-3.5 ${
+                    active
+                      ? 'border-accent bg-accent/10 dark:bg-accent/20 ring-1 ring-accent'
+                      : 'border-line bg-surface-2/40 hover:border-line-2 hover:bg-surface-2/80'
+                  }`}
+                >
+                  <div className="pt-0.5 shrink-0">
+                    <div
+                      className={`size-4 rounded-full border flex items-center justify-center transition-all ${
+                        active ? 'border-accent bg-accent' : 'border-line-2 bg-surface'
+                      }`}
+                    >
+                      {active && <span className="size-1.5 rounded-full bg-white" />}
                     </div>
                   </div>
-                );
-              })}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-ink">{r.title}</span>
+                      <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full border ${r.badgeColor}`}>
+                        {r.badge}
+                      </span>
+                    </div>
+                    <p className="text-xs text-ink-2 mt-1 leading-normal">
+                      {r.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {error && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-xs font-semibold">
+              {error}
             </div>
+          )}
 
-            {error && (
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-medium">
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center gap-2">
-                <Check className="size-4" />
-                <span>{success}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-line/60">
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={busy || selectedRole === currentRole}
-                onClick={handleSave}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent text-white text-xs font-semibold hover:bg-accent/90 transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
-              >
-                {busy && <RefreshCw className="size-3.5 animate-spin" />}
-                <span>{selectedRole === 'hr_admin' ? 'Make Admin' : 'Save Role'}</span>
-              </button>
+          {success && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-600 dark:text-emerald-400 text-xs font-semibold flex items-center gap-2">
+              <Check className="size-4" />
+              <span>{success}</span>
             </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-line/60">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={closeModal}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50 cursor-pointer border border-line"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy || selectedRole === currentRole}
+              onClick={handleSave}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent text-white text-xs font-bold hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 cursor-pointer shadow-md shadow-accent/25"
+            >
+              {busy && <RefreshCw className="size-3.5 animate-spin" />}
+              <span>{selectedRole === 'hr_admin' ? 'Make Admin' : 'Save Role'}</span>
+            </button>
           </div>
         </div>
-      )}
+      </dialog>
     </>
   );
 }
@@ -527,12 +541,24 @@ export function ChangeRoleButton({
 /* --------------------------------------------------------- reset password */
 
 export function ResetPasswordButton({ code, name }: { code: string; name: string }) {
-  const [openModal, setOpenModal] = useState(false);
-  const [mode, setMode] = useState<'auto' | 'custom'>('custom');
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [mode, setMode] = useState<'custom' | 'auto'>('custom');
   const [customPassword, setCustomPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Created | null>(null);
+
+  function openModal() {
+    setError(null);
+    setCustomPassword('');
+    setMode('custom');
+    dialogRef.current?.showModal();
+  }
+
+  function closeModal() {
+    if (busy) return;
+    dialogRef.current?.close();
+  }
 
   async function handleReset(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -564,7 +590,7 @@ export function ResetPasswordButton({ code, name }: { code: string; name: string
 
     const data = (await res.json()) as Created;
     setCreated(data);
-    setOpenModal(false);
+    closeModal();
   }
 
   if (created) {
@@ -575,135 +601,135 @@ export function ResetPasswordButton({ code, name }: { code: string; name: string
     <div className="flex items-center gap-3">
       <button
         type="button"
-        onClick={() => {
-          setError(null);
-          setCustomPassword('');
-          setMode('custom');
-          setOpenModal(true);
-        }}
+        onClick={openModal}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2 transition-all active:scale-95 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
       >
         <KeyRound className="size-3.5 text-ink-3" aria-hidden />
         <span>Reset Password</span>
       </button>
 
-      {openModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl border border-line glass-panel bg-surface p-6 shadow-2xl space-y-5">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="size-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500">
-                  <KeyRound className="size-5" />
-                </div>
-                <div>
-                  <h3 className="font-display font-bold text-ink text-base">Reset Password</h3>
-                  <p className="text-xs text-ink-3">
-                    {name} ({code})
-                  </p>
-                </div>
+      <dialog
+        ref={dialogRef}
+        onCancel={closeModal}
+        className="bx-pop m-auto w-full max-w-md rounded-2xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/75 backdrop:backdrop-blur-md overflow-hidden bg-surface"
+      >
+        <div className="p-6 space-y-5">
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+                <KeyRound className="size-5" />
               </div>
-              <button
-                type="button"
-                onClick={() => !busy && setOpenModal(false)}
-                className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-ink-2 leading-relaxed">
-              Resetting will immediately replace the employee&rsquo;s current login credentials. You can set a specific password now or let the system generate one.
-            </p>
-
-            {/* Mode selection tabs */}
-            <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-surface-2 border border-line text-xs font-medium">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('custom');
-                  setError(null);
-                }}
-                className={`py-1.5 rounded-lg transition-all ${
-                  mode === 'custom'
-                    ? 'bg-surface text-ink font-semibold shadow-sm'
-                    : 'text-ink-3 hover:text-ink'
-                }`}
-              >
-                Set Specific Password
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMode('auto');
-                  setError(null);
-                }}
-                className={`py-1.5 rounded-lg transition-all ${
-                  mode === 'auto'
-                    ? 'bg-surface text-ink font-semibold shadow-sm'
-                    : 'text-ink-3 hover:text-ink'
-                }`}
-              >
-                Auto-Generate
-              </button>
-            </div>
-
-            <form onSubmit={handleReset} className="space-y-4">
-              {mode === 'custom' ? (
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-medium text-ink-2">
-                    New Password
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    minLength={6}
-                    placeholder="e.g. Himesh@2026 or secure pass"
-                    value={customPassword}
-                    onChange={(e) => setCustomPassword(e.target.value)}
-                    className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-1 focus:ring-accent"
-                  />
-                  <p className="text-[11px] text-ink-3">
-                    Must be at least 6 characters. You can share this password directly with the employee.
-                  </p>
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-xl border border-line bg-surface-2/60 text-xs text-ink-2 space-y-1">
-                  <p className="font-semibold text-ink">System Generated Password</p>
-                  <p className="text-[11px] text-ink-3">
-                    A secure, readable 3-word passphrase will be generated (e.g., <code>kestrel-harbour-quartz-48</code>) and shown once for you to copy.
-                  </p>
-                </div>
-              )}
-
-              {error && (
-                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs font-medium">
-                  {error}
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-line/60">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setOpenModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
-                >
-                  {busy && <RefreshCw className="size-3.5 animate-spin" />}
-                  <span>{mode === 'custom' ? 'Set Password' : 'Generate & Reset'}</span>
-                </button>
+              <div>
+                <h3 className="font-display font-bold text-ink text-base">Reset Password</h3>
+                <p className="text-xs text-ink-3">
+                  {name} ({code})
+                </p>
               </div>
-            </form>
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={closeModal}
+              className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2 hover:text-ink transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="size-4" />
+            </button>
           </div>
+
+          <p className="text-xs text-ink-2 leading-relaxed">
+            Resetting will immediately replace the employee&rsquo;s current login credentials. You can set a specific password now or let the system generate one.
+          </p>
+
+          {/* Mode selection tabs */}
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-surface-2 border border-line text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => {
+                setMode('custom');
+                setError(null);
+              }}
+              className={`py-2 rounded-lg transition-all cursor-pointer ${
+                mode === 'custom'
+                  ? 'bg-surface text-ink shadow-sm border border-line'
+                  : 'text-ink-3 hover:text-ink'
+              }`}
+            >
+              Set Specific Password
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode('auto');
+                setError(null);
+              }}
+              className={`py-2 rounded-lg transition-all cursor-pointer ${
+                mode === 'auto'
+                  ? 'bg-surface text-ink shadow-sm border border-line'
+                  : 'text-ink-3 hover:text-ink'
+              }`}
+            >
+              Auto-Generate
+            </button>
+          </div>
+
+          <form onSubmit={handleReset} className="space-y-4">
+            {mode === 'custom' ? (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-ink">
+                  New Password
+                </label>
+                <input
+                  type="text"
+                  required
+                  minLength={6}
+                  placeholder="e.g. Himesh@2026 or secret pass"
+                  value={customPassword}
+                  onChange={(e) => setCustomPassword(e.target.value)}
+                  className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 text-sm text-ink placeholder:text-ink-3 focus:outline-none focus:ring-1 focus:ring-accent font-mono"
+                />
+                <p className="text-[11px] text-ink-3">
+                  Must be at least 6 characters. You can share this password directly with the employee.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl border border-line bg-surface-2/70 text-xs text-ink-2 space-y-1">
+                <p className="font-bold text-ink">System Generated Password</p>
+                <p className="text-[11px] text-ink-3 leading-relaxed">
+                  A secure, readable 3-word passphrase will be generated (e.g., <code>kestrel-harbour-quartz-48</code>) and shown once for you to copy.
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-xs font-semibold">
+                {error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-line/60">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={closeModal}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink transition-colors disabled:opacity-50 cursor-pointer border border-line"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-md shadow-rose-600/25"
+              >
+                {busy && <RefreshCw className="size-3.5 animate-spin" />}
+                <span>{mode === 'custom' ? 'Set Password' : 'Generate & Reset'}</span>
+              </button>
+            </div>
+          </form>
         </div>
-      )}
+      </dialog>
     </div>
   );
 }
