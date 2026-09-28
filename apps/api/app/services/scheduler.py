@@ -475,10 +475,10 @@ def run_shift_end_summaries(
         )
 
         # Post shift summary to Slack attendance channel
-        from app.services.slack import post_shift_summary_to_slack
+        from app.services.slack import upload_shift_summary_image_to_slack
         from threading import Thread
         Thread(
-            target=post_shift_summary_to_slack,
+            target=upload_shift_summary_image_to_slack,
             args=(tmpl.name, timing_str, target_date, stats, roster),
             daemon=True,
         ).start()

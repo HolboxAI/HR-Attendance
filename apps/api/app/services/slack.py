@@ -865,6 +865,66 @@ def post_shift_summary_to_slack(
         logger.error("Failed to post shift summary to Slack: %s", e)
 
 
+def upload_shift_summary_image_to_slack(
+    shift_name: str,
+    shift_timing: str,
+    shift_date: date,
+    stats: dict,
+    roster: list[dict],
+) -> None:
+    """Generate high-resolution executive graphic card and upload directly to Slack."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    from app.services.slack_summary_image import generate_shift_summary_image
+
+    png_bytes = None
+    try:
+        png_bytes = generate_shift_summary_image(
+            shift_name=shift_name,
+            shift_timing=shift_timing,
+            shift_date=shift_date,
+            stats=stats,
+            roster=roster,
+        )
+    except Exception as e:
+        logger.error("Failed to generate shift summary image: %s", e)
+
+    date_str = shift_date.strftime("%d %b %Y")
+    filename = f"shift-summary-{shift_name.lower().replace(' ', '-')}-{shift_date.isoformat()}.png"
+    initial_comment = (
+        f"📋 *Shift Attendance Summary — {shift_name}*\n"
+        f"🕒 {shift_timing}   •   📅 {shift_date.strftime('%A, %d %B %Y')}\n"
+        f"👥 Scheduled: *{stats.get('total', len(roster))}*  |  ✅ Present: *{stats.get('present', 0)}*  |  ⏳ Late: *{stats.get('late', 0)}*  |  ❌ Absent: *{stats.get('absent', 0)}*  |  🌴 On Leave: *{stats.get('leave', 0)}*"
+    )
+
+    if png_bytes:
+        try:
+            resp = httpx.post(
+                "https://slack.com/api/files.upload",
+                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                data={
+                    "channels": settings.slack_channel_id,
+                    "filename": filename,
+                    "title": f"Shift Summary — {shift_name} ({date_str})",
+                    "initial_comment": initial_comment,
+                },
+                files={"file": (filename, png_bytes, "image/png")},
+                timeout=20.0,
+            )
+            body = resp.json()
+            if body.get("ok"):
+                logger.info("Successfully posted shift summary image to Slack")
+                return
+            else:
+                logger.warning("Slack files.upload returned not ok (%s), falling back to block message", body.get("error"))
+        except Exception as e:
+            logger.warning("Error uploading shift summary image to Slack: %s", e)
+
+    # Fallback to block message if file upload was not supported or failed
+    post_shift_summary_to_slack(shift_name, shift_timing, shift_date, stats, roster)
+
+
 def post_signup_request_alert(
     full_name: str,
     email: str,
