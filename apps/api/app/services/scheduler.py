@@ -38,7 +38,7 @@ from app.models.employee import Employee, User
 from app.models.enums import PunchDirection
 from app.models.org import Organization
 from app.models.scheduler import ScheduledJobRun
-from app.services.attendance import _aware, policy_for
+from app.services.attendance import _aware, policy_for, resolve_shift
 from app.services.leave import accrue_month, is_holiday, leave_fraction_on
 from app.services.notifications import notify, notify_hr
 from app.services.resolver import ShiftPolicy, shift_bounds, shift_date_for
@@ -393,8 +393,10 @@ def run_shift_end_summaries(
 
         roster: list[dict] = []
         for emp in active_emps:
-            _policy, resolved_tmpl_id = policy_for(db, emp, target_date)
-            if resolved_tmpl_id != tmpl.id:
+            tpl, source, group_name, assignment_id = resolve_shift(db, emp, target_date)
+            # Only include employees explicitly assigned to this shift (via Shift Group or Direct assignment).
+            # Do NOT sweep employees on fallback or unassigned into default shift end summaries.
+            if source not in ("group", "direct") or tpl is None or tpl.id != tmpl.id:
                 continue
 
             day = db.scalar(

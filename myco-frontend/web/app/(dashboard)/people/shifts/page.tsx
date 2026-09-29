@@ -324,12 +324,13 @@ export default function ShiftManagementPage() {
   const openEditGroupModal = (group: ShiftGroupRow) => {
     setEditingGroupId(group.id);
     setGroupTimingMode('existing');
+    const matchedShift = shifts.find(s => s.id === group.shift_template_id);
     setCustomTiming({
-      start_time: group.shift_template_start || '10:00',
-      end_time: group.shift_template_end || '17:00',
-      break_minutes: 60,
-      grace_minutes: 15,
-      working_days: [0, 1, 2, 3, 4, 5],
+      start_time: group.shift_template_start || matchedShift?.start_time || '10:00',
+      end_time: group.shift_template_end || matchedShift?.end_time || '17:00',
+      break_minutes: group.break_minutes ?? matchedShift?.break_minutes ?? 60,
+      grace_minutes: group.grace_minutes ?? matchedShift?.grace_minutes ?? 15,
+      working_days: group.working_days ?? matchedShift?.working_days ?? [0, 1, 2, 3, 4, 5],
     });
     setGroupForm({
       name: group.name,
@@ -412,6 +413,11 @@ export default function ShiftManagementPage() {
         body: JSON.stringify({
           ...groupForm,
           shift_template_id: templateId,
+          start_time: customTiming.start_time,
+          end_time: customTiming.end_time,
+          grace_minutes: customTiming.grace_minutes,
+          break_minutes: customTiming.break_minutes,
+          working_days: customTiming.working_days,
         }),
       });
       if (res.ok) {
@@ -785,24 +791,13 @@ export default function ShiftManagementPage() {
                         >
                           <Edit2 className="size-3.5" />
                         </button>
-                        {isDefault ? (
-                          <button
-                            type="button"
-                            disabled
-                            className="p-1.5 rounded-lg border border-line bg-surface-2 text-ink-3/40 cursor-not-allowed"
-                            title="This is the organization default. Set another shift as default first, then you can delete this one."
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleDeleteShift(shift.id, shift.name)}
-                            className="p-1.5 rounded-lg border border-line bg-surface-2 text-ink-3 hover:text-rose-400 hover:border-rose-500/40 transition-all"
-                            title="Delete Shift"
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleDeleteShift(shift.id, shift.name)}
+                          className="p-1.5 rounded-lg border border-line bg-surface-2 text-ink-3 hover:text-rose-400 hover:border-rose-500/40 transition-all"
+                          title="Delete Shift"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
                       </div>
 
                       {!isDefault && (
@@ -886,7 +881,7 @@ export default function ShiftManagementPage() {
                         <Clock className="size-3 text-ink-2" />
                         <span>{group.shift_template_name}</span>
                         <span className="text-[10px] text-ink-3 font-normal">
-                          ({group.shift_template_start}–{group.shift_template_end})
+                          ({group.shift_template_start}–{group.shift_template_end} • {group.grace_minutes ?? 15}m grace)
                         </span>
                       </span>
                     </div>
@@ -1321,19 +1316,63 @@ export default function ShiftManagementPage() {
                 </div>
 
                 {groupTimingMode === 'existing' ? (
-                  <div>
-                    <select
-                      value={groupForm.shift_template_id}
-                      onChange={e => setGroupForm({ ...groupForm, shift_template_id: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl border border-line bg-surface text-ink font-mono"
-                    >
-                      <option value="">Select shift template...</option>
-                      {shifts.map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.start_time} - {s.end_time})
-                        </option>
-                      ))}
-                    </select>
+                  <div className="space-y-3">
+                    <div>
+                      <select
+                        value={groupForm.shift_template_id}
+                        onChange={e => {
+                          const selectedId = e.target.value;
+                          setGroupForm({ ...groupForm, shift_template_id: selectedId });
+                          const matched = shifts.find(s => s.id === selectedId);
+                          if (matched) {
+                            setCustomTiming({
+                              start_time: matched.start_time,
+                              end_time: matched.end_time,
+                              break_minutes: matched.break_minutes ?? 60,
+                              grace_minutes: matched.grace_minutes ?? 15,
+                              working_days: matched.working_days || [0, 1, 2, 3, 4, 5],
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-2 rounded-xl border border-line bg-surface text-ink font-mono"
+                      >
+                        <option value="">Select shift template...</option>
+                        {shifts.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.start_time} - {s.end_time})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="font-mono text-ink-2 uppercase text-[10px] block mb-1">
+                          Grace Period (Minutes)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={customTiming.grace_minutes}
+                          onChange={e => setCustomTiming({ ...customTiming, grace_minutes: Number(e.target.value) })}
+                          className="w-full px-3 py-2 rounded-xl border border-line bg-surface text-ink font-mono"
+                          placeholder="15"
+                        />
+                      </div>
+                      <div>
+                        <label className="font-mono text-ink-2 uppercase text-[10px] block mb-1">
+                          Break (Minutes)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={customTiming.break_minutes}
+                          onChange={e => setCustomTiming({ ...customTiming, break_minutes: Number(e.target.value) })}
+                          className="w-full px-3 py-2 rounded-xl border border-line bg-surface text-ink font-mono"
+                          placeholder="60"
+                        />
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-3 pt-1">

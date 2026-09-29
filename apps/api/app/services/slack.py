@@ -752,6 +752,8 @@ def post_shift_summary_to_slack(
     """Post a structured, classy shift-end attendance summary to the Slack attendance channel."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
+    if not roster or stats.get("total", 0) == 0:
+        return
 
     date_str = shift_date.strftime("%A, %d %B %Y")
     total = stats.get("total", 0)
@@ -874,6 +876,8 @@ def upload_shift_summary_image_to_slack(
 ) -> None:
     """Generate high-resolution executive graphic card and upload directly to Slack."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+    if not roster or stats.get("total", 0) == 0:
         return
 
     from app.services.slack_summary_image import generate_shift_summary_image

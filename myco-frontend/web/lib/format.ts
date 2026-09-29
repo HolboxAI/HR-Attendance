@@ -448,6 +448,9 @@ export type ShiftGroupRow = {
   shift_template_name: string;
   shift_template_start: string;
   shift_template_end: string;
+  grace_minutes?: number;
+  break_minutes?: number;
+  working_days?: number[];
   members: ShiftGroupMemberRow[];
   member_count: number;
 };

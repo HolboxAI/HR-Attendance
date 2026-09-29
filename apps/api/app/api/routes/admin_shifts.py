@@ -91,8 +91,13 @@ class DirectAssignRequest(BaseModel):
 class ShiftGroupIn(BaseModel):
     name: str = Field(..., max_length=120)
     description: Optional[str] = Field(None, max_length=255)
-    shift_template_id: uuid.UUID
+    shift_template_id: Optional[uuid.UUID] = None
     employee_ids: list[uuid.UUID] = Field(default_factory=list)
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    grace_minutes: Optional[int] = None
+    break_minutes: Optional[int] = None
+    working_days: Optional[list[int]] = None
 
 
 class ShiftGroupMemberOut(BaseModel):
@@ -110,6 +115,9 @@ class ShiftGroupOut(BaseModel):
     shift_template_name: str
     shift_template_start: str
     shift_template_end: str
+    grace_minutes: int = 15
+    break_minutes: int = 60
+    working_days: list[int] = Field(default_factory=lambda: [0, 1, 2, 3, 4, 5])
     members: list[ShiftGroupMemberOut]
     member_count: int
 
@@ -381,8 +389,11 @@ def delete_shift(
         raise HTTPException(404, "Shift template not found.")
 
     org = db.get(Organization, current_user.org_id)
-    if org and org.settings.get("default_shift_template_id") == str(shift_id):
-        raise HTTPException(400, "Cannot delete organization default shift. Please set another shift as default first.")
+    if org and org.settings and org.settings.get("default_shift_template_id") == str(shift_id):
+        settings_dict = dict(org.settings or {})
+        settings_dict.pop("default_shift_template_id", None)
+        org.settings = settings_dict
+        db.add(org)
 
     # Check shift groups
     group_names = db.scalars(
@@ -655,6 +666,9 @@ def list_shift_groups(
             shift_template_name=template.name if template else "Unknown",
             shift_template_start=_format_time(template.start_time) if template else "00:00",
             shift_template_end=_format_time(template.end_time) if template else "00:00",
+            grace_minutes=template.grace_minutes if template else 15,
+            break_minutes=template.break_minutes if template else 60,
+            working_days=list(template.working_days or [0, 1, 2, 3, 4, 5]) if template else [0, 1, 2, 3, 4, 5],
             members=members_out,
             member_count=len(members_out),
         ))
@@ -668,10 +682,39 @@ def create_shift_group(
     db: Session = Depends(get_db),
     current_user: User = hr_admin,
 ):
-    """Create a new shift group, assign a shift template, and add member employees."""
-    template = db.get(ShiftTemplate, body.shift_template_id)
-    if not template or template.org_id != current_user.org_id:
-        raise HTTPException(404, "Shift template not found.")
+    """Create a new shift group, assign/configure a shift template, and add member employees."""
+    template = None
+    if body.shift_template_id:
+        template = db.get(ShiftTemplate, body.shift_template_id)
+        if not template or template.org_id != current_user.org_id:
+            raise HTTPException(404, "Shift template not found.")
+    elif body.start_time and body.end_time:
+        template = ShiftTemplate(
+            org_id=current_user.org_id,
+            name=f"{body.name.strip()} ({body.start_time}-{body.end_time})",
+            start_time=_parse_time(body.start_time),
+            end_time=_parse_time(body.end_time),
+            grace_minutes=body.grace_minutes if body.grace_minutes is not None else 15,
+            break_minutes=body.break_minutes if body.break_minutes is not None else 60,
+            working_days=body.working_days or [0, 1, 2, 3, 4, 5],
+        )
+        db.add(template)
+        db.flush()
+    else:
+        raise HTTPException(400, "Must provide shift_template_id or start_time & end_time.")
+
+    # Update template timing and grace if provided
+    if body.grace_minutes is not None:
+        template.grace_minutes = body.grace_minutes
+    if body.break_minutes is not None:
+        template.break_minutes = body.break_minutes
+    if body.start_time:
+        template.start_time = _parse_time(body.start_time)
+    if body.end_time:
+        template.end_time = _parse_time(body.end_time)
+    if body.working_days is not None:
+        template.working_days = body.working_days
+    db.flush()
 
     group = ShiftGroup(
         org_id=current_user.org_id,
@@ -727,14 +770,34 @@ def update_shift_group(
     db: Session = Depends(get_db),
     current_user: User = hr_admin,
 ):
-    """Update shift group name, description, shift template, and sync member employee IDs."""
+    """Update shift group name, description, shift template, timing/grace, and sync member employee IDs."""
     group = db.get(ShiftGroup, group_id)
     if not group or group.org_id != current_user.org_id or group.deleted_at is not None:
         raise HTTPException(404, "Shift group not found.")
 
-    template = db.get(ShiftTemplate, body.shift_template_id)
+    template = None
+    if body.shift_template_id:
+        template = db.get(ShiftTemplate, body.shift_template_id)
+        if not template or template.org_id != current_user.org_id:
+            raise HTTPException(404, "Shift template not found.")
+    else:
+        template = db.get(ShiftTemplate, group.shift_template_id)
+
     if not template or template.org_id != current_user.org_id:
         raise HTTPException(404, "Shift template not found.")
+
+    # Update template timing and grace period if provided
+    if body.grace_minutes is not None:
+        template.grace_minutes = body.grace_minutes
+    if body.break_minutes is not None:
+        template.break_minutes = body.break_minutes
+    if body.start_time:
+        template.start_time = _parse_time(body.start_time)
+    if body.end_time:
+        template.end_time = _parse_time(body.end_time)
+    if body.working_days is not None:
+        template.working_days = body.working_days
+    db.flush()
 
     group.name = body.name.strip()
     group.description = body.description.strip() if body.description else None
