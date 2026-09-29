@@ -17,7 +17,7 @@ import uuid
 from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -109,6 +109,7 @@ def me(
 
 @router.post("/punch", response_model=PunchResponse)
 async def punch(
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     emp: Employee = Depends(get_current_employee),
     install_id: str | None = Depends(install_id_header),
@@ -339,16 +340,18 @@ async def punch(
                 db.commit()
 
             from app.services.slack import post_checkin_alert
-            from threading import Thread
-            Thread(
-                target=post_checkin_alert,
-                args=(emp.full_name, emp.emp_code, punch_time_str, shift_date.isoformat(), day.late_minutes, emp.email),
-                daemon=True
-            ).start()
+            background_tasks.add_task(
+                post_checkin_alert,
+                emp.full_name,
+                emp.emp_code,
+                punch_time_str,
+                shift_date.isoformat(),
+                day.late_minutes,
+                emp.email,
+            )
         else:
             # Resuming work from break
             from app.services.slack import post_break_ended_alert
-            from threading import Thread
             from sqlalchemy import and_
 
             prev_out = db.scalar(
@@ -373,11 +376,15 @@ async def punch(
                     curr_ts = curr_ts.replace(tzinfo=timezone.utc)
                 break_mins = max(1, int(round((curr_ts - prev_ts).total_seconds() / 60)))
 
-            Thread(
-                target=post_break_ended_alert,
-                args=(emp.full_name, emp.emp_code, punch_time_str, break_mins, shift_date.isoformat(), emp.email),
-                daemon=True
-            ).start()
+            background_tasks.add_task(
+                post_break_ended_alert,
+                emp.full_name,
+                emp.emp_code,
+                punch_time_str,
+                break_mins,
+                shift_date.isoformat(),
+                emp.email,
+            )
 
     elif direction == PunchDirection.OUT:
         policy, _ = policy_for(db, emp, shift_date)
@@ -385,24 +392,30 @@ async def punch(
         early_seconds = (scheduled_end - local).total_seconds()
         early_minutes = int(early_seconds // 60)
 
-        from threading import Thread
-
         if early_minutes > 30:
             # Mid-shift punch-out -> Break started
             from app.services.slack import post_break_started_alert
-            Thread(
-                target=post_break_started_alert,
-                args=(emp.full_name, emp.emp_code, punch_time_str, shift_date.isoformat(), emp.email),
-                daemon=True
-            ).start()
+            background_tasks.add_task(
+                post_break_started_alert,
+                emp.full_name,
+                emp.emp_code,
+                punch_time_str,
+                shift_date.isoformat(),
+                emp.email,
+            )
         else:
             # End of shift -> Final check-out
             from app.services.slack import post_checkout_alert
-            Thread(
-                target=post_checkout_alert,
-                args=(emp.full_name, emp.emp_code, punch_time_str, shift_date.isoformat(), day.worked_minutes, day.break_minutes, emp.email),
-                daemon=True
-            ).start()
+            background_tasks.add_task(
+                post_checkout_alert,
+                emp.full_name,
+                emp.emp_code,
+                punch_time_str,
+                shift_date.isoformat(),
+                day.worked_minutes,
+                day.break_minutes,
+                emp.email,
+            )
 
     return PunchResponse(
         accepted=True,
