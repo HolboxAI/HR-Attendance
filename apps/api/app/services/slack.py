@@ -638,41 +638,94 @@ def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: i
 
 
 _SLACK_USER_CACHE: dict[str, str | None] = {}
+_SLACK_MEMBERS_CACHE: list[dict] | None = None
 
 
-def get_slack_user_id_by_email(email: str) -> str | None:
-    """Look up a user's Slack ID using their email address with in-memory caching."""
-    if not settings.slack_bot_token or not email:
-        return None
-    email_clean = email.strip().lower()
-    if email_clean in _SLACK_USER_CACHE:
-        return _SLACK_USER_CACHE[email_clean]
+def _get_all_slack_members() -> list[dict]:
+    global _SLACK_MEMBERS_CACHE
+    if _SLACK_MEMBERS_CACHE is not None:
+        return _SLACK_MEMBERS_CACHE
+    if not settings.slack_bot_token:
+        return []
     try:
         resp = httpx.get(
-            "https://slack.com/api/users.lookupByEmail",
+            "https://slack.com/api/users.list",
             headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            params={"email": email_clean},
             timeout=5.0,
         )
         data = resp.json()
         if data.get("ok"):
-            user_id = data.get("user", {}).get("id")
-            _SLACK_USER_CACHE[email_clean] = user_id
-            return user_id
-        else:
-            _SLACK_USER_CACHE[email_clean] = None
+            _SLACK_MEMBERS_CACHE = data.get("members", [])
+            return _SLACK_MEMBERS_CACHE
     except Exception as e:
-        logger.warning("Error looking up Slack user by email %s: %s", email_clean, e)
+        logger.warning("Error fetching Slack members list: %s", e)
+    return []
+
+
+def get_slack_user_id(name: str, email: str | None = None) -> str | None:
+    """Look up a user's Slack ID by email, username, real name, or display name."""
+    cache_key = f"{name}:{email or ''}".strip().lower()
+    if cache_key in _SLACK_USER_CACHE:
+        return _SLACK_USER_CACHE[cache_key]
+
+    members = _get_all_slack_members()
+    if not members and email:
+        return None
+
+    # 1. Direct email match
+    if email:
+        em = email.strip().lower()
+        for m in members:
+            p = m.get("profile", {})
+            if p.get("email", "").lower() == em:
+                _SLACK_USER_CACHE[cache_key] = m.get("id")
+                return m.get("id")
+        prefix = em.split("@")[0]
+        for m in members:
+            if m.get("name", "").lower() == prefix:
+                _SLACK_USER_CACHE[cache_key] = m.get("id")
+                return m.get("id")
+
+    # 2. Name matching
+    n = name.strip().lower()
+    for m in members:
+        p = m.get("profile", {})
+        real = p.get("real_name", "").lower()
+        disp = p.get("display_name", "").lower()
+        uname = m.get("name", "").lower()
+        if n in (real, disp, uname):
+            _SLACK_USER_CACHE[cache_key] = m.get("id")
+            return m.get("id")
+        if n.replace(" ", "") in (real.replace(" ", ""), uname.replace(".", "")):
+            _SLACK_USER_CACHE[cache_key] = m.get("id")
+            return m.get("id")
+
+    # 3. Substring / alias matching (e.g. Dax, Daksh, Shivam)
+    first = n.split()[0] if n else ""
+    if first:
+        for m in members:
+            p = m.get("profile", {})
+            real = p.get("real_name", "").lower()
+            disp = p.get("display_name", "").lower()
+            uname = m.get("name", "").lower()
+            if first in real or first in disp or first in uname:
+                _SLACK_USER_CACHE[cache_key] = m.get("id")
+                return m.get("id")
+            if (first.startswith("dax") or first.startswith("daksh")) and ("dax" in uname or "dax" in real):
+                _SLACK_USER_CACHE[cache_key] = m.get("id")
+                return m.get("id")
+
+    _SLACK_USER_CACHE[cache_key] = None
     return None
 
 
 def format_slack_mention(name: str, email: str | None = None) -> str:
-    """Return a Slack mention <@USER_ID> if found by email, else bold name *Name*."""
-    if email:
-        slack_id = get_slack_user_id_by_email(email)
-        if slack_id:
-            return f"<@{slack_id}>"
+    """Return a clickable Slack mention <@USER_ID> if found, else bold name *Name*."""
+    slack_id = get_slack_user_id(name, email)
+    if slack_id:
+        return f"<@{slack_id}>"
     return f"*{name}*"
+
 
 
 def post_missed_checkout_alert(employee_name: str, email: str | None, shift_date: str, shift_end_str: str) -> None:
