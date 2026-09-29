@@ -150,6 +150,10 @@ def generate_shift_summary_image(
             badge_bg = "#4C1D95"
             badge_text_col = "#C084FC"
             badge_label = "ON LEAVE"
+        elif st in ("not_marked", "missing_out", "open", "unresolved"):
+            badge_bg = "#854D0E"
+            badge_text_col = "#FDE047"
+            badge_label = "MISSING OUT"
         else:
             badge_bg = "#881337"
             badge_text_col = "#FB7185"

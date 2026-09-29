@@ -491,6 +491,41 @@ def post_late_arrival_alert(employee_name: str, arrive_time: str, late_minutes: 
     post_checkin_alert(employee_name, "", arrive_time, shift_date, late_minutes=late_minutes)
 
 
+def post_not_checked_in_alert(
+    employee_name: str,
+    email: str | None,
+    shift_start_str: str,
+    shift_date: str,
+) -> None:
+    """Post an alert in Slack tagging the employee if they haven't checked in past shift start and grace period."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    mention = format_slack_mention(employee_name, email)
+    text = (
+        f"⚠️ *Not Checked In:* {mention} Hey {employee_name}, you still haven't checked in. "
+        f"Your shift started at *{shift_start_str}* and has passed the grace period as well. "
+        f"Please remember to punch in or apply for leave."
+    )
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": text,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_not_checked_in_alert: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post not checked in alert to Slack: %s", e)
+
+
+
 def post_break_started_alert(
     employee_name: str,
     emp_code: str,
@@ -665,6 +700,39 @@ def post_missed_checkout_alert(employee_name: str, email: str | None, shift_date
         logger.error("Failed to post missed checkout alert to Slack: %s", e)
 
 
+def post_eod_unresolved_checkout_alert(employee_name: str, email: str | None, shift_date: str) -> None:
+    """Tag an employee in Slack at EOD (11:15 PM) informing them they must apply for correction."""
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+
+    mention = format_slack_mention(employee_name, email)
+    himesh_slack_id = "U0BQ8HZ3MKJ"
+    himesh_mention = f"<@{himesh_slack_id}>"
+
+    text = (
+        f"⚠️ {mention} Your attendance hasn't been marked as present because you haven't checked out yet. "
+        f"If you want your attendance marked as present, make sure you apply for an attendance correction. "
+        f"Admin {himesh_mention} will approve it."
+    )
+
+    try:
+        response = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": settings.slack_channel_id,
+                "text": text,
+            },
+            timeout=5.0,
+        )
+        res_data = response.json()
+        if not res_data.get("ok"):
+            logger.error("Slack API error in post_eod_unresolved_checkout_alert: %s", res_data.get("error"))
+    except Exception as e:
+        logger.error("Failed to post EOD unresolved checkout alert to Slack: %s", e)
+
+
+
 def post_break_exceeded_alert(employee_name: str, email: str | None, minutes_out: int) -> None:
     """Send a friendly reminder in Slack if an employee has been on break for >= 45 minutes."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
@@ -766,6 +834,7 @@ def post_shift_summary_to_slack(
     late_list = [r for r in roster if r.get("status") == "late"]
     leave_list = [r for r in roster if r.get("status") in ("on_leave", "leave", "half_day")]
     present_list = [r for r in roster if r.get("status") in ("present", "early")]
+    missing_out_list = [r for r in roster if r.get("status") in ("not_marked", "missing_out")]
 
     blocks: list[dict] = [
         {
@@ -824,6 +893,19 @@ def post_shift_summary_to_slack(
                 },
             })
 
+    if missing_out_list:
+        missing_lines = "\n".join(
+            f"• *{r['name']}* (`{r['code']}`) — In: *{r.get('first_in') or '—'}* ⚠️ (Missing Check-Out)"
+            for r in missing_out_list
+        )
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": f"⚠️ *Missing Check-Out ({len(missing_out_list)}):*\n{missing_lines}",
+            },
+        })
+
     if absent_list:
         absent_lines = "\n".join(f"• *{r['name']}* (`{r['code']}`)" for r in absent_list)
         blocks.append({
@@ -843,9 +925,10 @@ def post_shift_summary_to_slack(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"🌴 *On Leave / Half Day ({len(leave_list)}):*\n{leave_lines}",
+                "text": f"🌴 *On Leave ({len(leave_list)}):*\n{leave_lines}",
             },
         })
+
 
     blocks.append({"type": "divider"})
 

@@ -22,17 +22,27 @@ os.environ["DATABASE_URL"] = f"sqlite:///{TMP / 'test.db'}"
 # a reason that has nothing to do with the code under test.
 os.environ["FACE_PROVIDER"] = "stub"
 os.environ["STORAGE_DIR"] = str(TMP / "uploads")
+os.environ["SLACK_BOT_TOKEN"] = ""
+os.environ["SLACK_CHANNEL_ID"] = ""
+os.environ["SENDGRID_API_KEY"] = ""
+os.environ["SMTP_USER"] = ""
+
 
 from fastapi.testclient import TestClient                      # noqa: E402
 from sqlalchemy import select                                  # noqa: E402
 
 from app.core.config import settings                           # noqa: E402
+settings.slack_bot_token = None
+settings.slack_channel_id = None
+settings.smtp_host = None
 from app.core.office import OFFICE                              # noqa: E402
+
 from app.core.security import hash_password                    # noqa: E402
 from app.db.base import Base                                   # noqa: E402
 from app.db.session import SessionLocal, engine                # noqa: E402
 import app.models                                              # noqa: F401,E402
 from app.main import app                                       # noqa: E402
+
 from app.models.attendance import PunchEvent                   # noqa: E402
 from app.models.employee import Employee, User                 # noqa: E402
 from app.models.enums import UserRole                           # noqa: E402

@@ -213,8 +213,19 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
                 data={"employee": emp.emp_code, "shift_date": shift_date.isoformat()}
             )
 
+            # Post alert in Slack tagging employee
+            from app.services.slack import post_not_checked_in_alert
+            from threading import Thread
+            local_start_str = start.strftime("%I:%M %p").lstrip("0")
+            Thread(
+                target=post_not_checked_in_alert,
+                args=(emp.full_name, emp.email, local_start_str, shift_date.isoformat()),
+                daemon=True,
+            ).start()
+
             nudged.append(key)
     return nudged
+
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +338,8 @@ def run_punch_out_nudges(db: Session, org: Organization, now: datetime) -> list[
 
 
 # ---------------------------------------------------------------------------
-# Job 4: shift end attendance summary email (1 email per shift at shift end + 5m)
+# ---------------------------------------------------------------------------
+# Job 5: shift end attendance summary email & slack image (at shift end + 15m)
 # ---------------------------------------------------------------------------
 
 def run_shift_end_summaries(
@@ -337,12 +349,13 @@ def run_shift_end_summaries(
     force_template_id: uuid.UUID | None = None,
     for_date: date | None = None,
 ) -> list[str]:
-    """Sends a single consolidated attendance summary email 5 minutes after a shift ends.
+    """Sends attendance summary email and Slack image 15 minutes after a shift ends (e.g. 8:15 PM).
 
     Summary covers all employees assigned to that shift on today's date.
-    Delivered directly to accounting@holbox.ai and krish@holbox.ai (Ashley is excluded).
+    Recomputes day live to ensure accuracy.
     """
-    from app.models.attendance import AttendanceDay, ShiftTemplate
+    from app.models.attendance import ShiftTemplate
+    from app.services.attendance import recompute_day
     from app.services.notifications import send_shift_summary_email
 
     tz = ZoneInfo(org.timezone or "Asia/Kolkata")
@@ -361,9 +374,9 @@ def run_shift_end_summaries(
         if end_dt <= start_dt:
             end_dt += timedelta(days=1)
 
-        # Trigger 10 minutes after shift ends (e.g. 21:10 for a 21:00 shift)
-        trigger_dt = end_dt + timedelta(minutes=10)
-        cutoff_dt = end_dt + timedelta(hours=4)
+        # Trigger 15 minutes after shift ends (e.g. 20:15 for a 20:00 shift)
+        trigger_dt = end_dt + timedelta(minutes=15)
+        cutoff_dt = end_dt + timedelta(hours=3)
 
         # If not forcing on-demand, verify the window and claim the dedupe row
         if not force_template_id:
@@ -395,16 +408,11 @@ def run_shift_end_summaries(
         for emp in active_emps:
             tpl, source, group_name, assignment_id = resolve_shift(db, emp, target_date)
             # Only include employees explicitly assigned to this shift (via Shift Group or Direct assignment).
-            # Do NOT sweep employees on fallback or unassigned into default shift end summaries.
             if source not in ("group", "direct") or tpl is None or tpl.id != tmpl.id:
                 continue
 
-            day = db.scalar(
-                select(AttendanceDay).where(
-                    AttendanceDay.employee_id == emp.id,
-                    AttendanceDay.shift_date == target_date,
-                )
-            )
+            # Always recompute live to have accurate status at shift conclusion
+            day = recompute_day(db, emp, target_date)
 
             status_str = "absent"
             first_in_str = "—"
@@ -421,6 +429,8 @@ def run_shift_end_summaries(
                 late_mins = day.late_minutes or 0
                 if late_mins > 0 and status_str == "present":
                     status_str = "late"
+                if day.first_in and not day.last_out:
+                    status_str = "not_marked"
                 worked_m = day.worked_minutes or 0
                 if worked_m > 0:
                     wh = worked_m // 60
@@ -491,6 +501,227 @@ def run_shift_end_summaries(
 
 
 # ---------------------------------------------------------------------------
+# Job 6: End of Day final summary email (at shift end + 3h / 11:00 PM)
+# ---------------------------------------------------------------------------
+
+def run_eod_final_summaries(
+    db: Session,
+    org: Organization,
+    now: datetime,
+    force_template_id: uuid.UUID | None = None,
+    for_date: date | None = None,
+) -> list[str]:
+    """Sends final consolidated attendance summary email 3 hours after shift ends (e.g. 11:00 PM).
+
+    Re-evaluates attendance for late checkouts. Does not post Slack image.
+    """
+    from app.models.attendance import ShiftTemplate
+    from app.services.attendance import recompute_day
+    from app.services.notifications import send_shift_summary_email
+
+    tz = ZoneInfo(org.timezone or "Asia/Kolkata")
+    local_now = now.astimezone(tz)
+    target_date = for_date or local_now.date()
+
+    query = select(ShiftTemplate).where(ShiftTemplate.org_id == org.id)
+    if force_template_id:
+        query = query.where(ShiftTemplate.id == force_template_id)
+    templates = db.scalars(query).all()
+
+    summarized: list[str] = []
+    for tmpl in templates:
+        start_dt = datetime.combine(target_date, tmpl.start_time, tzinfo=tz)
+        end_dt = datetime.combine(target_date, tmpl.end_time, tzinfo=tz)
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+
+        # Trigger 3 hours after shift ends (e.g. 23:00 for a 20:00 shift)
+        trigger_dt = end_dt + timedelta(hours=3)
+        cutoff_dt = end_dt + timedelta(hours=6)
+
+        if not force_template_id:
+            if not (trigger_dt <= local_now <= cutoff_dt):
+                continue
+            key = f"eod_summary:{tmpl.id}:{target_date.isoformat()}"
+            run = _claim(
+                db,
+                org_id=org.id,
+                job="eod_summary",
+                key=key,
+                detail={"template_name": tmpl.name, "date": target_date.isoformat()},
+            )
+            if run is None:
+                continue
+        else:
+            key = f"eod_summary_forced:{tmpl.id}:{target_date.isoformat()}:{int(now.timestamp())}"
+
+        active_emps = db.scalars(
+            select(Employee).where(
+                Employee.org_id == org.id,
+                Employee.is_active.is_(True),
+                Employee.deleted_at.is_(None),
+            ).order_by(Employee.emp_code)
+        ).all()
+
+        roster: list[dict] = []
+        for emp in active_emps:
+            tpl, source, group_name, assignment_id = resolve_shift(db, emp, target_date)
+            if source not in ("group", "direct") or tpl is None or tpl.id != tmpl.id:
+                continue
+
+            day = recompute_day(db, emp, target_date)
+
+            status_str = "absent"
+            first_in_str = "—"
+            last_out_str = "—"
+            late_mins = 0
+            hours_str = "0m"
+
+            if day:
+                status_str = day.status.value if hasattr(day.status, "value") else str(day.status)
+                if day.first_in:
+                    first_in_str = day.first_in.astimezone(tz).strftime("%I:%M %p").lstrip("0")
+                if day.last_out:
+                    last_out_str = day.last_out.astimezone(tz).strftime("%I:%M %p").lstrip("0")
+                late_mins = day.late_minutes or 0
+                if late_mins > 0 and status_str == "present":
+                    status_str = "late"
+                if day.first_in and not day.last_out:
+                    status_str = "not_marked"
+                worked_m = day.worked_minutes or 0
+                if worked_m > 0:
+                    wh = worked_m // 60
+                    wm = worked_m % 60
+                    hours_str = f"{wh}h {wm}m" if wh > 0 and wm > 0 else (f"{wh}h" if wh > 0 else f"{wm}m")
+
+            if late_mins > 0:
+                h = late_mins // 60
+                m = late_mins % 60
+                late_str = f"{h}h {m}m late" if h > 0 and m > 0 else (f"{h}h late" if h > 0 else f"{m}m late")
+            else:
+                late_str = "On Time"
+
+            break_m = day.break_minutes or 0 if day else 0
+            if break_m >= 60:
+                break_str = f"{break_m // 60}h {break_m % 60}m"
+            elif break_m > 0:
+                break_str = f"{break_m}m"
+            else:
+                break_str = "0m"
+
+            roster.append({
+                "id": str(emp.id),
+                "code": emp.emp_code,
+                "name": emp.full_name,
+                "status": status_str,
+                "first_in": first_in_str,
+                "last_out": last_out_str,
+                "late_minutes": late_mins,
+                "late_str": late_str,
+                "hours_str": hours_str,
+                "break_str": break_str,
+                "break_minutes": break_m,
+            })
+
+        if not roster and not force_template_id:
+            continue
+
+        stats = {
+            "total": len(roster),
+            "present": sum(1 for r in roster if r["status"] in ("present", "early")),
+            "late": sum(1 for r in roster if r["status"] == "late"),
+            "absent": sum(1 for r in roster if r["status"] == "absent"),
+            "leave": sum(1 for r in roster if r["status"] in ("on_leave", "leave", "half_day")),
+        }
+
+        timing_str = f"{tmpl.start_time.strftime('%I:%M %p').lstrip('0')} – {tmpl.end_time.strftime('%I:%M %p').lstrip('0')}"
+        send_shift_summary_email(
+            shift_name=f"{tmpl.name} (Final EOD)",
+            shift_timing=timing_str,
+            shift_date=target_date,
+            stats=stats,
+            roster=roster,
+        )
+
+        # Post text/block card to Slack attendance channel (without png file upload)
+        from app.services.slack import post_shift_summary_to_slack
+        from threading import Thread
+        Thread(
+            target=post_shift_summary_to_slack,
+            args=(f"{tmpl.name} (Final EOD)", timing_str, target_date, stats, roster),
+            daemon=True,
+        ).start()
+
+        summarized.append(key)
+
+    return summarized
+
+
+
+# ---------------------------------------------------------------------------
+# Job 7: EOD unresolved checkout Slack alert (at shift end + 3h 15m / 11:15 PM)
+# ---------------------------------------------------------------------------
+
+def run_unresolved_checkout_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
+    """Tag employees in Slack at 11:15 PM who never checked out, asking them to apply for correction."""
+    from app.models.attendance import ShiftTemplate
+    from app.services.attendance import recompute_day
+    from app.services.slack import post_eod_unresolved_checkout_alert
+    from threading import Thread
+
+    tz = ZoneInfo(org.timezone or "Asia/Kolkata")
+    local_now = now.astimezone(tz)
+    target_date = local_now.date()
+
+    templates = db.scalars(select(ShiftTemplate).where(ShiftTemplate.org_id == org.id)).all()
+    alerted: list[str] = []
+
+    for tmpl in templates:
+        start_dt = datetime.combine(target_date, tmpl.start_time, tzinfo=tz)
+        end_dt = datetime.combine(target_date, tmpl.end_time, tzinfo=tz)
+        if end_dt <= start_dt:
+            end_dt += timedelta(days=1)
+
+        # Trigger 3 hours 15 minutes after shift ends (e.g. 23:15 for a 20:00 shift)
+        trigger_dt = end_dt + timedelta(hours=3, minutes=15)
+        cutoff_dt = end_dt + timedelta(hours=6)
+
+        if not (trigger_dt <= local_now <= cutoff_dt):
+            continue
+
+        active_emps = db.scalars(
+            select(Employee).where(
+                Employee.org_id == org.id,
+                Employee.is_active.is_(True),
+                Employee.deleted_at.is_(None),
+            ).order_by(Employee.emp_code)
+        ).all()
+
+        for emp in active_emps:
+            tpl, source, group_name, assignment_id = resolve_shift(db, emp, target_date)
+            if source not in ("group", "direct") or tpl is None or tpl.id != tmpl.id:
+                continue
+
+            day = recompute_day(db, emp, target_date)
+            # If they punched in but never punched out
+            if day.first_in is not None and day.last_out is None:
+                key = f"unresolved_checkout_alert:{emp.emp_code}:{target_date.isoformat()}"
+                if _claim(db, org_id=org.id, job="unresolved_checkout_alert", key=key,
+                          detail={"employee": emp.emp_code, "shift_date": target_date.isoformat()}) is None:
+                    continue
+
+                Thread(
+                    target=post_eod_unresolved_checkout_alert,
+                    args=(emp.full_name, emp.email, target_date.isoformat()),
+                    daemon=True,
+                ).start()
+
+                alerted.append(key)
+
+    return alerted
+
+
+# ---------------------------------------------------------------------------
 # The tick
 # ---------------------------------------------------------------------------
 
@@ -512,6 +743,8 @@ def tick(db: Session, now: datetime | None = None) -> dict:
         ("break_exceeded", run_break_exceeded_alerts),
         ("punch_out_nudge", run_punch_out_nudges),
         ("shift_end_summary", run_shift_end_summaries),
+        ("eod_summary", run_eod_final_summaries),
+        ("unresolved_checkout_alert", run_unresolved_checkout_alerts),
     )
     for org in orgs:
         for name, fn in jobs:
@@ -524,3 +757,4 @@ def tick(db: Session, now: datetime | None = None) -> dict:
                 db.rollback()
                 summary["errors"][name] = f"{type(exc).__name__}: {exc}"
     return summary
+

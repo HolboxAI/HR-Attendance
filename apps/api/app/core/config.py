@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     # "You haven't punched out" fires this long after shift end, and goes
     # stale after the expiry: a nudge about the day before yesterday is noise,
     # and by then the board already shows the day flagged for correction.
-    punch_out_nudge_after_minutes: int = 30
+    punch_out_nudge_after_minutes: int = 15
     punch_out_nudge_expiry_hours: int = 12
 
     default_geofence_radius_m: int = 200
