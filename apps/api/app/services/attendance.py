@@ -281,7 +281,13 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
     # public holidays both came out as "absent".
     from app.services.leave import is_holiday, leave_fraction_on
 
-    is_regularized = any(p.source == "manual" for p in punches)
+    day = db.scalar(
+        select(AttendanceDay).where(
+            and_(AttendanceDay.employee_id == employee.id, AttendanceDay.shift_date == shift_date)
+        )
+    )
+
+    is_regularized = any(p.source == "manual" for p in punches) or (day is not None and day.is_regularized)
 
     resolved = resolve_day(
         punches, policy, shift_date,
@@ -291,11 +297,6 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
         as_of=datetime.now(timezone.utc),
     )
 
-    day = db.scalar(
-        select(AttendanceDay).where(
-            and_(AttendanceDay.employee_id == employee.id, AttendanceDay.shift_date == shift_date)
-        )
-    )
     if day is None:
         day = AttendanceDay(id=uuid.uuid4(), org_id=employee.org_id,
                             employee_id=employee.id, shift_date=shift_date)
