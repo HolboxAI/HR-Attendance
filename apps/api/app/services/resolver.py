@@ -139,6 +139,12 @@ def resolve_day(
     punches = sorted(punches, key=lambda p: p.ts_utc)
     day.punch_count = len(punches)
 
+    scheduled_start, scheduled_end = shift_bounds(policy, shift_date)
+    grace_expired = (
+        as_of is not None
+        and as_of.astimezone(tz) >= (scheduled_start + timedelta(minutes=policy.grace_minutes))
+    )
+
     if not punches:
         if leave_fraction >= 1.0:
             day.status = "on_leave"
@@ -150,10 +156,15 @@ def resolve_day(
             day.status = "holiday"
         elif shift_date.weekday() not in policy.working_days:
             day.status = "weekly_off"
-        elif shift_over:
+        elif shift_over or grace_expired:
             day.status = "absent"
+            if grace_expired and not shift_over:
+                day.has_exception = True
+                day.exception_note = (
+                    f"Grace period ({policy.grace_minutes}m) expired without check-in - marked Absent"
+                )
         else:
-            day.status = "not_marked"      # today, or the future - not absent
+            day.status = "not_marked"      # future shift today or future date
         return day
 
     directed = _infer_directions(punches)
