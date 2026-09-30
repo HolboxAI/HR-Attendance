@@ -146,30 +146,27 @@ def run_monthly_accrual(db: Session, org: Organization, now: datetime) -> dict |
 def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
     """Nudge whoever should be at work by now and has no accepted punch.
 
-    Fires between (start + grace + late_alert_after_minutes) and shift end.
-    After the end it stays silent on purpose - by then the day is an absence
-    the board already shows, and "you were late this morning" at 9pm helps
-    nobody. Goes to the employee, and to their manager if they have one -
-    never the full HR fanout, which at eleven people would be a daily wall.
+    Fires as soon as shift start + grace period passes until shift end.
+    Only evaluates employees assigned to an active Shift Group.
     """
     nudged: list[str] = []
     for emp in _active_employees(db, org.id):
-        # Today and yesterday cover every live shift, including Ritesh's
-        # 22:00-06:00 whose small hours belong to yesterday's shift-date.
+        # Today and yesterday cover every live shift, including overnight shifts
         for shift_date in (now.date(), now.date() - timedelta(days=1)):
+            tpl, source, group_name, assignment_id = resolve_shift(db, emp, shift_date)
+            # Only evaluate employees explicitly assigned to an active Shift Group
+            if source != "group" or tpl is None:
+                continue
+
             policy, _tpl = policy_for(db, emp, shift_date)
             if shift_date.weekday() not in policy.working_days:
                 continue
             start, end = shift_bounds(policy, shift_date)
-            due = start + timedelta(
-                minutes=policy.grace_minutes + settings.late_alert_after_minutes
-            )
+            # Due immediately after grace period expires (e.g. 1:25 PM for a 1:00 PM shift)
+            due = start + timedelta(minutes=policy.grace_minutes)
             if not (due <= now < end):
                 continue
-            # Any approved leave - full OR half - silences the alert. A
-            # half-day leave means a punch is expected sometime, but which
-            # half is on leave is not recorded, so a 09:40 alert at someone
-            # excused until 14:00 would be a false alarm. Holidays likewise.
+            # Any approved leave silences the alert
             if is_holiday(db, emp, shift_date) or leave_fraction_on(db, emp, shift_date) > 0:
                 continue
             if _accepted_punches(db, emp, policy, shift_date):
@@ -186,10 +183,10 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
             if user is not None:
                 notify(
                     db, org_id=org.id, user=user, category="attendance_late",
-                    title="Not checked in yet",
-                    body=(f"Your shift started at {local_start} and there is no "
-                          f"check-in for {shift_date:%d %b}. Punch in when you "
-                          "arrive, or apply for leave."),
+                    title="Marked Absent - Grace Period Expired",
+                    body=(f"Your shift started at {local_start} and the {policy.grace_minutes}-minute "
+                          f"grace period has expired without a check-in for {shift_date:%d %b}. "
+                          "You have been marked as Absent. Submit a regularisation request if needed."),
                     data={"shift_date": shift_date.isoformat()},
                 )
             if emp.manager_id is not None:
@@ -198,18 +195,18 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
                 if mgr_user is not None:
                     notify(
                         db, org_id=org.id, user=mgr_user, category="attendance_late",
-                        title=f"{emp.full_name} has not checked in",
-                        body=(f"No check-in for {shift_date:%d %b}; their shift "
-                              f"started at {local_start}."),
+                        title=f"{emp.full_name} marked Absent (grace expired)",
+                        body=(f"No check-in for {shift_date:%d %b}; shift started at {local_start} "
+                              f"and {policy.grace_minutes}m grace expired."),
                         data={"employee": emp.emp_code,
                               "shift_date": shift_date.isoformat()},
                     )
             
-            # Notify HR as well that someone hasn't checked in yet
+            # Notify HR as well that someone hasn't checked in past grace
             notify_hr(
                 db, org_id=org.id, category="attendance.absent_alert",
-                title=f"Missing: {emp.full_name}",
-                body=f"{emp.full_name} has not checked in for their shift on {shift_date:%d %b} (started at {local_start}).",
+                title=f"Marked Absent: {emp.full_name}",
+                body=f"{emp.full_name} passed the {policy.grace_minutes}m grace period on {shift_date:%d %b} (started {local_start}) and is marked Absent.",
                 data={"employee": emp.emp_code, "shift_date": shift_date.isoformat()}
             )
 
@@ -219,7 +216,14 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
             local_start_str = start.strftime("%I:%M %p").lstrip("0")
             Thread(
                 target=post_not_checked_in_alert,
-                args=(emp.full_name, emp.email, local_start_str, shift_date.isoformat()),
+                args=(
+                    emp.full_name,
+                    emp.email,
+                    local_start_str,
+                    shift_date.isoformat(),
+                    policy.grace_minutes,
+                    group_name,
+                ),
                 daemon=True,
             ).start()
 
@@ -240,6 +244,10 @@ def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> 
     today = local_now.date()
 
     for emp in _active_employees(db, org.id):
+        tpl, source, group_name, assignment_id = resolve_shift(db, emp, today)
+        if source != "group" or tpl is None:
+            continue
+
         policy, _tpl = policy_for(db, emp, today)
         if today.weekday() not in policy.working_days:
             continue
@@ -279,15 +287,17 @@ def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> 
 def run_punch_out_nudges(db: Session, org: Organization, now: datetime) -> list[str]:
     """Nudge whoever punched in but never out, once the shift is over.
 
-    Fires from (end + punch_out_nudge_after_minutes) until the expiry. The
-    open pair is real damage - the resolver counts those hours as zero - and
-    the person holding the fix is the employee, via a punch now or a
-    correction request, which is why this goes to them and not to HR.
+    Fires from (end + punch_out_nudge_after_minutes) until the expiry.
+    Only evaluates employees assigned to an active Shift Group.
     """
     nudged: list[str] = []
     expiry = timedelta(hours=settings.punch_out_nudge_expiry_hours)
     for emp in _active_employees(db, org.id):
         for shift_date in (now.date(), now.date() - timedelta(days=1)):
+            tpl, source, group_name, assignment_id = resolve_shift(db, emp, shift_date)
+            if source != "group" or tpl is None:
+                continue
+
             policy, _tpl = policy_for(db, emp, shift_date)
             _start, end = shift_bounds(policy, shift_date)
             due = end + timedelta(minutes=settings.punch_out_nudge_after_minutes)
@@ -297,13 +307,12 @@ def run_punch_out_nudges(db: Session, org: Organization, now: datetime) -> list[
             punches = _accepted_punches(db, emp, policy, shift_date)
             if not punches:
                 continue
-            # Trust an explicit direction on the last punch; fall back to
-            # parity for direction-less gate rows - the resolver's own rule.
             last = punches[-1]
             if last.direction == PunchDirection.OUT:
                 continue
             if last.direction == PunchDirection.UNKNOWN and len(punches) % 2 == 0:
                 continue
+
 
             key = f"{emp.emp_code}:{shift_date.isoformat()}"
             if _claim(db, org_id=org.id, job="punch_out_nudge", key=key,
@@ -427,9 +436,7 @@ def run_shift_end_summaries(
                 if day.last_out:
                     last_out_str = day.last_out.astimezone(tz).strftime("%I:%M %p").lstrip("0")
                 late_mins = day.late_minutes or 0
-                if late_mins > 0 and status_str == "present":
-                    status_str = "late"
-                if day.first_in and not day.last_out:
+                if day.first_in and not day.last_out and status_str not in ("absent", "on_leave"):
                     status_str = "not_marked"
                 worked_m = day.worked_minutes or 0
                 if worked_m > 0:
@@ -440,7 +447,8 @@ def run_shift_end_summaries(
             if late_mins > 0:
                 h = late_mins // 60
                 m = late_mins % 60
-                late_str = f"{h}h {m}m late" if h > 0 and m > 0 else (f"{h}h late" if h > 0 else f"{m}m late")
+                dur = f"{h}h {m}m" if h > 0 and m > 0 else (f"{h}h" if h > 0 else f"{m}m")
+                late_str = f"{dur} late (Grace exceeded)"
             else:
                 late_str = "On Time"
 
@@ -471,7 +479,7 @@ def run_shift_end_summaries(
 
         stats = {
             "total": len(roster),
-            "present": sum(1 for r in roster if r["status"] in ("present", "early")),
+            "present": sum(1 for r in roster if r["status"] in ("present", "early", "wfh")),
             "late": sum(1 for r in roster if r["status"] == "late"),
             "absent": sum(1 for r in roster if r["status"] == "absent"),
             "leave": sum(1 for r in roster if r["status"] in ("on_leave", "leave", "half_day")),
@@ -511,9 +519,9 @@ def run_eod_final_summaries(
     force_template_id: uuid.UUID | None = None,
     for_date: date | None = None,
 ) -> list[str]:
-    """Sends final consolidated attendance summary email 3 hours after shift ends (e.g. 11:00 PM).
+    """Sends final consolidated attendance summary email & Slack Block Card at 11:00 PM.
 
-    Re-evaluates attendance for late checkouts. Does not post Slack image.
+    Re-evaluates attendance for late checkouts across all active shift groups.
     """
     from app.models.attendance import ShiftTemplate
     from app.services.attendance import recompute_day
@@ -535,9 +543,9 @@ def run_eod_final_summaries(
         if end_dt <= start_dt:
             end_dt += timedelta(days=1)
 
-        # Trigger 3 hours after shift ends (e.g. 23:00 for a 20:00 shift)
-        trigger_dt = end_dt + timedelta(hours=3)
-        cutoff_dt = end_dt + timedelta(hours=6)
+        # Trigger at 11:00 PM local time (23:00) for shifts concluding on or before 11:00 PM
+        trigger_dt = datetime.combine(target_date, time(23, 0), tzinfo=tz)
+        cutoff_dt = datetime.combine(target_date, time(23, 59), tzinfo=tz)
 
         if not force_template_id:
             if not (trigger_dt <= local_now <= cutoff_dt):
@@ -566,7 +574,8 @@ def run_eod_final_summaries(
         roster: list[dict] = []
         for emp in active_emps:
             tpl, source, group_name, assignment_id = resolve_shift(db, emp, target_date)
-            if source not in ("group", "direct") or tpl is None or tpl.id != tmpl.id:
+            # Only include employees assigned to this shift via Shift Group
+            if source != "group" or tpl is None or tpl.id != tmpl.id:
                 continue
 
             day = recompute_day(db, emp, target_date)
@@ -584,9 +593,7 @@ def run_eod_final_summaries(
                 if day.last_out:
                     last_out_str = day.last_out.astimezone(tz).strftime("%I:%M %p").lstrip("0")
                 late_mins = day.late_minutes or 0
-                if late_mins > 0 and status_str == "present":
-                    status_str = "late"
-                if day.first_in and not day.last_out:
+                if day.first_in and not day.last_out and status_str not in ("absent", "on_leave"):
                     status_str = "not_marked"
                 worked_m = day.worked_minutes or 0
                 if worked_m > 0:
@@ -597,7 +604,8 @@ def run_eod_final_summaries(
             if late_mins > 0:
                 h = late_mins // 60
                 m = late_mins % 60
-                late_str = f"{h}h {m}m late" if h > 0 and m > 0 else (f"{h}h late" if h > 0 else f"{m}m late")
+                dur = f"{h}h {m}m" if h > 0 and m > 0 else (f"{h}h" if h > 0 else f"{m}m")
+                late_str = f"{dur} late (Grace exceeded)"
             else:
                 late_str = "On Time"
 
@@ -628,7 +636,7 @@ def run_eod_final_summaries(
 
         stats = {
             "total": len(roster),
-            "present": sum(1 for r in roster if r["status"] in ("present", "early")),
+            "present": sum(1 for r in roster if r["status"] in ("present", "early", "wfh")),
             "late": sum(1 for r in roster if r["status"] == "late"),
             "absent": sum(1 for r in roster if r["status"] == "absent"),
             "leave": sum(1 for r in roster if r["status"] in ("on_leave", "leave", "half_day")),
@@ -659,7 +667,7 @@ def run_eod_final_summaries(
 
 
 # ---------------------------------------------------------------------------
-# Job 7: EOD unresolved checkout Slack alert (at shift end + 3h 15m / 11:15 PM)
+# Job 7: EOD unresolved checkout Slack alert (at 11:15 PM)
 # ---------------------------------------------------------------------------
 
 def run_unresolved_checkout_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
@@ -682,9 +690,9 @@ def run_unresolved_checkout_alerts(db: Session, org: Organization, now: datetime
         if end_dt <= start_dt:
             end_dt += timedelta(days=1)
 
-        # Trigger 3 hours 15 minutes after shift ends (e.g. 23:15 for a 20:00 shift)
-        trigger_dt = end_dt + timedelta(hours=3, minutes=15)
-        cutoff_dt = end_dt + timedelta(hours=6)
+        # Trigger at 11:15 PM local time (23:15)
+        trigger_dt = datetime.combine(target_date, time(23, 15), tzinfo=tz)
+        cutoff_dt = datetime.combine(target_date, time(23, 59), tzinfo=tz)
 
         if not (trigger_dt <= local_now <= cutoff_dt):
             continue
@@ -699,7 +707,8 @@ def run_unresolved_checkout_alerts(db: Session, org: Organization, now: datetime
 
         for emp in active_emps:
             tpl, source, group_name, assignment_id = resolve_shift(db, emp, target_date)
-            if source not in ("group", "direct") or tpl is None or tpl.id != tmpl.id:
+            # Only evaluate employees assigned to an active Shift Group
+            if source != "group" or tpl is None or tpl.id != tmpl.id:
                 continue
 
             day = recompute_day(db, emp, target_date)
@@ -719,6 +728,7 @@ def run_unresolved_checkout_alerts(db: Session, org: Organization, now: datetime
                 alerted.append(key)
 
     return alerted
+
 
 
 # ---------------------------------------------------------------------------

@@ -115,6 +115,7 @@ def resolve_day(
     is_holiday: bool = False,
     is_on_leave: bool = False,
     leave_fraction: float | None = None,
+    is_regularized: bool = False,
     as_of: datetime | None = None,
 ) -> ResolvedDay:
     """`as_of` is passed in rather than read from the clock, so this stays pure.
@@ -221,11 +222,17 @@ def resolve_day(
         day.status = "present"
     elif on_leave:
         day.status = "half_day"
+    elif not is_regularized and day.late_minutes > 0:
+        # Arrived after grace period: strictly marked ABSENT unless regularized by HR
+        day.status = "absent"
+        day.has_exception = True
+        day.exception_note = (
+            f"Arrived late (+{day.late_minutes}m past {policy.grace_minutes}m grace) "
+            "- marked Absent (requires regularization)"
+        )
     elif day.worked_minutes > 0 or (day.first_in and day.last_out and day.punch_count >= 2):
-        # Option A: Any employee who checks in and checks out is marked Present
         day.status = "present"
     elif day.has_exception or not shift_over:
-        # Someone who punched in and shift is active, or single punch exception
         day.status = "not_marked"
     else:
         day.status = "absent"

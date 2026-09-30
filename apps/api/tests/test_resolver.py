@@ -36,11 +36,16 @@ ok &= check("late_minutes (5m late, 10m grace)", r.late_minutes, 0)
 ok &= check("overtime_minutes", r.overtime_minutes, 10)
 ok &= check("has_exception", r.has_exception, False)
 
-print("2. Late arrival beyond grace")
+print("2. Late arrival beyond grace -> marked absent without regularization, present with regularization")
 r = resolve_day([Punch(ist(2026, 8, 24, 9, 47)), Punch(ist(2026, 8, 24, 18, 0))],
                 DAY, date(2026, 8, 24))
 ok &= check("late_minutes", r.late_minutes, 37)
-ok &= check("status", r.status, "present")
+ok &= check("status (unregularized)", r.status, "absent")
+ok &= check("has_exception", r.has_exception, True)
+
+r_reg = resolve_day([Punch(ist(2026, 8, 24, 9, 47)), Punch(ist(2026, 8, 24, 18, 0))],
+                    DAY, date(2026, 8, 24), is_regularized=True)
+ok &= check("status (regularized)", r_reg.status, "present")
 
 print("3. Night shift 22:00-06:00 crosses midnight -> ONE shift date")
 ok &= check("22:10 Aug10 belongs to", shift_date_for(ist(2026, 8, 10, 22, 10), NIGHT), date(2026, 8, 10))

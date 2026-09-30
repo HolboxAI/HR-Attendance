@@ -496,16 +496,19 @@ def post_not_checked_in_alert(
     email: str | None,
     shift_start_str: str,
     shift_date: str,
+    grace_minutes: int = 10,
+    group_name: str | None = None,
 ) -> None:
     """Post an alert in Slack tagging the employee if they haven't checked in past shift start and grace period."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
     mention = format_slack_mention(employee_name, email)
+    group_info = f" for *{group_name}*" if group_name else ""
     text = (
-        f"⚠️ *Not Checked In:* {mention} Hey {employee_name}, you still haven't checked in. "
-        f"Your shift started at *{shift_start_str}* and has passed the grace period as well. "
-        f"Please remember to punch in or apply for leave."
+        f"⚠️ *Grace Period Expired — Marked Absent:*\n"
+        f"{mention} Hey {employee_name}, your shift started at *{shift_start_str}* and the *{grace_minutes}-minute grace period*{group_info} has expired without a check-in.\n"
+        f"You have been marked as *Absent* for today. If you are in the office or have an approved reason, please submit an attendance regularisation request."
     )
 
     try:
