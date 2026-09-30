@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Reject a punch from a phone that has not been bound to its employee.
     # Set to False to disable device binding checks completely.
     require_device_binding: bool = False
+    disable_geofence: bool = False
     default_tz: str = "Asia/Kolkata"
     api_prefix: str = "/api/v1"
     api_url: str = "https://attendance.holbox.ai/api/v1"

@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   ChevronLeft, ChevronRight, Camera, LogIn, LogOut, Clock,
-  CheckCircle2, AlertCircle, Timer, Sparkles, Check, Loader2, ArrowRight
+  CheckCircle2, AlertCircle, Timer, Sparkles, Check, Loader2, ArrowRight,
+  Coffee, Play
 } from 'lucide-react';
 
 import { MonthCalendar } from '@/components/MonthCalendar';
@@ -54,6 +55,7 @@ export function MyMonth({
   const [todayData, setTodayData] = useState<TodayStatus | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [punchAction, setPunchAction] = useState<'check_in' | 'check_out' | 'break_out' | 'break_in'>('check_in');
   const [punchFeedback, setPunchFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -129,6 +131,12 @@ export function MyMonth({
     form.append('lng', String(lng));
     form.append('accuracy_m', String(accuracy));
     form.append('is_mocked', 'false');
+    form.append('punch_type', punchAction);
+    if (punchAction === 'check_in' || punchAction === 'break_in') {
+      form.append('direction', 'in');
+    } else {
+      form.append('direction', 'out');
+    }
 
     try {
       const handsetId = getHandsetId();
@@ -241,6 +249,7 @@ export function MyMonth({
 
   // Direction: if 'out', the employee is currently in office/wfh and next action is Check Out.
   const isCurrentlyIn = todayData?.direction === 'out';
+  const isOnBreak = !isCurrentlyIn && Boolean(todayData?.checked_in_at) && (todayData as any)?.last_punch_type === 'break_out';
 
   // SVG Circle calculation
   const circleRadius = 82;
@@ -370,11 +379,13 @@ export function MyMonth({
             Live Shift Progress Tracker
           </div>
           <h2 className="font-display text-2xl sm:text-3xl font-bold text-ink">
-            {isCurrentlyIn ? 'Shift in Progress' : 'Ready to Check In'}
+            {isCurrentlyIn ? 'Shift in Progress' : isOnBreak ? 'Currently On Break' : 'Ready to Check In'}
           </h2>
           <p className="text-xs text-ink-3 leading-relaxed">
             {isCurrentlyIn
               ? `You punched in at ${hhmm12(todayData?.checked_in_at)}. Tap the circular button when your shift ends to record your checkout.`
+              : isOnBreak
+              ? 'You are currently on break. Tap Resume Work below when you are back at your desk.'
               : 'Tap the circular button below to open your camera and verify your attendance.'}
           </p>
         </div>
@@ -422,9 +433,24 @@ export function MyMonth({
           <div className="absolute inset-0 flex items-center justify-center">
             <button
               type="button"
-              onClick={() => setModalOpen(true)}
+              onClick={() => {
+                setPunchAction(
+                  isOnBreak
+                    ? 'break_in'
+                    : isCurrentlyIn
+                    ? 'check_out'
+                    : 'check_in'
+                );
+                setModalOpen(true);
+              }}
               disabled={busy}
-              aria-label={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
+              aria-label={
+                isCurrentlyIn
+                  ? 'Check out with camera'
+                  : isOnBreak
+                  ? 'Resume work with camera'
+                  : 'Check in with camera'
+              }
               className="size-40 sm:size-44 rounded-full p-0 border-0 bg-transparent cursor-pointer select-none active:scale-95 disabled:opacity-70 disabled:cursor-wait"
             >
               <GlowingShadow variant="circle">
@@ -443,6 +469,16 @@ export function MyMonth({
                       {todayData?.checked_in_at ? `In ${hhmm12(todayData.checked_in_at)}` : 'Tap to punch'}
                     </span>
                   </>
+                ) : isOnBreak ? (
+                  <>
+                    <Play className="size-8 text-emerald-500 dark:text-emerald-400 mb-1" />
+                    <span className="font-display text-xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
+                      End Break
+                    </span>
+                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                      Resume Work
+                    </span>
+                  </>
                 ) : (
                   <>
                     <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
@@ -458,6 +494,49 @@ export function MyMonth({
             </button>
           </div>
         </div>
+
+        {/* Dedicated Break & Secondary Action Controls */}
+        {(isCurrentlyIn || isOnBreak) && (
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-1">
+            {isCurrentlyIn ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPunchAction('break_out');
+                  setModalOpen(true);
+                }}
+                disabled={busy}
+                className="group relative inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
+              >
+                <Coffee className="size-5 text-amber-500 transition-transform group-hover:scale-110" />
+                <div className="text-left">
+                  <div className="font-display text-xs font-extrabold uppercase tracking-wider">
+                    Take a Break
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-3 uppercase">Break Out</div>
+                </div>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setPunchAction('check_out');
+                  setModalOpen(true);
+                }}
+                disabled={busy}
+                className="group relative inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
+              >
+                <LogOut className="size-5 text-rose-500 transition-transform group-hover:scale-110" />
+                <div className="text-left">
+                  <div className="font-display text-xs font-extrabold uppercase tracking-wider">
+                    End Shift
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-3 uppercase">Check Out Directly</div>
+                </div>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Bottom Shift Meta Information */}
         <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -551,7 +630,7 @@ export function MyMonth({
         </div>
       </section>
 
-      {/* Camera Capture Modal for Direct Check-in / Check-out */}
+      {/* Camera Capture Modal for Direct Check-in / Check-out / Break */}
       <CameraCaptureModal
         open={modalOpen}
         employeeName={name ?? data.full_name}
@@ -559,9 +638,25 @@ export function MyMonth({
         onCapture={handlePunch}
         onClose={() => setModalOpen(false)}
         busy={busy}
-        title={isCurrentlyIn ? 'Camera Check-out' : 'Camera Check-in'}
+        title={
+          punchAction === 'break_out'
+            ? 'Camera Break Out (Take Break)'
+            : punchAction === 'break_in'
+            ? 'Camera Break In (Resume Work)'
+            : punchAction === 'check_out'
+            ? 'Camera Check-out'
+            : 'Camera Check-in'
+        }
         subject="Punching as"
-        confirmLabel={isCurrentlyIn ? 'Use photo & Check Out' : 'Use photo & Check In'}
+        confirmLabel={
+          punchAction === 'break_out'
+            ? 'Use photo & Start Break'
+            : punchAction === 'break_in'
+            ? 'Use photo & Resume Work'
+            : punchAction === 'check_out'
+            ? 'Use photo & Check Out'
+            : 'Use photo & Check In'
+        }
         busyLabel="Recording punch…"
       />
     </div>

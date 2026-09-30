@@ -14,12 +14,12 @@ from __future__ import annotations
 
 import calendar
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_employee, install_id_header
@@ -29,6 +29,7 @@ from app.core.office import OFFICE
 from app.db.session import get_db
 from app.models.employee import Employee
 from app.models.enums import PunchDirection, PunchSource
+from app.models.attendance import PunchEvent
 from app.models.org import Location
 from app.services.attendance import (
     next_direction, recompute_day, record_punch,
@@ -55,6 +56,7 @@ class TodayResponse(BaseModel):
     full_name: str
     direction: PunchDirection
     is_currently_in: bool = False
+    last_punch_type: str | None = None
     checked_in_at: str | None
     checked_out_at: str | None
     worked_minutes: int
@@ -90,11 +92,37 @@ def me(
     next_dir = next_direction(db, emp, today)
     is_in = (next_dir == PunchDirection.OUT)
 
+    # Determine the latest punch type for accurate UI state
+    from app.services.attendance import _aware
+    window_start = datetime.combine(
+        today - timedelta(days=1), time(0, 0), tzinfo=timezone.utc
+    )
+    window_end = datetime.combine(
+        today + timedelta(days=2), time(0, 0), tzinfo=timezone.utc
+    )
+    last_event = db.scalars(
+        select(PunchEvent)
+        .where(
+            and_(
+                PunchEvent.employee_id == emp.id,
+                PunchEvent.rejection_reason.is_(None),
+                PunchEvent.event_ts_utc >= window_start,
+                PunchEvent.event_ts_utc < window_end,
+            )
+        )
+        .order_by(PunchEvent.event_ts_utc.desc())
+    ).first()
+    
+    last_punch_type = None
+    if last_event and last_event.raw_payload:
+        last_punch_type = last_event.raw_payload.get("punch_type")
+
     return TodayResponse(
         employee_code=emp.emp_code,
         full_name=emp.full_name,
         direction=next_dir,
         is_currently_in=is_in,
+        last_punch_type=last_punch_type,
         checked_in_at=day.first_in.isoformat() if day.first_in else None,
         checked_out_at=day.last_out.isoformat() if day.last_out else None,
         worked_minutes=day.worked_minutes,
@@ -121,9 +149,16 @@ async def punch(
     is_mocked: bool = Form(default=False),
     wifi_bssid: str | None = Form(default=None),
     direction: PunchDirection | None = Form(default=None),
+    punch_type: str | None = Form(default=None),
     captured_at: datetime | None = Form(default=None),
 ) -> PunchResponse:
     now = datetime.now(timezone.utc)
+
+    # Respect explicit punch_type for direction
+    if punch_type in ("break_out", "break_start", "check_out"):
+        direction = PunchDirection.OUT
+    elif punch_type in ("break_in", "break_end", "check_in"):
+        direction = PunchDirection.IN
 
     # `captured_at` is only sent for a punch that was taken offline and queued
     # on the phone. This is the one place a client-supplied time is allowed,
@@ -206,7 +241,10 @@ async def punch(
         if wfh_req:
             is_wfh = True
 
-    if is_wfh:
+    if settings.disable_geofence:
+        from app.services.geofence import GeoCheck
+        geo = GeoCheck(ok=True, distance_m=0, reason=None, matched_wifi=False)
+    elif is_wfh:
         if lat is None or lng is None:
             from app.services.geofence import GeoCheck
             geo = GeoCheck(ok=False, distance_m=None, reason="GPS location is required for WFH", matched_wifi=False)
@@ -276,6 +314,7 @@ async def punch(
         raw={"accuracy_m": accuracy_m, "wifi": bool(geo.matched_wifi),
              "face_checked": face is not None,
              "face_unavailable": face_unavailable,
+             "punch_type": punch_type,
              "queued": captured_at is not None,
              "queued_seconds": round(queued_seconds),
              "queue_note": queue_note},
@@ -321,10 +360,73 @@ async def punch(
     local = event_ts.astimezone(local_tz)
     punch_time_str = local.strftime('%I:%M %p').replace(" 0", " ")
 
-    # Dispatch Slack & in-app alerts based on punch direction and state
-    if direction == PunchDirection.IN:
+    # Dispatch Slack & in-app alerts based on explicit punch_type and direction
+    if punch_type in ("break_out", "break_start"):
+        from app.services.slack import post_break_started_alert
+        background_tasks.add_task(
+            post_break_started_alert,
+            emp.full_name,
+            emp.emp_code,
+            punch_time_str,
+            shift_date.isoformat(),
+            emp.email,
+        )
+        msg = f"Break started at {punch_time_str}"
+
+    elif punch_type in ("break_in", "break_end"):
+        from app.services.slack import post_break_ended_alert
+        from sqlalchemy import and_
+
+        prev_out = db.scalar(
+            select(PunchEvent)
+            .where(
+                and_(
+                    PunchEvent.employee_id == emp.id,
+                    PunchEvent.direction == PunchDirection.OUT,
+                    PunchEvent.rejection_reason.is_(None),
+                    PunchEvent.event_ts_utc < event.event_ts_utc,
+                )
+            )
+            .order_by(PunchEvent.event_ts_utc.desc())
+        )
+        break_mins = 0
+        if prev_out and prev_out.event_ts_utc:
+            prev_ts = prev_out.event_ts_utc
+            if prev_ts.tzinfo is None:
+                prev_ts = prev_ts.replace(tzinfo=timezone.utc)
+            curr_ts = event.event_ts_utc
+            if curr_ts.tzinfo is None:
+                curr_ts = curr_ts.replace(tzinfo=timezone.utc)
+            break_mins = max(1, int(round((curr_ts - prev_ts).total_seconds() / 60)))
+
+        background_tasks.add_task(
+            post_break_ended_alert,
+            emp.full_name,
+            emp.emp_code,
+            punch_time_str,
+            break_mins,
+            shift_date.isoformat(),
+            emp.email,
+        )
+        msg = f"Resumed work from break at {punch_time_str}"
+
+    elif punch_type == "check_out" or (punch_type is None and direction == PunchDirection.OUT):
+        from app.services.slack import post_checkout_alert
+        background_tasks.add_task(
+            post_checkout_alert,
+            emp.full_name,
+            emp.emp_code,
+            punch_time_str,
+            shift_date.isoformat(),
+            day.worked_minutes,
+            day.break_minutes,
+            emp.email,
+        )
+        msg = f"Checked out at {punch_time_str}"
+
+    else:
+        # Default Check-in / In direction
         if day.punch_count == 1:
-            # First check-in of the day
             if day.late_minutes > 0:
                 from app.services.notifications import notify_hr
                 from app.services.slack import format_duration_human
@@ -350,7 +452,6 @@ async def punch(
                 emp.email,
             )
         else:
-            # Resuming work from break
             from app.services.slack import post_break_ended_alert
             from sqlalchemy import and_
 
@@ -385,37 +486,7 @@ async def punch(
                 shift_date.isoformat(),
                 emp.email,
             )
-
-    elif direction == PunchDirection.OUT:
-        policy, _ = policy_for(db, emp, shift_date)
-        scheduled_start, scheduled_end = shift_bounds(policy, shift_date)
-        early_seconds = (scheduled_end - local).total_seconds()
-        early_minutes = int(early_seconds // 60)
-
-        if early_minutes > 30:
-            # Mid-shift punch-out -> Break started
-            from app.services.slack import post_break_started_alert
-            background_tasks.add_task(
-                post_break_started_alert,
-                emp.full_name,
-                emp.emp_code,
-                punch_time_str,
-                shift_date.isoformat(),
-                emp.email,
-            )
-        else:
-            # End of shift -> Final check-out
-            from app.services.slack import post_checkout_alert
-            background_tasks.add_task(
-                post_checkout_alert,
-                emp.full_name,
-                emp.emp_code,
-                punch_time_str,
-                shift_date.isoformat(),
-                day.worked_minutes,
-                day.break_minutes,
-                emp.email,
-            )
+        msg = f"Checked in at {punch_time_str}"
 
     return PunchResponse(
         accepted=True,
@@ -423,8 +494,7 @@ async def punch(
         punched_at=event_ts,
         distance_m=geo.distance_m,
         face_similarity=face.similarity if face else None,
-        message=("Checked in" if direction == PunchDirection.IN else "Checked out")
-                + f" at {punch_time_str}",
+        message=msg,
         attendance_status=day.status.value,
         worked_minutes=day.worked_minutes,
     )

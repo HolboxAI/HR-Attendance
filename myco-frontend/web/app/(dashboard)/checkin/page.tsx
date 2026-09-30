@@ -4,9 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
+  Coffee,
   Loader2,
   LogIn,
   LogOut,
+  Play,
 } from 'lucide-react';
 
 import { CameraCaptureModal } from '@/components/CameraCaptureModal';
@@ -21,6 +23,7 @@ type Today = {
   shiftEnd?: string | null;
   direction: 'in' | 'out';
   isCurrentlyIn?: boolean;
+  lastPunchType?: string | null;
   checkedInAt: string | null;
   checkedOutAt: string | null;
   workedMinutes: number;
@@ -54,6 +57,7 @@ export default function CheckinPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [punchAction, setPunchAction] = useState<'check_in' | 'check_out' | 'break_out' | 'break_in'>('check_in');
   const [currentMinuteOfDay, setCurrentMinuteOfDay] = useState(getIstMinutesNow);
   const cachedCoordsRef = useRef<{ lat: number; lng: number; accuracy: number; ts: number } | null>(null);
 
@@ -102,6 +106,7 @@ export default function CheckinPage() {
       shiftEnd: j.shift_end,
       direction: j.direction,
       isCurrentlyIn: j.is_currently_in ?? (j.direction === 'out'),
+      lastPunchType: j.last_punch_type,
       checkedInAt: j.checked_in_at,
       checkedOutAt: j.checked_out_at,
       workedMinutes: j.worked_minutes ?? 0,
@@ -164,8 +169,11 @@ export default function CheckinPage() {
     };
   }, [today, currentMinuteOfDay]);
 
-  // Is currently checked in?
+  // Attendance state:
+  // - isCurrentlyIn: Employee is actively in office / working
+  // - isOnBreak: Employee explicitly punched break_out (last punch was break_out)
   const isCurrentlyIn = today?.isCurrentlyIn ?? (today?.direction === 'out');
+  const isOnBreak = !isCurrentlyIn && Boolean(today?.checkedInAt) && today?.lastPunchType === 'break_out';
   const liveWorkedMinutes = today?.workedMinutes ?? 0;
 
   // Progress towards 8h / shift daily work target
@@ -227,6 +235,12 @@ export default function CheckinPage() {
     form.append('lng', String(lng));
     form.append('accuracy_m', String(accuracy));
     form.append('is_mocked', 'false');
+    form.append('punch_type', punchAction);
+    if (punchAction === 'check_in' || punchAction === 'break_in') {
+      form.append('direction', 'in');
+    } else {
+      form.append('direction', 'out');
+    }
 
     const res = await fetch('/api/gateway/api/v1/mobile/punch', {
       method: 'POST',
@@ -294,11 +308,13 @@ export default function CheckinPage() {
             Live Shift Progress Tracker
           </div>
           <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-ink tracking-tight">
-            {isCurrentlyIn ? 'Shift in Progress' : 'Ready to Check In'}
+            {isCurrentlyIn ? 'Shift in Progress' : isOnBreak ? 'Currently On Break' : 'Ready to Check In'}
           </h1>
           <p className="text-xs sm:text-sm text-ink-3 leading-relaxed">
             {isCurrentlyIn
               ? `You punched in at ${today?.checkedInAt ? hhmm12(today.checkedInAt) : 'today'}. Tap the circular button when your shift ends to record your checkout.`
+              : isOnBreak
+              ? 'You are currently on break. Tap Resume Work below when you are back at your desk.'
               : 'Tap the circular button below to open your camera and verify your attendance.'}
           </p>
         </div>
@@ -347,11 +363,24 @@ export default function CheckinPage() {
             <button
               type="button"
               onClick={() => {
+                setPunchAction(
+                  isOnBreak
+                    ? 'break_in'
+                    : isCurrentlyIn
+                    ? 'check_out'
+                    : 'check_in'
+                );
                 prefetchLocation();
                 setModalOpen(true);
               }}
               disabled={busy || !today}
-              aria-label={isCurrentlyIn ? 'Check out with camera' : 'Check in with camera'}
+              aria-label={
+                isCurrentlyIn
+                  ? 'Check out with camera'
+                  : isOnBreak
+                  ? 'Resume work with camera'
+                  : 'Check in with camera'
+              }
               className="size-40 sm:size-44 rounded-full p-0 border-0 bg-transparent cursor-pointer select-none active:scale-95 disabled:opacity-70 disabled:cursor-wait"
             >
               <GlowingShadow variant="circle">
@@ -370,14 +399,24 @@ export default function CheckinPage() {
                       {today?.checkedInAt ? `In ${hhmm12(today.checkedInAt)}` : 'Tap to punch'}
                     </span>
                   </>
+                ) : isOnBreak ? (
+                  <>
+                    <Play className="size-8 text-emerald-500 dark:text-emerald-400 mb-1" />
+                    <span className="font-display text-xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
+                      End Break
+                    </span>
+                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                      Resume Work
+                    </span>
+                  </>
                 ) : (
                   <>
                     <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
                     <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
-                      {today?.checkedInAt ? 'Resume / In' : 'Check In'}
+                      Check In
                     </span>
                     <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                      {today?.checkedOutAt ? `Out at ${hhmm12(today.checkedOutAt)}` : 'Tap to punch'}
+                      Tap to punch
                     </span>
                   </>
                 )}
@@ -385,6 +424,51 @@ export default function CheckinPage() {
             </button>
           </div>
         </div>
+
+        {/* Dedicated Break & Secondary Action Controls */}
+        {(isCurrentlyIn || isOnBreak) && (
+          <div className="flex flex-wrap items-center justify-center gap-4 pt-1">
+            {isCurrentlyIn ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPunchAction('break_out');
+                  prefetchLocation();
+                  setModalOpen(true);
+                }}
+                disabled={busy}
+                className="group relative inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
+              >
+                <Coffee className="size-5 text-amber-500 transition-transform group-hover:scale-110" />
+                <div className="text-left">
+                  <div className="font-display text-xs font-extrabold uppercase tracking-wider">
+                    Take a Break
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-3 uppercase">Break Out</div>
+                </div>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setPunchAction('check_out');
+                  prefetchLocation();
+                  setModalOpen(true);
+                }}
+                disabled={busy}
+                className="group relative inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
+              >
+                <LogOut className="size-5 text-rose-500 transition-transform group-hover:scale-110" />
+                <div className="text-left">
+                  <div className="font-display text-xs font-extrabold uppercase tracking-wider">
+                    End Shift
+                  </div>
+                  <div className="text-[10px] font-mono text-ink-3 uppercase">Check Out Directly</div>
+                </div>
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Bottom Shift Information Badges */}
         <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
@@ -412,7 +496,7 @@ export default function CheckinPage() {
           <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-mono text-blue-600 dark:text-blue-400">
             <span>Status:</span>
             <span className="font-bold">
-              {isCurrentlyIn ? 'In Office' : today?.checkedInAt ? 'On Break' : 'Not In'}
+              {isCurrentlyIn ? 'In Office' : isOnBreak ? 'On Break' : 'Not In'}
             </span>
           </div>
         </div>
@@ -459,9 +543,25 @@ export default function CheckinPage() {
         onCapture={punch}
         onClose={() => setModalOpen(false)}
         busy={busy}
-        title={isCurrentlyIn ? 'Camera Check-Out' : 'Camera Check-In'}
+        title={
+          punchAction === 'break_out'
+            ? 'Camera Break Out (Take Break)'
+            : punchAction === 'break_in'
+            ? 'Camera Break In (Resume Work)'
+            : punchAction === 'check_out'
+            ? 'Camera Check-Out'
+            : 'Camera Check-In'
+        }
         subject="Punching as"
-        confirmLabel="Verify Face & Punch"
+        confirmLabel={
+          punchAction === 'break_out'
+            ? 'Verify Face & Start Break'
+            : punchAction === 'break_in'
+            ? 'Verify Face & Resume Work'
+            : punchAction === 'check_out'
+            ? 'Verify Face & Check Out'
+            : 'Verify Face & Check In'
+        }
         busyLabel="Verifying…"
       />
     </div>

@@ -58,6 +58,18 @@ export function CameraCaptureModal({
     }
   }, []);
 
+  // Reset state whenever modal is opened so each punch takes a fresh photo
+  useEffect(() => {
+    if (open) {
+      setCapturedBlob(null);
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [open]);
+
   // Handle native dialog open/close
   useEffect(() => {
     const dialog = dialogRef.current;
