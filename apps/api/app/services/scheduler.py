@@ -261,9 +261,9 @@ def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> 
 
         last = punches[-1]
         if last.direction == PunchDirection.OUT:
-            time_since_out = (now - last.ts_utc).total_seconds() / 60
+            time_since_out = (now - last.event_ts_utc).total_seconds() / 60
             if time_since_out >= 45:
-                key = f"break_exceeded:{emp.emp_code}:{today.isoformat()}:{int(last.ts_utc.timestamp())}"
+                key = f"break_exceeded:{emp.emp_code}:{today.isoformat()}:{int(last.event_ts_utc.timestamp())}"
                 if _claim(db, org_id=org.id, job="break_exceeded", key=key,
                           detail={"employee": emp.emp_code, "minutes": int(time_since_out)}) is None:
                     continue
