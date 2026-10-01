@@ -1395,3 +1395,115 @@ def update_signup_decision(
         logger.error("Failed to update signup Slack message: %s", e)
         return False
 
+
+def post_ephemeral_to_admins(
+    channel_id: str,
+    text: str,
+    blocks: list[dict] | None = None,
+) -> None:
+    """Send a private ephemeral message inside the channel to all designated admin user IDs."""
+    if not settings.slack_bot_token:
+        return
+
+    admin_ids = getattr(settings, "slack_admin_user_ids", []) or []
+    for admin_id in admin_ids:
+        try:
+            payload: dict = {
+                "channel": channel_id,
+                "user": admin_id,
+                "text": text,
+            }
+            if blocks:
+                payload["blocks"] = blocks
+            resp = httpx.post(
+                "https://slack.com/api/chat.postEphemeral",
+                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                json=payload,
+                timeout=5.0,
+            )
+            data = resp.json()
+            if not data.get("ok"):
+                logger.warning("postEphemeral to admin %s failed: %s", admin_id, data.get("error"))
+        except Exception as e:
+            logger.warning("Error posting ephemeral to admin %s: %s", admin_id, e)
+
+
+def post_ephemeral_to_user(
+    channel_id: str,
+    user_id: str,
+    text: str,
+    blocks: list[dict] | None = None,
+) -> None:
+    """Send a private ephemeral message to a single user in a channel."""
+    if not settings.slack_bot_token:
+        return
+    try:
+        payload: dict = {
+            "channel": channel_id,
+            "user": user_id,
+            "text": text,
+        }
+        if blocks:
+            payload["blocks"] = blocks
+        httpx.post(
+            "https://slack.com/api/chat.postEphemeral",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json=payload,
+            timeout=5.0,
+        )
+    except Exception as e:
+        logger.warning("Error posting ephemeral to user %s: %s", user_id, e)
+
+
+def open_slack_modal(trigger_id: str, view: dict) -> bool:
+    """Open a Slack modal popup in response to a slash command or interactive trigger."""
+    if not settings.slack_bot_token:
+        return False
+    try:
+        resp = httpx.post(
+            "https://slack.com/api/views.open",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={"trigger_id": trigger_id, "view": view},
+            timeout=5.0,
+        )
+        data = resp.json()
+        if not data.get("ok"):
+            logger.error("views.open failed: %s", data.get("error"))
+            return False
+        return True
+    except Exception as e:
+        logger.error("Error calling views.open: %s", e)
+        return False
+
+
+def post_late_approved_broadcast(
+    employee_name: str,
+    employee_email: str | None,
+    admin_name: str,
+    channel_id: str | None = None,
+) -> None:
+    """Broadcast public late arrival approval and warning message tagged to employee."""
+    if not settings.slack_bot_token:
+        return
+    target_channel = channel_id or settings.slack_channel_id
+    if not target_channel:
+        return
+
+    mention = format_slack_mention(employee_name, employee_email)
+    text = (
+        f"Approved by *@{admin_name}*: {mention}, your late arrival is approved. "
+        f"Make sure you don't miss check-in on time from onwards."
+    )
+    try:
+        httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json={
+                "channel": target_channel,
+                "text": text,
+            },
+            timeout=5.0,
+        )
+    except Exception as e:
+        logger.error("Failed to broadcast late approval: %s", e)
+

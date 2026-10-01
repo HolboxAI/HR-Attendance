@@ -327,10 +327,25 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
             is_wfh = True
 
     status_val = AttendanceStatus(resolved.status)
+    
+    # Check if there is an approved Late arrival request for this day
+    from app.models.late_request import LateRequest
+    from app.models.enums import CorrectionStatus
+    late_req = db.scalar(
+        select(LateRequest).where(
+            and_(
+                LateRequest.employee_id == employee.id,
+                LateRequest.shift_date == shift_date,
+                LateRequest.status == CorrectionStatus.APPROVED,
+            )
+        )
+    )
+    if late_req:
+        if status_val == AttendanceStatus.ABSENT or status_val == AttendanceStatus.NOT_MARKED:
+            status_val = AttendanceStatus.PRESENT
+        is_regularized = True
+
     if is_wfh and status_val == AttendanceStatus.PRESENT:
-        # If they are WFH and present, their status is WFH.
-        # Note: if they are half_day, we could leave it as half_day or make a half_day_wfh.
-        # For now, we override PRESENT to WFH.
         status_val = AttendanceStatus.WFH
 
     day.status = status_val

@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     slack_bot_token: str | None = None
     slack_signing_secret: str | None = None
     slack_channel_id: str | None = None
+    slack_admin_user_ids: list[str] = [
+        "U0B023SC0UB",  # Dhruv
+        "U0BQ8EHQ6KC",  # Krish
+        "U0BQ8HZ3MKJ",  # Himesh
+        "U0B05B4GRDK",  # Ashly
+    ]
 
     # SMTP Email Settings
     smtp_host: str | None = None

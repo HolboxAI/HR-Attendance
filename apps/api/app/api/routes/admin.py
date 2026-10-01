@@ -183,7 +183,7 @@ def board(
         if record.status.value in counts:
             counts[record.status.value] += 1
         is_wfh_active = is_wfh and (record.punch_count > 0 or in_now or record.status.value in ("wfh", "present", "half_day"))
-        if is_wfh_active:
+        if is_wfh_active and record.status.value != "wfh":
             counts["wfh"] += 1
         if record.late_minutes > 0:
             counts["late"] += 1
