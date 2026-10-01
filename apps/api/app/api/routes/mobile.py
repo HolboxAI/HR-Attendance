@@ -56,6 +56,9 @@ class TodayResponse(BaseModel):
     full_name: str
     direction: PunchDirection
     is_currently_in: bool = False
+    is_checked_in: bool = False
+    is_on_break: bool = False
+    is_checked_out: bool = False
     last_punch_type: str | None = None
     checked_in_at: str | None
     checked_out_at: str | None
@@ -117,11 +120,18 @@ def me(
     if last_event and last_event.raw_payload:
         last_punch_type = last_event.raw_payload.get("punch_type")
 
+    is_checked_in = day.first_in is not None
+    is_on_break = not is_in and is_checked_in and last_punch_type in ("break_out", "break_start")
+    is_checked_out = not is_in and is_checked_in and not is_on_break
+
     return TodayResponse(
         employee_code=emp.emp_code,
         full_name=emp.full_name,
         direction=next_dir,
         is_currently_in=is_in,
+        is_checked_in=is_checked_in,
+        is_on_break=is_on_break,
+        is_checked_out=is_checked_out,
         last_punch_type=last_punch_type,
         checked_in_at=day.first_in.isoformat() if day.first_in else None,
         checked_out_at=day.last_out.isoformat() if day.last_out else None,
@@ -203,8 +213,65 @@ async def punch(
 
     policy, _ = policy_for(db, emp, event_ts.date())
     shift_date = shift_date_for(event_ts, policy)
+
+    # -------------------------------------------------------------
+    # State Machine Validation: Prevent illegal transitions
+    # -------------------------------------------------------------
+    curr_next_dir = next_direction(db, emp, shift_date)
+    is_in_now = (curr_next_dir == PunchDirection.OUT)
+
+    # Find the last accepted punch type today
+    window_start = datetime.combine(
+        shift_date - timedelta(days=1), time(0, 0), tzinfo=timezone.utc
+    )
+    window_end = datetime.combine(
+        shift_date + timedelta(days=2), time(0, 0), tzinfo=timezone.utc
+    )
+    last_event_today = db.scalars(
+        select(PunchEvent)
+        .where(
+            and_(
+                PunchEvent.employee_id == emp.id,
+                PunchEvent.rejection_reason.is_(None),
+                PunchEvent.event_ts_utc >= window_start,
+                PunchEvent.event_ts_utc < window_end,
+            )
+        )
+        .order_by(PunchEvent.event_ts_utc.desc())
+    ).first()
+
+    last_type_today = (last_event_today.raw_payload or {}).get("punch_type") if last_event_today else None
+    has_checked_in_today = last_event_today is not None
+    is_on_break_now = not is_in_now and has_checked_in_today and last_type_today in ("break_out", "break_start")
+
+    # 1. Break In (Resume) validation
+    if punch_type in ("break_in", "break_end"):
+        if not is_on_break_now:
+            raise HTTPException(400, "You are not currently on a break. Tap Check-In instead.")
+        direction = PunchDirection.IN
+
+    # 2. Break Out (Take Break) validation
+    elif punch_type in ("break_out", "break_start"):
+        if not is_in_now:
+            if not has_checked_in_today:
+                raise HTTPException(400, "You must check in before taking a break.")
+            raise HTTPException(400, "You are already stepped out on break or checked out.")
+        direction = PunchDirection.OUT
+
+    # 3. Check Out validation
+    elif punch_type == "check_out":
+        if not has_checked_in_today:
+            raise HTTPException(400, "You have not checked in today.")
+        direction = PunchDirection.OUT
+
+    # 4. Check In validation
+    elif punch_type == "check_in":
+        if is_in_now:
+            raise HTTPException(400, "You are already checked in.")
+        direction = PunchDirection.IN
+
     if direction is None:
-        direction = next_direction(db, emp, shift_date)
+        direction = curr_next_dir
 
     # Every presence input comes from the location row, with app/core/office.py
     # only as the fallback for a database that predates it. That constant used

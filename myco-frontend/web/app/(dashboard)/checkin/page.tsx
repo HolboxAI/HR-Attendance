@@ -23,6 +23,9 @@ type Today = {
   shiftEnd?: string | null;
   direction: 'in' | 'out';
   isCurrentlyIn?: boolean;
+  isCheckedIn?: boolean;
+  isOnBreak?: boolean;
+  isCheckedOut?: boolean;
   lastPunchType?: string | null;
   checkedInAt: string | null;
   checkedOutAt: string | null;
@@ -170,10 +173,14 @@ export default function CheckinPage() {
   }, [today, currentMinuteOfDay]);
 
   // Attendance state:
+  // - isCheckedIn: Employee punched in today
   // - isCurrentlyIn: Employee is actively in office / working
   // - isOnBreak: Employee explicitly punched break_out (last punch was break_out)
+  // - isCheckedOut: Employee has completed their shift for today
+  const isCheckedIn = today?.isCheckedIn ?? Boolean(today?.checkedInAt);
   const isCurrentlyIn = today?.isCurrentlyIn ?? (today?.direction === 'out');
-  const isOnBreak = !isCurrentlyIn && Boolean(today?.checkedInAt) && today?.lastPunchType === 'break_out';
+  const isOnBreak = today?.isOnBreak ?? (!isCurrentlyIn && isCheckedIn && today?.lastPunchType === 'break_out');
+  const isCheckedOut = today?.isCheckedOut ?? (!isCurrentlyIn && isCheckedIn && !isOnBreak);
   const liveWorkedMinutes = today?.workedMinutes ?? 0;
 
   // Progress towards 8h / shift daily work target
@@ -360,73 +367,89 @@ export default function CheckinPage() {
 
           {/* Centered Interactive Check-in / Check-out Button */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <button
-              type="button"
-              onClick={() => {
-                setPunchAction(
-                  isOnBreak
-                    ? 'break_in'
-                    : isCurrentlyIn
-                    ? 'check_out'
-                    : 'check_in'
-                );
-                prefetchLocation();
-                setModalOpen(true);
-              }}
-              disabled={busy || !today}
-              aria-label={
-                isCurrentlyIn
-                  ? 'Check out with camera'
-                  : isOnBreak
-                  ? 'Resume work with camera'
-                  : 'Check in with camera'
-              }
-              className="size-40 sm:size-44 rounded-full p-0 border-0 bg-transparent cursor-pointer select-none active:scale-95 disabled:opacity-70 disabled:cursor-wait"
-            >
-              <GlowingShadow variant="circle">
-                {busy ? (
-                  <>
-                    <Loader2 className="size-6 animate-spin text-ink mb-1" />
-                    <span className="text-[11px] font-mono text-ink-3 uppercase">Recording…</span>
-                  </>
-                ) : isCurrentlyIn ? (
-                  <>
-                    <LogOut className="size-8 text-rose-500 dark:text-rose-400 mb-1" />
-                    <span className="font-display text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
-                      Check Out
-                    </span>
-                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                      {today?.checkedInAt ? `In ${hhmm12(today.checkedInAt)}` : 'Tap to punch'}
-                    </span>
-                  </>
-                ) : isOnBreak ? (
-                  <>
-                    <Play className="size-8 text-emerald-500 dark:text-emerald-400 mb-1" />
-                    <span className="font-display text-xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
-                      End Break
-                    </span>
-                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                      Resume Work
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
-                    <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
-                      Check In
-                    </span>
-                    <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
-                      Tap to punch
-                    </span>
-                  </>
-                )}
-              </GlowingShadow>
-            </button>
+            {isCheckedOut ? (
+              /* 4. Shift Concluded / Checked Out for the Day */
+              <div className="size-40 sm:size-44 rounded-full p-0 flex flex-col items-center justify-center bg-surface-2/80 border-2 border-emerald-500/30 text-center shadow-lg">
+                <CheckCircle2 className="size-8 text-emerald-500 dark:text-emerald-400 mb-1" />
+                <span className="font-display text-lg font-black tracking-tight text-emerald-600 dark:text-emerald-400">
+                  Checked Out
+                </span>
+                <span className="text-[10px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                  {today?.checkedOutAt ? `Out ${hhmm12(today.checkedOutAt)}` : 'Shift Concluded'}
+                </span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setPunchAction(
+                    isOnBreak
+                      ? 'break_in'
+                      : isCurrentlyIn
+                      ? 'check_out'
+                      : 'check_in'
+                  );
+                  prefetchLocation();
+                  setModalOpen(true);
+                }}
+                disabled={busy || !today}
+                aria-label={
+                  isCurrentlyIn
+                    ? 'Check out with camera'
+                    : isOnBreak
+                    ? 'Resume work with camera'
+                    : 'Check in with camera'
+                }
+                className="size-40 sm:size-44 rounded-full p-0 border-0 bg-transparent cursor-pointer select-none active:scale-95 disabled:opacity-70 disabled:cursor-wait"
+              >
+                <GlowingShadow variant="circle">
+                  {busy ? (
+                    <>
+                      <Loader2 className="size-6 animate-spin text-ink mb-1" />
+                      <span className="text-[11px] font-mono text-ink-3 uppercase">Recording…</span>
+                    </>
+                  ) : isCurrentlyIn ? (
+                    /* 2. Working / In Office -> Primary action is Check Out */
+                    <>
+                      <LogOut className="size-8 text-rose-500 dark:text-rose-400 mb-1" />
+                      <span className="font-display text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
+                        Check Out
+                      </span>
+                      <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                        {today?.checkedInAt ? `In ${hhmm12(today.checkedInAt)}` : 'Tap to punch'}
+                      </span>
+                    </>
+                  ) : isOnBreak ? (
+                    /* 3. On Break -> Primary action is End Break */
+                    <>
+                      <Play className="size-8 text-emerald-500 dark:text-emerald-400 mb-1" />
+                      <span className="font-display text-xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
+                        End Break
+                      </span>
+                      <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                        Resume Work
+                      </span>
+                    </>
+                  ) : (
+                    /* 1. Not Checked In -> Primary action is Check In */
+                    <>
+                      <LogIn className="size-8 text-blue-500 dark:text-blue-400 mb-1" />
+                      <span className="font-display text-xl font-black tracking-tight text-blue-600 dark:text-blue-400">
+                        Check In
+                      </span>
+                      <span className="text-[11px] font-mono text-ink-3 uppercase tracking-wider mt-0.5">
+                        Tap to punch
+                      </span>
+                    </>
+                  )}
+                </GlowingShadow>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Dedicated Break & Secondary Action Controls */}
-        {(isCurrentlyIn || isOnBreak) && (
+        {/* Dedicated Break & Secondary Action Controls - ONLY shown while actively working or on break */}
+        {!isCheckedOut && (isCurrentlyIn || isOnBreak) && (
           <div className="flex flex-wrap items-center justify-center gap-4 pt-1">
             {isCurrentlyIn ? (
               <button
