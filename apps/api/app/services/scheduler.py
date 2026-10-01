@@ -260,7 +260,9 @@ def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> 
             continue
 
         last = punches[-1]
-        if last.direction == PunchDirection.OUT:
+        # Only alert if the last punch was explicitly a break_out (NOT a final check_out)
+        last_punch_type = (last.raw_payload or {}).get("punch_type")
+        if last.direction == PunchDirection.OUT and last_punch_type in ("break_out", "break_start"):
             aware_now = _aware(now)
             aware_last = _aware(last.event_ts_utc)
             time_since_out = (aware_now - aware_last).total_seconds() / 60
