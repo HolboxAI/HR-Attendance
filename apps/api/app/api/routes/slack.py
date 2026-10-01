@@ -216,8 +216,8 @@ async def slack_commands(
         open_slack_modal(trigger_id, view)
         return ""
 
-    # 3. /early-checkout -> Private modal
-    if command == "/early-checkout":
+    # 3. /early-checkout & /early-leave -> Private modal
+    if command in ("/early-checkout", "/early-leave", "/earlyleave"):
         view = {
             "type": "modal",
             "callback_id": "submit_early_checkout_request",
@@ -243,8 +243,8 @@ async def slack_commands(
         open_slack_modal(trigger_id, view)
         return ""
 
-    # 4. /wfh -> Private modal for WFH request
-    if command == "/wfh":
+    # 4. /wfh & /apply-wfh -> Private modal for WFH request
+    if command in ("/wfh", "/apply-wfh", "/request-wfh"):
         today_str = org_today().isoformat()
         view = {
             "type": "modal",
@@ -282,8 +282,8 @@ async def slack_commands(
         open_slack_modal(trigger_id, view)
         return ""
 
-    # 5. /leave -> Private modal
-    if command == "/leave":
+    # 5. /apply-leave, /request-leave, /leave -> Private modal
+    if command in ("/leave", "/apply-leave", "/request-leave", "/timeoff"):
         today_str = org_today().isoformat()
         view = {
             "type": "modal",
@@ -505,6 +505,79 @@ async def slack_interactions(
                     channel_id=channel_id,
                     user_id=slack_user_id,
                     text="✅ Your WFH request was submitted privately to admins for approval.",
+                )
+            return {"response_action": "clear"}
+
+        if callback_id == "submit_leave_request":
+            from_str = values.get("leave_from_block", {}).get("leave_from_input", {}).get("selected_date")
+            to_str = values.get("leave_to_block", {}).get("leave_to_input", {}).get("selected_date")
+            reason = values.get("leave_reason_block", {}).get("leave_reason_input", {}).get("value", "").strip()
+
+            from_date = datetime.strptime(from_str, "%Y-%m-%d").date() if from_str else org_today()
+            to_date = datetime.strptime(to_str, "%Y-%m-%d").date() if to_str else from_date
+            if to_date < from_date:
+                to_date = from_date
+
+            days_count = float((to_date - from_date).days + 1)
+
+            # Look up default leave type for org
+            from app.models.leave import LeaveType
+            lt = db.scalar(select(LeaveType).where(LeaveType.org_id == emp.org_id).limit(1))
+
+            leave_req = LeaveRequest(
+                id=uuid.uuid4(),
+                org_id=emp.org_id,
+                employee_id=emp.id,
+                leave_type_id=lt.id if lt else emp.org_id,
+                from_date=from_date,
+                to_date=to_date,
+                days=days_count,
+                reason=reason,
+                status=LeaveStatus.PENDING,
+            )
+            db.add(leave_req)
+            db.commit()
+
+            admin_blocks = [
+                {
+                    "type": "header",
+                    "text": {"type": "plain_text", "text": "🌴 Leave Request (Private to Admins)", "emoji": True},
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{emp.full_name}* requested *{days_count:g} days* of leave from *{from_date.strftime('%d %b %Y')}* to *{to_date.strftime('%d %b %Y')}*.\n📝 *Reason:* _{reason}_",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "✅ Approve Leave", "emoji": True},
+                            "style": "primary",
+                            "value": f"approve:{leave_req.id}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "❌ Reject", "emoji": True},
+                            "style": "danger",
+                            "value": f"reject:{leave_req.id}",
+                        },
+                    ],
+                },
+            ]
+            if channel_id:
+                post_ephemeral_to_admins(
+                    channel_id=channel_id,
+                    text=f"Leave request from {emp.full_name}",
+                    blocks=admin_blocks,
+                )
+                post_ephemeral_to_user(
+                    channel_id=channel_id,
+                    user_id=slack_user_id,
+                    text=f"✅ Your leave request ({from_date} to {to_date}) was submitted privately to admins for approval.",
                 )
             return {"response_action": "clear"}
 
