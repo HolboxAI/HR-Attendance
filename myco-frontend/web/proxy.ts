@@ -18,7 +18,7 @@ import { ACCESS_COOKIE, API, REFRESH_COOKIE } from '@/lib/session';
  * the response, so an expiring token is renewed here rather than each page
  * having to cope with a 401.
  */
-const PUBLIC = ['/login', '/signup', '/demo', '/api/signup', '/holbox-logo.png', '/icon.png', '/favicon.ico'];
+const PUBLIC = ['/login', '/signup', '/demo', '/punch', '/api/signup', '/api/gateway/api/v1/mobile/punch', '/holbox-logo.png', '/icon.png', '/favicon.ico'];
 
 function expired(token: string): boolean {
   try {

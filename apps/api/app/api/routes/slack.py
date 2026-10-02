@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Annotated
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
@@ -214,7 +214,7 @@ async def slack_commands(
             ],
         }
         open_slack_modal(trigger_id, view)
-        return ""
+        return Response(status_code=200)
 
     # 3. /early-checkout & /early-leave -> Private modal
     if command in ("/early-checkout", "/early-leave", "/earlyleave"):
@@ -241,7 +241,7 @@ async def slack_commands(
             ],
         }
         open_slack_modal(trigger_id, view)
-        return ""
+        return Response(status_code=200)
 
     # 4. /wfh & /apply-wfh -> Private modal for WFH request
     if command in ("/wfh", "/apply-wfh", "/request-wfh"):
@@ -280,7 +280,7 @@ async def slack_commands(
             ],
         }
         open_slack_modal(trigger_id, view)
-        return ""
+        return Response(status_code=200)
 
     # 5. /apply-leave, /request-leave, /leave -> Private modal
     if command in ("/leave", "/apply-leave", "/request-leave", "/timeoff"):
@@ -328,7 +328,7 @@ async def slack_commands(
             ],
         }
         open_slack_modal(trigger_id, view)
-        return ""
+        return Response(status_code=200)
 
     return {"response_type": "ephemeral", "text": f"Unknown command {command}"}
 
