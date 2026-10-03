@@ -1,4 +1,4 @@
-# 🚀 Antigravity HRMS — Next-Gen Biometric & Shift Attendance Platform
+# ⚡ AttendX — Enterprise AI Biometric & Geofenced Attendance Platform
 
 [![Deployment Status](https://img.shields.io/badge/Deployment-AWS%20EC2-orange?logo=amazon-aws)](https://attendance.holbox.ai)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com)
@@ -6,44 +6,34 @@
 [![AWS Rekognition](https://img.shields.io/badge/Biometrics-AWS%20Rekognition-232F3E?logo=amazon-aws)](https://aws.amazon.com/rekognition/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-An enterprise-grade, attendance-first Human Resource Management System (HRMS) built for high-velocity teams. Features **instant AI facial recognition (<1s check-in)**, **geofencing & office radius enforcement**, **multi-tier shift scheduling**, **Slack interactive slash commands & 1-click approvals**, and **granular attendance analytics with automated PDF/CSV exports**.
+An enterprise-grade, attendance-first platform built for high-velocity teams. Features **instant AI facial recognition (<1s check-in)**, **geofencing & office radius enforcement**, **multi-tier shift scheduling**, **Slack interactive slash commands & 1-click approvals**, and **granular attendance analytics with automated PDF/CSV exports**.
 
 🌐 **Live Deployed App (AWS EC2)**: [https://attendance.holbox.ai](https://attendance.holbox.ai)
 
 ---
 
-## 📸 Screenshots & UI Showcase
+## 📸 Platform Showcase
 
 <div align="center">
-  <h3>✨ Modern Dark-Mode Enterprise Admin Dashboard</h3>
-  <img src="docs/screenshots/dashboard.png" alt="Admin Dashboard Overview" width="100%" />
+  <h3>✨ Modern Dark-Mode Executive Dashboard</h3>
+  <img src="docs/screenshots/dashboard.png" alt="AttendX Dashboard" width="100%" />
 </div>
 
 <br/>
 
 <div align="center">
-  <table width="100%">
-    <tr>
-      <td width="50%">
-        <h4 align="center">📋 Real-Time Attendance Matrix & Board</h4>
-        <img src="docs/screenshots/attendance_board.png" alt="Live Board" width="100%" />
-      </td>
-      <td width="50%">
-        <h4 align="center">📊 Granular Attendance History & Breakdown</h4>
-        <img src="docs/screenshots/history.png" alt="Attendance History" width="100%" />
-      </td>
-    </tr>
-  </table>
+  <h3>🎯 1-Tap Biometric Check-In & State Tracker</h3>
+  <img src="docs/screenshots/checkin.png" alt="AttendX 1-Tap Biometric Check-In" width="85%" />
 </div>
 
 ---
 
-## 🌟 Key System Architecture & Features
+## 🌟 Core System Architecture
 
 ### 1. ⚡ Instant Biometric & Geofenced Punch
 * **AWS Rekognition AI Matching**: 1-tap live selfie capture matched in under 1 second against indexed reference vectors with high confidence scoring.
 * **Geofence Radius Validation**: Haversine GPS distance calculation guarantees check-ins occur strictly within verified office premises.
-* **4-State Real-Time Lifecycle**: Seamless state machine transitions across `Check-In` ➔ `Start Break` ➔ `End Break & Resume` ➔ `Check-Out`.
+* **4-State Real-Time Lifecycle**: State machine transitions across `Check-In` ➔ `Start Break` ➔ `End Break & Resume` ➔ `Check-Out`.
 * **Tamper-Proof & Idempotent**: SHA-256 event hashing prevents duplicate punch replay attacks or multi-device desynchronization.
 
 ### 2. 💬 Slack Interactive Attendance Commands
@@ -78,14 +68,14 @@ An enterprise-grade, attendance-first Human Resource Management System (HRMS) bu
 │       │   ├── core/         # Config, security, clock (IST org time), and AWS helpers
 │       │   ├── models/       # SQLAlchemy models (PostgreSQL / SQLite)
 │       │   └── services/     # Biometric engine, attendance resolver, scheduler, PDF exporter
-│       └── tests/            # Full test suites
+│       └── tests/            # Automated test suites
 │
 ├── myco-frontend/
 │   ├── web/                  # Next.js 14 Web Dashboard (Tailwind CSS, Lucide icons)
 │   └── mobile/               # React Native / Expo Mobile Application
 │
 ├── docs/                     # Documentation & UI assets
-│   └── screenshots/          # Platform preview captures
+│   └── screenshots/          # Platform preview captures (dashboard.png, checkin.png)
 │
 └── deploy_to_ec2.sh          # Safe deployment automation script for AWS EC2
 ```
