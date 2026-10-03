@@ -37,6 +37,7 @@ class HistoryRow(BaseModel):
     first_in: datetime | None
     last_out: datetime | None
     worked_minutes: int
+    break_minutes: int = 0
     late_minutes: int
     punch_count: int
     has_exception: bool
@@ -148,6 +149,7 @@ def attendance_list(
             first_in=day.first_in,
             last_out=day.last_out,
             worked_minutes=day.worked_minutes,
+            break_minutes=day.break_minutes or 0,
             late_minutes=day.late_minutes,
             punch_count=day.punch_count,
             has_exception=day.has_exception,

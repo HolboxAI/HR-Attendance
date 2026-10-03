@@ -1,102 +1,118 @@
-# Boxcode HRMS
+# 🚀 Antigravity HRMS — Next-Gen Biometric & Shift Attendance Platform
 
-An enterprise-grade, attendance-first Human Resource Management System (HRMS) built for modern teams. Features AI facial recognition check-in, geofencing, multi-tier shift scheduling, 1-click email and Slack leave approvals, and employee self-service.
+[![Deployment Status](https://img.shields.io/badge/Deployment-AWS%20EC2-orange?logo=amazon-aws)](https://attendance.holbox.ai)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![Next.js 14](https://img.shields.io/badge/Frontend-Next.js%2014-black?logo=next.js)](https://nextjs.org)
+[![AWS Rekognition](https://img.shields.io/badge/Biometrics-AWS%20Rekognition-232F3E?logo=amazon-aws)](https://aws.amazon.com/rekognition/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+An enterprise-grade, attendance-first Human Resource Management System (HRMS) built for high-velocity teams. Features **instant AI facial recognition (<1s check-in)**, **geofencing & office radius enforcement**, **multi-tier shift scheduling**, **Slack interactive slash commands & 1-click approvals**, and **granular attendance analytics with automated PDF/CSV exports**.
+
+🌐 **Live Deployed App (AWS EC2)**: [https://attendance.holbox.ai](https://attendance.holbox.ai)
 
 ---
 
-## 🌟 Key Features
+## 📸 Screenshots & UI Showcase
 
-### 1. Attendance & Verification
-* **Facial Recognition**: Live face capture matched against enrolled employee reference embeddings via **AWS Rekognition**.
-* **Camera Fallback**: Seamless fallback for web check-in on devices or unencrypted HTTP connections without breaking biometric pipelines.
-* **Geofence & Location Enforcement**: GPS radius validation ensures check-ins occur strictly on-premises.
-* **Append-Only Punch Events**: Normalized punch events are immutable, idempotent, and resilient to device retries or network outages.
+<div align="center">
+  <h3>✨ Modern Dark-Mode Enterprise Admin Dashboard</h3>
+  <img src="docs/screenshots/dashboard.png" alt="Admin Dashboard Overview" width="100%" />
+</div>
 
-### 2. Multi-Tier Shift Management (PRD §8.5)
+<br/>
+
+<div align="center">
+  <table width="100%">
+    <tr>
+      <td width="50%">
+        <h4 align="center">📋 Real-Time Attendance Matrix & Board</h4>
+        <img src="docs/screenshots/attendance_board.png" alt="Live Board" width="100%" />
+      </td>
+      <td width="50%">
+        <h4 align="center">📊 Granular Attendance History & Breakdown</h4>
+        <img src="docs/screenshots/history.png" alt="Attendance History" width="100%" />
+      </td>
+    </tr>
+  </table>
+</div>
+
+---
+
+## 🌟 Key System Architecture & Features
+
+### 1. ⚡ Instant Biometric & Geofenced Punch
+* **AWS Rekognition AI Matching**: 1-tap live selfie capture matched in under 1 second against indexed reference vectors with high confidence scoring.
+* **Geofence Radius Validation**: Haversine GPS distance calculation guarantees check-ins occur strictly within verified office premises.
+* **4-State Real-Time Lifecycle**: Seamless state machine transitions across `Check-In` ➔ `Start Break` ➔ `End Break & Resume` ➔ `Check-Out`.
+* **Tamper-Proof & Idempotent**: SHA-256 event hashing prevents duplicate punch replay attacks or multi-device desynchronization.
+
+### 2. 💬 Slack Interactive Attendance Commands
+* **Instant Slash Commands**: Full suite of slash commands (`/checkin`, `/checkout`, `/break`, `/resume`, `/leave`, `/wfh`, `/late`).
+* **Zero Channel Chatter**: Interactive commands open private modal dialogs and single-use 1-tap camera links with zero public channel clutter.
+* **1-Click Admin Decision Cards**: Admins receive private interactive approval/rejection cards directly in Slack with real-time employee notification broadcasts.
+
+### 3. ⏱ Multi-Tier Shift Resolution Engine
 * **Deterministic 4-Tier Hierarchy**:
-  1. **Direct Employee Override**: Specific date-bounded assignments.
-  2. **Shift Squads / Groups**: Department-level schedules (e.g. Intern Squad 3:00 PM – 8:00 PM).
-  3. **Organization Default Shift**: Company-wide standard timing.
-  4. **Fallback Policy**: Built-in 09:00 – 18:00 standard day shift.
-* **Shift Deletion Protection**: Built-in safeguards prevent accidental deletion of active organization default shifts.
-* **Live Roster Matrix**: Real-time view of daily assigned shifts, timing windows, and group memberships.
+  1. **Direct Employee Assignment**: Specific date-bounded custom shifts.
+  2. **Shift Squads / Groups**: Department schedules (*Engineers 1:00 PM – 9:00 PM*, *Interns 4:00 PM – 8:00 PM*, *Operations 1:00 PM – 9:00 PM*, *IIM Students 6:00 PM – 10:00 PM*).
+  3. **Organization Default Shift**: Company standard timings.
+  4. **Fallback Shift Policy**: Default 09:00 – 18:00 policy.
+* **Precision Late & Cutover Calculation**: Late minutes and absence alerts are calculated relative to each person's exact assigned shift window.
 
-### 3. Shift-Aware Notifications & Alerts
-* **Precision Scheduler**: Late arrival and absence alerts are calculated relative to each employee's effective shift window (e.g., afternoon interns starting at 3:00 PM will never trigger false 9:00 AM alerts).
-* **Slack Bot Alerts**: Automated notifications dispatched to designated Slack channels for missing check-ins or late arrivals.
-* **Missing Punch-Out Nudges**: Automated reminders fired for incomplete shifts after the shift cutover threshold.
-
-### 4. Leave Management & 1-Click Approvals
-* **5 Official Leave Categories**: Personal, Family emergency, Medical/health-related, Family/household responsibility, and Other legitimate personal reasons.
-* **1-Click Email Decision**: Actionable emails with HMAC-signed tokens allowing admins to approve or reject leave with a single tap in Gmail.
-* **Slack Interactive Cards**: Real-time leave request cards with interactive Approve and Reject action buttons.
-* **Balance & Overlap Protection**: Strict prevention against overlapping dates, double approvals, and self-approval loopholes. Half-day (0.5) and unpaid leave rules natively supported.
-
-### 5. Web & Mobile Client Apps
-* **Admin Dashboard (Next.js 14)**:
-  * Live employee attendance board with filterable views.
-  * Shift assignment hub (`/people/shifts`).
-  * Leave status tracking & audit tables (`/leave/status`, `/leave/audit`).
-  * Attendance history cards & correction reviews (`/history`, `/corrections`).
-  * Comprehensive Settings & Profile Hub (`/settings`) with password strength checks and dark/light theme options.
-* **Employee Mobile App (React Native / Expo)**:
-  * 1-tap facial check-in with GPS location tagging.
-  * Leave and correction request submissions.
-  * Monthly attendance and hours breakdown.
+### 4. 🌴 Leave Policies & Balance Management
+* **Strict Balance & Overlap Safeguards**: Automatic validation against overlapping dates, double booking, and leave quotas.
+* **Official Categories**: Comprehensive leave tracking with support for Paid (CL, SL, PL), Unpaid (LOP), Half-Day, and Medical Certificates.
+* **Multi-Format Exports**: 1-click automated PDF and Excel/CSV attendance register generator with worked hours, break duration, and late time breakdown.
 
 ---
 
 ## 🏗 Repository Structure
 
 ```
-boxcode-hrms/
+.
 ├── apps/
-│   └── api/                  # FastAPI Backend
+│   └── api/                  # FastAPI Backend Server
 │       ├── alembic/          # Database migrations
 │       ├── app/
-│       │   ├── api/routes/   # REST endpoints (auth, shifts, leave, slack, attendance)
-│       │   ├── core/         # Config, security, clock, and AWS helpers
-│       │   ├── models/       # SQLAlchemy models (Postgres / SQLite)
-│       │   └── services/     # Core engine (resolver, scheduler, face, geofence, slack)
-│       └── tests/            # Automated test suite (18 standalone test suites)
+│       │   ├── api/routes/   # REST endpoints (auth, attendance, shifts, leave, slack, admin)
+│       │   ├── core/         # Config, security, clock (IST org time), and AWS helpers
+│       │   ├── models/       # SQLAlchemy models (PostgreSQL / SQLite)
+│       │   └── services/     # Biometric engine, attendance resolver, scheduler, PDF exporter
+│       └── tests/            # Full test suites
 │
 ├── myco-frontend/
-│   ├── web/                  # Next.js 14 Admin Dashboard (Tailwind, Lucide icons)
+│   ├── web/                  # Next.js 14 Web Dashboard (Tailwind CSS, Lucide icons)
 │   └── mobile/               # React Native / Expo Mobile Application
 │
-└── docs/                     # Architecture and deployment specifications
+├── docs/                     # Documentation & UI assets
+│   └── screenshots/          # Platform preview captures
+│
+└── deploy_to_ec2.sh          # Safe deployment automation script for AWS EC2
 ```
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## 🚀 Quick Start (Local Setup)
 
-### 1. Prerequisites
-* **Python 3.10+** (Python 3.12+ recommended)
-* **Node.js 20+**
-* **Git**
-
-### 2. Run the Backend API
+### 1. Backend API (FastAPI)
 
 ```bash
 cd apps/api
 
-# Create virtual environment
+# Setup virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Run database migrations
+# Run migrations & start server
 alembic upgrade head
-
-# Start API server
 uvicorn app.main:app --reload --port 8000
 ```
 Interactive Swagger API documentation will be available at `http://localhost:8000/docs`.
 
-### 3. Run the Web Dashboard
+### 2. Admin Web Dashboard (Next.js 14)
 
 ```bash
 cd myco-frontend/web
@@ -109,60 +125,37 @@ npm run dev
 ```
 Open `http://localhost:3000` in your browser.
 
-### 4. Run the Mobile App
-
-```bash
-cd myco-frontend/mobile
-
-# Install dependencies
-npm install
-
-# Start Expo development server
-npx expo start
-```
-Scan the displayed QR code with the Expo Go app on iOS or Android.
-
 ---
 
-## 🧪 Testing & Verification
+## ☁️ Production Deployment (AWS EC2)
 
-The codebase comes with complete automated test coverage across unit tests, service schedulers, and edge cases.
+The application is deployed on **AWS EC2** using **Systemd** for the FastAPI backend and **PM2** with **Nginx** reverse proxy for the Next.js web application.
+
+To deploy safe incremental updates without database overwrites:
 
 ```bash
-cd apps/api
-
-# Run all 18 core subsystem test suites
-./.venv/bin/python -m pytest tests/  # or run individual tests via python3 tests/<file>.py
-
-# Run in-depth edge case verification (Shift hierarchy, 3 PM intern checks, 1-click approvals)
-./.venv/bin/python test_all_edge_cases_in_depth.py
-
-# Run live integration verification against deployed EC2 instance
-./.venv/bin/python test_live_edge_cases_http.py
+chmod +x deploy_to_ec2.sh
+./deploy_to_ec2.sh
 ```
 
 ---
 
-## ⚙️ Environment Configuration (`apps/api/.env`)
+## ⚙️ Key Environment Configuration
 
 | Variable | Description |
 | :--- | :--- |
-| `DATABASE_URL` | Database connection string (`postgresql://...` or `sqlite:///...`) |
+| `DATABASE_URL` | Database connection string (`sqlite:///data/boxcode.db` or PostgreSQL) |
 | `JWT_SECRET` | 256-bit cryptographically secure session signing key |
 | `AWS_ACCESS_KEY_ID` | AWS IAM credentials for Rekognition & S3 storage |
 | `AWS_SECRET_ACCESS_KEY` | AWS IAM secret key |
-| `AWS_REGION` | AWS target region (`ap-south-1`) |
+| `AWS_REGION` | AWS target region (`us-east-1` / `ap-south-1`) |
 | `SLACK_BOT_TOKEN` | Slack Bot User OAuth Token (`xoxb-...`) |
 | `SLACK_SIGNING_SECRET` | Slack app signing secret for request verification |
-| `SLACK_CHANNEL_ID` | Target admin channel ID for attendance alerts and cards |
-| `SMTP_HOST` | Outbound mail server (e.g., `smtp.gmail.com`) |
-| `SMTP_PORT` | Mail server port (`587`) |
-| `SMTP_USER` | Admin sender email address |
-| `SMTP_PASS` | SMTP application password |
+| `SLACK_CHANNEL_ID` | Target attendance channel ID for notifications and alerts |
 
 ---
 
 ## 🔒 Security & Compliance
-* Passwords stored with **Argon2 / bcrypt + SHA-256** digests.
+* Passwords stored with **Argon2 / bcrypt + SHA-256** cryptographic digests.
 * HMAC-signed JWT action tokens for all external decision links with automatic expiration and replay protection.
-* Role-Based Access Control (Super Admin, HR Admin, Employee).
+* Strict Role-Based Access Control (Super Admin, HR Admin, Employee).
