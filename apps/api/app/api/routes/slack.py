@@ -21,6 +21,7 @@ from app.models.wfh_request import WFHRequest
 from app.services.leave import decide as leave_decide
 from app.services.slack import (
     _get_all_slack_members,
+    format_slack_mention,
     open_slack_modal,
     post_ephemeral_to_admins,
     post_ephemeral_to_user,
@@ -184,6 +185,37 @@ async def slack_commands(
 
     # 2. /late -> Private modal to enter reason
     if command == "/late":
+        if not emp:
+            return {
+                "response_type": "ephemeral",
+                "text": f"⚠️ Could not map your Slack user (`{user_name}`) to an employee profile.",
+            }
+
+        # Check if employee has checked in today and if they are late
+        from app.services.attendance import policy_for, recompute_day
+        from app.models.attendance import AttendanceDay
+        today_date = org_today()
+        day_rec = db.scalar(
+            select(AttendanceDay).where(
+                AttendanceDay.employee_id == emp.id,
+                AttendanceDay.shift_date == today_date,
+            )
+        )
+        if not day_rec:
+            day_rec = recompute_day(db, emp, today_date)
+
+        if not day_rec or day_rec.first_in is None:
+            return {
+                "response_type": "ephemeral",
+                "text": "⚠️ *Not Checked In*: You have not checked in today yet. Please check in first using `/checkin` before requesting late arrival approval.",
+            }
+
+        if (day_rec.late_minutes or 0) <= 0 and not day_rec.has_exception:
+            return {
+                "response_type": "ephemeral",
+                "text": "🎉 *On Time*: You checked in on time for your scheduled shift today! No late arrival request is required.",
+            }
+
         view = {
             "type": "modal",
             "callback_id": "submit_late_request",
@@ -196,7 +228,7 @@ async def slack_commands(
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "Please provide the reason for your late arrival today. This reason will be delivered privately to admins for approval.",
+                        "text": f"You were recorded *{day_rec.late_minutes}m late* today. Please state your reason for late arrival below for admin review.",
                     },
                 },
                 {
@@ -518,25 +550,32 @@ async def slack_interactions(
             if to_date < from_date:
                 to_date = from_date
 
-            days_count = float((to_date - from_date).days + 1)
-
             # Look up default leave type for org
             from app.models.leave import LeaveType
-            lt = db.scalar(select(LeaveType).where(LeaveType.org_id == emp.org_id).limit(1))
+            from app.services import leave as leave_service
+            lt = db.scalar(select(LeaveType).where(LeaveType.org_id == emp.org_id, LeaveType.is_active.is_(True)).limit(1))
+            if not lt:
+                lt = db.scalar(select(LeaveType).limit(1))
 
-            leave_req = LeaveRequest(
-                id=uuid.uuid4(),
-                org_id=emp.org_id,
-                employee_id=emp.id,
-                leave_type_id=lt.id if lt else emp.org_id,
-                from_date=from_date,
-                to_date=to_date,
-                days=days_count,
-                reason=reason,
-                status=LeaveStatus.PENDING,
+            outcome = leave_service.submit(
+                db,
+                employee=emp,
+                leave_type=lt,
+                start=from_date,
+                end=to_date,
+                reason=reason or "Applied via Slack",
+                enforce_backdate=False,
             )
-            db.add(leave_req)
+
+            if not outcome.ok:
+                return {
+                    "response_action": "errors",
+                    "errors": {"leave_reason_block": outcome.reason or "Could not apply for leave."},
+                }
+
+            leave_req = outcome.request
             db.commit()
+            days_count = float(leave_req.days_consumed)
 
             admin_blocks = [
                 {
@@ -780,9 +819,47 @@ async def slack_interactions(
     )
 
     if not outcome.ok:
+        if response_url:
+            import httpx
+            try:
+                httpx.post(response_url, json={"text": f"⚠️ {outcome.reason}", "replace_original": False}, timeout=5.0)
+            except Exception:
+                pass
         return {"message": outcome.reason}
 
     db.commit()
+
+    import httpx
+    target_channel = channel_id or settings.slack_channel_id
+    req_emp = leave_req.employee if leave_req else None
+    emp_name = req_emp.full_name if req_emp else "Employee"
+    emp_email = req_emp.email if req_emp else None
+    mention = format_slack_mention(emp_name, emp_email)
+    action_word = "approved" if approve else ("partially approved" if partial_approve else "rejected")
+
+    # Broadcast notification tagging employee in the attendance channel
+    if target_channel and settings.slack_bot_token:
+        broadcast_msg = f"🌴 *Leave Request {action_word.capitalize()}*: {mention}, your leave request ({leave_req.from_date.strftime('%d %b')} to {leave_req.to_date.strftime('%d %b')}) was *{action_word}* by *@{slack_user}*."
+        try:
+            httpx.post(
+                "https://slack.com/api/chat.postMessage",
+                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                json={"channel": target_channel, "text": broadcast_msg},
+                timeout=5.0,
+            )
+        except Exception:
+            pass
+
+    if response_url:
+        status_text = f"✅ Leave request approved for {emp_name}." if approve else f"❌ Leave request rejected for {emp_name}."
+        try:
+            httpx.post(
+                response_url,
+                json={"text": f"{status_text} (Recorded by @{slack_user})", "replace_original": True},
+                timeout=5.0,
+            )
+        except Exception:
+            pass
 
     if channel_id and message_ts:
         update_leave_request(

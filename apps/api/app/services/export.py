@@ -599,15 +599,16 @@ def attendance_history_to_pdf(
     # Columns Plan (Total Width = 277mm)
     cols = [
         ("Date", 22, "C"),
-        ("Code", 18, "C"),
-        ("Employee Name", 44, "L"),
-        ("Department", 32, "L"),
-        ("Status", 26, "C"),
+        ("Code", 17, "C"),
+        ("Employee Name", 42, "L"),
+        ("Department", 30, "L"),
+        ("Status", 24, "C"),
         ("First In", 18, "C"),
         ("Last Out", 18, "C"),
         ("Worked", 18, "C"),
+        ("Break", 15, "C"),
         ("Late", 15, "C"),
-        ("Remarks / Details", 66, "L"),
+        ("Remarks / Details", 58, "L"),
     ]
 
     def render_table_header():
@@ -685,9 +686,11 @@ def attendance_history_to_pdf(
         in_str = _format_time_ist(r.get("first_in"))
         out_str = _format_time_ist(r.get("last_out"))
 
-        # Worked hours & Late
+        # Worked hours, Breaks & Late
         w_min = r.get("worked_minutes") or 0
         h_str = f"{w_min // 60}h {w_min % 60:02d}m" if w_min > 0 else "-"
+        b_min = r.get("break_minutes") or 0
+        b_str = f"{b_min}m" if b_min > 0 else "-"
         l_min = r.get("late_minutes") or 0
         l_str = f"{l_min}m" if l_min > 0 else "-"
 
@@ -701,21 +704,22 @@ def attendance_history_to_pdf(
         if (r.get("punch_count") or 0) > 0:
             notes.append(f"({r['punch_count']} punches)")
         rem_str = " ".join(notes) if notes else "-"
-        if len(rem_str) > 42:
-            rem_str = rem_str[:40] + "..."
+        if len(rem_str) > 38:
+            rem_str = rem_str[:36] + "..."
 
         # Output Row Cells
         pdf.cell(22, 6, date_str, border=1, fill=True, align="C")
-        pdf.cell(18, 6, code_str, border=1, fill=True, align="C")
-        pdf.cell(44, 6, _clean_pdf_text(safe_name), border=1, fill=True, align="L")
-        pdf.cell(32, 6, _clean_pdf_text(safe_dept), border=1, fill=True, align="L")
-        pdf.cell(26, 6, _clean_pdf_text(st_label), border=1, fill=True, align="C")
+        pdf.cell(17, 6, code_str, border=1, fill=True, align="C")
+        pdf.cell(42, 6, _clean_pdf_text(safe_name), border=1, fill=True, align="L")
+        pdf.cell(30, 6, _clean_pdf_text(safe_dept), border=1, fill=True, align="L")
+        pdf.cell(24, 6, _clean_pdf_text(st_label), border=1, fill=True, align="C")
 
         # Neutral color for time and numerical columns
         pdf.set_text_color(30, 35, 45)
         pdf.cell(18, 6, in_str, border=1, fill=True, align="C")
         pdf.cell(18, 6, out_str, border=1, fill=True, align="C")
         pdf.cell(18, 6, h_str, border=1, fill=True, align="C")
+        pdf.cell(15, 6, b_str, border=1, fill=True, align="C")
         
         # Highlight late minutes with amber if late
         if l_min > 0:
@@ -724,7 +728,7 @@ def attendance_history_to_pdf(
         pdf.set_text_color(30, 35, 45)
 
         pdf.set_font("helvetica", "", 6.5)
-        pdf.cell(66, 6, _clean_pdf_text(rem_str), border=1, fill=True, align="L")
+        pdf.cell(58, 6, _clean_pdf_text(rem_str), border=1, fill=True, align="L")
         pdf.set_font("helvetica", "", 7.5)
         pdf.ln()
 
