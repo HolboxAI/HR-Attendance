@@ -49,6 +49,49 @@ async def _scheduler_loop() -> None:
         await asyncio.sleep(settings.scheduler_interval_seconds)
 
 
+async def _break_reminder_loop() -> None:
+    """Re-check open breaks every few seconds and post whoever just hit 45:00.
+
+    The minute tick is the wrong clock for this. A break that crosses 45
+    minutes just after a tick waits until the next one, so people who stepped
+    out in the same minute show up a minute apart. This loop asks only that
+    question.
+    """
+    from app.db.session import SessionLocal
+    from app.services.scheduler import run_break_exceeded_alerts
+    from app.models.org import Organization
+    from sqlalchemy import select
+
+    def one() -> None:
+        from app.core.clock import org_now
+        db = SessionLocal()
+        try:
+            now = org_now()
+            for org in db.scalars(select(Organization)).all():
+                run_break_exceeded_alerts(db, org, now)
+                db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    while True:
+        try:
+            await asyncio.to_thread(one)
+        except Exception:
+            log.exception("break reminder check failed")
+        await asyncio.sleep(settings.break_reminder_interval_seconds)
+
+
+def _warm_slack() -> None:
+    try:
+        from app.services.slack import warm_slack_directory
+        warm_slack_directory()
+    except Exception:
+        log.exception("slack directory warm failed")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     try:
@@ -59,13 +102,13 @@ async def lifespan(_app: FastAPI):
     except Exception:
         pass
 
-    task = (
-        asyncio.create_task(_scheduler_loop())
-        if settings.scheduler_enabled
-        else None
-    )
+    tasks: list[asyncio.Task] = []
+    if settings.scheduler_enabled:
+        tasks.append(asyncio.create_task(_scheduler_loop()))
+        tasks.append(asyncio.create_task(_break_reminder_loop()))
+        asyncio.create_task(asyncio.to_thread(_warm_slack))
     yield
-    if task is not None:
+    for task in tasks:
         task.cancel()
 
 

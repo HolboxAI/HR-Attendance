@@ -129,6 +129,12 @@ class Settings(BaseSettings):
     # politeness setting, not a correctness one.
     scheduler_enabled: bool = True
     scheduler_interval_seconds: int = 60
+    # Break reminders are a clock ("45:00 on this break"), not a minute-bucket.
+    # The main tick stays at 60s. This one only re-reads open breaks, so a
+    # group that stepped out together is posted together, within a few seconds
+    # of the mark, instead of landing on whichever later minute the slow tick
+    # happened to wake up.
+    break_reminder_interval_seconds: int = 5
 
     # "You haven't checked in" fires this long after shift start + grace.
     # Grace already forgives ordinary lateness; this is for the day someone

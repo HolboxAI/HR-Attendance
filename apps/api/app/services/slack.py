@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import logging
+import threading
 import time
 from datetime import date
 from urllib.parse import urlencode
@@ -10,6 +11,51 @@ import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def post_channel_message(text: str, *, blocks: list | None = None, label: str) -> None:
+    """Post one message to the attendance channel, retrying a short rate limit.
+
+    Slack allows a burst into one channel and then answers `ratelimited`
+    (about one message a second after that). Dropping the extra is how a
+    cluster of check-ins or break-ends shows up late or not at all: the punch
+    already succeeded, and nothing comes back to try the post again. The wait
+    stays on this side thread, capped, so the punch request itself never sits
+    on Slack.
+    """
+    if not settings.slack_bot_token or not settings.slack_channel_id:
+        return
+    payload: dict = {"channel": settings.slack_channel_id, "text": text}
+    if blocks:
+        payload["blocks"] = blocks
+    headers = {"Authorization": f"Bearer {settings.slack_bot_token}"}
+    for attempt in range(3):
+        try:
+            response = httpx.post(
+                "https://slack.com/api/chat.postMessage",
+                headers=headers,
+                json=payload,
+                timeout=5.0,
+            )
+            retry = response.status_code == 429
+            data: dict = {}
+            if not retry:
+                data = response.json()
+                retry = data.get("error") == "ratelimited"
+            if retry and attempt < 2:
+                try:
+                    wait = float(response.headers.get("Retry-After", "1"))
+                except (TypeError, ValueError):
+                    wait = 1.0
+                time.sleep(min(max(wait, 0.2), 2.0))
+                continue
+            if data.get("ok"):
+                return
+            logger.error("Slack API error in %s: %s", label, data.get("error") or response.status_code)
+            return
+        except Exception as e:
+            logger.error("Failed to post %s to Slack: %s", label, e)
+            return
 
 
 def upload_document_to_slack(
@@ -468,22 +514,7 @@ def post_checkin_alert(
         }
     ]
 
-    try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": fallback,
-                "blocks": blocks,
-            },
-            timeout=5.0,
-        )
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error("Slack API error in post_checkin_alert: %s", res_data.get("error"))
-    except Exception as e:
-        logger.error("Failed to post check-in alert to Slack: %s", e)
+    post_channel_message(fallback, blocks=blocks, label="post_checkin_alert")
 
 
 def post_late_arrival_alert(employee_name: str, arrive_time: str, late_minutes: int, shift_date: str) -> None:
@@ -554,22 +585,7 @@ def post_break_started_alert(
         }
     ]
 
-    try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": fallback,
-                "blocks": blocks,
-            },
-            timeout=5.0,
-        )
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error("Slack API error in post_break_started_alert: %s", res_data.get("error"))
-    except Exception as e:
-        logger.error("Failed to post break started alert to Slack: %s", e)
+    post_channel_message(fallback, blocks=blocks, label="post_break_started_alert")
 
 
 def post_break_ended_alert(
@@ -599,22 +615,7 @@ def post_break_ended_alert(
         }
     ]
 
-    try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": fallback,
-                "blocks": blocks,
-            },
-            timeout=5.0,
-        )
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error("Slack API error in post_break_ended_alert: %s", res_data.get("error"))
-    except Exception as e:
-        logger.error("Failed to post break ended alert to Slack: %s", e)
+    post_channel_message(fallback, blocks=blocks, label="post_break_ended_alert")
 
 
 def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: int, shift_date: str) -> None:
@@ -642,27 +643,40 @@ def post_early_leave_alert(employee_name: str, leave_time: str, early_minutes: i
 
 _SLACK_USER_CACHE: dict[str, str | None] = {}
 _SLACK_MEMBERS_CACHE: list[dict] | None = None
+# One directory fetch for the whole process. A burst of punches used to each
+# call users.list before any of them had filled the cache, so the mentions
+# (and the messages behind them) waited on several slow Slack calls at once.
+_SLACK_CACHE_LOCK = threading.Lock()
+
+
+def warm_slack_directory() -> None:
+    """Fill the member cache at startup so the first punch of the day is not
+    the one that pays for users.list."""
+    _get_all_slack_members()
 
 
 def _get_all_slack_members() -> list[dict]:
     global _SLACK_MEMBERS_CACHE
     if _SLACK_MEMBERS_CACHE is not None:
         return _SLACK_MEMBERS_CACHE
-    if not settings.slack_bot_token:
-        return []
-    try:
-        resp = httpx.get(
-            "https://slack.com/api/users.list",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            timeout=5.0,
-        )
-        data = resp.json()
-        if data.get("ok"):
-            _SLACK_MEMBERS_CACHE = data.get("members", [])
+    with _SLACK_CACHE_LOCK:
+        if _SLACK_MEMBERS_CACHE is not None:
             return _SLACK_MEMBERS_CACHE
-    except Exception as e:
-        logger.warning("Error fetching Slack members list: %s", e)
-    return []
+        if not settings.slack_bot_token:
+            return []
+        try:
+            resp = httpx.get(
+                "https://slack.com/api/users.list",
+                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                timeout=5.0,
+            )
+            data = resp.json()
+            if data.get("ok"):
+                _SLACK_MEMBERS_CACHE = data.get("members", [])
+                return _SLACK_MEMBERS_CACHE
+        except Exception as e:
+            logger.warning("Error fetching Slack members list: %s", e)
+        return []
 
 
 def get_slack_user_id(name: str, email: str | None = None) -> str | None:
@@ -789,29 +803,40 @@ def post_eod_unresolved_checkout_alert(employee_name: str, email: str | None, sh
 
 
 
-def post_break_exceeded_alert(employee_name: str, email: str | None, minutes_out: int) -> None:
-    """Send a friendly reminder in Slack if an employee has been on break for >= 45 minutes."""
-    if not settings.slack_bot_token or not settings.slack_channel_id:
+def post_break_exceeded_alerts(people: list[tuple[str, str | None, int]]) -> None:
+    """One reminder for everyone who just crossed 45 minutes on this check.
+
+    A separate post per person is what made a group that stepped out together
+    arrive one by one: Slack spaces messages in a single channel, and each
+    post also waited on its own directory lookup. Same check, one message.
+    """
+    if not people or not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
-    mention = format_slack_mention(employee_name, email)
-    text = f"☕ *Break Reminder:* {mention} You have been on break for {int(minutes_out)} minutes."
-
-    try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": text,
-            },
-            timeout=5.0,
+    mentions = [format_slack_mention(name, email) for name, email, _minutes in people]
+    minutes = {int(m) for _n, _e, m in people}
+    if len(mentions) == 1:
+        text = (
+            f"☕ *Break Reminder:* {mentions[0]} You have been on break for "
+            f"{int(people[0][2])} minutes."
         )
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error("Slack API error in post_break_exceeded_alert: %s", res_data.get("error"))
-    except Exception as e:
-        logger.error("Failed to post break exceeded alert to Slack: %s", e)
+    elif len(minutes) == 1:
+        text = (
+            f"☕ *Break Reminder:* {' '.join(mentions)} You have been on break for "
+            f"{next(iter(minutes))} minutes."
+        )
+    else:
+        lines = [
+            f"{mention} — {int(mins)} minutes"
+            for mention, (_n, _e, mins) in zip(mentions, people)
+        ]
+        text = "☕ *Break Reminder*\n" + "\n".join(lines)
+    post_channel_message(text, label="post_break_exceeded_alert")
+
+
+def post_break_exceeded_alert(employee_name: str, email: str | None, minutes_out: int) -> None:
+    """Send a friendly reminder in Slack if an employee has been on break for >= 45 minutes."""
+    post_break_exceeded_alerts([(employee_name, email, minutes_out)])
 
 
 def post_checkout_alert(
@@ -848,22 +873,7 @@ def post_checkout_alert(
         }
     ]
 
-    try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": fallback,
-                "blocks": blocks,
-            },
-            timeout=5.0,
-        )
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error("Slack API error in post_checkout_alert: %s", res_data.get("error"))
-    except Exception as e:
-        logger.error("Failed to post check-out alert to Slack: %s", e)
+    post_channel_message(fallback, blocks=blocks, label="post_checkout_alert")
 
 
 def post_shift_summary_to_slack(

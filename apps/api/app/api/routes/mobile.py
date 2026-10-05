@@ -17,7 +17,7 @@ import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
@@ -145,9 +145,19 @@ def me(
     )
 
 
+def _slack_now(fn, *args) -> None:
+    """Start the Slack post before the response goes back to the phone.
+
+    Background tasks run only after the response is fully sent, so the channel
+    heard about a punch a beat later than the person who made it. A side
+    thread is already in flight when the phone hears "checked in".
+    """
+    from threading import Thread
+    Thread(target=fn, args=args, daemon=True).start()
+
+
 @router.post("/punch", response_model=PunchResponse)
 async def punch(
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     emp: Employee = Depends(get_current_employee),
     install_id: str | None = Depends(install_id_header),
@@ -293,7 +303,6 @@ async def punch(
 
     is_wfh = emp.is_wfh_enabled
     if not is_wfh:
-        from sqlalchemy import and_
         from app.models.wfh_request import WFHRequest
         from app.models.enums import CorrectionStatus
         wfh_req = db.scalar(
@@ -430,7 +439,7 @@ async def punch(
     # Dispatch Slack & in-app alerts based on explicit punch_type and direction
     if punch_type in ("break_out", "break_start"):
         from app.services.slack import post_break_started_alert
-        background_tasks.add_task(
+        _slack_now(
             post_break_started_alert,
             emp.full_name,
             emp.emp_code,
@@ -442,7 +451,6 @@ async def punch(
 
     elif punch_type in ("break_in", "break_end"):
         from app.services.slack import post_break_ended_alert
-        from sqlalchemy import and_
 
         prev_out = db.scalar(
             select(PunchEvent)
@@ -466,7 +474,7 @@ async def punch(
                 curr_ts = curr_ts.replace(tzinfo=timezone.utc)
             break_mins = max(1, int(round((curr_ts - prev_ts).total_seconds() / 60)))
 
-        background_tasks.add_task(
+        _slack_now(
             post_break_ended_alert,
             emp.full_name,
             emp.emp_code,
@@ -479,7 +487,7 @@ async def punch(
 
     elif punch_type == "check_out" or (punch_type is None and direction == PunchDirection.OUT):
         from app.services.slack import post_checkout_alert
-        background_tasks.add_task(
+        _slack_now(
             post_checkout_alert,
             emp.full_name,
             emp.emp_code,
@@ -509,7 +517,7 @@ async def punch(
                 db.commit()
 
             from app.services.slack import post_checkin_alert
-            background_tasks.add_task(
+            _slack_now(
                 post_checkin_alert,
                 emp.full_name,
                 emp.emp_code,
@@ -520,7 +528,6 @@ async def punch(
             )
         else:
             from app.services.slack import post_break_ended_alert
-            from sqlalchemy import and_
 
             prev_out = db.scalar(
                 select(PunchEvent)
@@ -544,7 +551,7 @@ async def punch(
                     curr_ts = curr_ts.replace(tzinfo=timezone.utc)
                 break_mins = max(1, int(round((curr_ts - prev_ts).total_seconds() / 60)))
 
-            background_tasks.add_task(
+            _slack_now(
                 post_break_ended_alert,
                 emp.full_name,
                 emp.emp_code,

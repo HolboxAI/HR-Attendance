@@ -210,6 +210,78 @@ check("four more ticks add zero job runs",
 check("...and zero notifications",
       len(db.scalars(select(Notification)).all()), notes_after_first)
 
+print("7. Break reminder: everyone who hits 45:00 on the same check, one post")
+from app.models.attendance import ShiftGroup, ShiftGroupMember  # noqa: E402
+from app.services import slack as slack_mod                    # noqa: E402
+from app.services.scheduler import run_break_exceeded_alerts   # noqa: E402
+
+day_shift = ShiftTemplate(
+    id=uuid.uuid4(), org_id=org.id, name="Day desk",
+    start_time=time(9, 0), end_time=time(18, 0),
+    working_days=[0, 1, 2, 3, 4, 5],
+)
+db.add(day_shift); db.flush()
+floor = ShiftGroup(
+    id=uuid.uuid4(), org_id=org.id, name="Floor", shift_template_id=day_shift.id,
+)
+db.add(floor); db.flush()
+
+
+def on_break(code, name, out_at, punch_type="break_out", *, back_at=None):
+    person, _user = emp(code, name)
+    db.add(ShiftGroupMember(
+        id=uuid.uuid4(), shift_group_id=floor.id, employee_id=person.id,
+    ))
+    db.commit()
+    punch(person, at(2026, 8, 28, 12, 0), PunchDirection.IN)
+    record_punch(
+        db, org_id=org.id, employee=person, event_ts=out_at,
+        source=PunchSource.MOBILE_APP, direction=PunchDirection.OUT,
+        raw={"punch_type": punch_type},
+    )
+    db.commit()
+    if back_at is not None:
+        record_punch(
+            db, org_id=org.id, employee=person, event_ts=back_at,
+            source=PunchSource.MOBILE_APP, direction=PunchDirection.IN,
+            raw={"punch_type": "break_in"},
+        )
+        db.commit()
+    return person
+
+
+on_break("BX020", "Shivam Pandey", at(2026, 8, 28, 13, 0))
+on_break("BX021", "Smith", at(2026, 8, 28, 13, 0))
+on_break("BX022", "Om", at(2026, 8, 28, 13, 2))
+on_break("BX023", "Checked Out", at(2026, 8, 28, 13, 0), "check_out")
+on_break("BX024", "Back Early", at(2026, 8, 28, 13, 0), back_at=at(2026, 8, 28, 13, 20))
+
+posted: list = []
+
+
+def fake_post(people):
+    posted.append([(n, m) for n, _email, m in people])
+
+
+slack_mod.post_break_exceeded_alerts = fake_post
+
+run_break_exceeded_alerts(db, org, at(2026, 8, 28, 13, 45)); db.commit()
+check("two people at 45:00 produce one post", len(posted), 1)
+names = sorted(n for n, _m in posted[0]) if posted else []
+check("that post names both of them", names, ["Shivam Pandey", "Smith"])
+check("43 minutes is still silent", "Om" in names, False)
+check("a check-out is not a break", "Checked Out" in names, False)
+check("someone already back is not reminded", "Back Early" in names, False)
+
+posted.clear()
+run_break_exceeded_alerts(db, org, at(2026, 8, 28, 13, 46)); db.commit()
+check("the same open break is not posted again a minute later", posted, [])
+
+posted.clear()
+run_break_exceeded_alerts(db, org, at(2026, 8, 28, 13, 47)); db.commit()
+check("the later break is posted on the check that reaches its 45:00",
+      posted, [[("Om", 45)]])
+
 print()
 print("ALL PASS" if ok else "FAILURES - read above")
 sys.exit(0 if ok else 1)

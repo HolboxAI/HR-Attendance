@@ -237,8 +237,15 @@ def run_late_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
 # ---------------------------------------------------------------------------
 
 def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> list[str]:
-    """Alerts Slack if an employee has stepped out on break for >= 45 minutes during active shift."""
+    """Alert Slack when an open break has reached 45 minutes.
+
+    Everyone who crosses the line on this check is one message. Posting them
+    separately is what made five people who stepped out in the same minute
+    arrive one by one: each post waited on Slack, and the old once-a-minute
+    tick split anyone who fell just after a wake-up into the next minute.
+    """
     nudged: list[str] = []
+    due: list[tuple[str, str | None, int]] = []
     tz = ZoneInfo(org.timezone or "Asia/Kolkata")
     local_now = now.astimezone(tz)
     today = local_now.date()
@@ -272,14 +279,12 @@ def run_break_exceeded_alerts(db: Session, org: Organization, now: datetime) -> 
                           detail={"employee": emp.emp_code, "minutes": int(time_since_out)}) is None:
                     continue
 
-                from app.services.slack import post_break_exceeded_alert
-                from threading import Thread
-                Thread(
-                    target=post_break_exceeded_alert,
-                    args=(emp.full_name, emp.email, int(time_since_out)),
-                    daemon=True,
-                ).start()
+                due.append((emp.full_name, emp.email, int(time_since_out)))
                 nudged.append(key)
+
+    if due:
+        from app.services.slack import post_break_exceeded_alerts
+        post_break_exceeded_alerts(due)
 
     return nudged
 
@@ -751,10 +756,13 @@ def tick(db: Session, now: datetime | None = None) -> dict:
 
     summary: dict = {"at": now.isoformat(), "jobs": {}, "errors": {}}
     orgs = db.scalars(select(Organization)).all()
+    # Break reminders are not in this list on purpose. They have their own
+    # few-second loop (main._break_reminder_loop). On the 60s tick, a break
+    # that crossed 45:00 just after a wake-up waited until the next minute,
+    # so people who stepped out together were posted a minute apart.
     jobs = (
         ("monthly_accrual", run_monthly_accrual),
         ("late_alert", run_late_alerts),
-        ("break_exceeded", run_break_exceeded_alerts),
         ("punch_out_nudge", run_punch_out_nudges),
         ("shift_end_summary", run_shift_end_summaries),
         ("eod_summary", run_eod_final_summaries),
