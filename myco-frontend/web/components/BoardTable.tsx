@@ -72,7 +72,12 @@ export function BoardTable({ rows }: { rows: BoardRow[] }) {
                               WFH
                             </span>
                           )}
-                          {r.currently_in && <span className="sr-only"> (currently in the office)</span>}
+                          {r.currently_in && !(r.is_wfh_enabled || r.status === 'wfh') && (
+                            <span className="sr-only"> (currently in the office)</span>
+                          )}
+                          {r.currently_in && (r.is_wfh_enabled || r.status === 'wfh') && (
+                            <span className="sr-only"> (checked in, working from home)</span>
+                          )}
                           <ArrowUpRight className="size-3.5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300 text-ink shrink-0" aria-hidden />
                         </span>
                         <span className="block text-xs font-mono text-ink-3">

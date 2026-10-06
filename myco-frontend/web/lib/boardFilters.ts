@@ -25,11 +25,21 @@ export function isFilterKey(v: string | undefined): v is FilterKey {
   return FILTERS.some((f) => f.key === v);
 }
 
+/** Standing WFH flag, or a day already labelled wfh. Both mean "not in the office". */
+export function isWorkFromHome(row: BoardRow): boolean {
+  return Boolean(row.is_wfh_enabled || row.status === 'wfh');
+}
+
 export function matchesFilter(row: BoardRow, filter: FilterKey): boolean {
   switch (filter) {
     case 'all': return true;
-    case 'in_office': return row.currently_in;
-    case 'wfh': return Boolean((row.is_wfh_enabled || row.status === 'wfh') && (row.punch_count > 0 || row.currently_in || row.status === 'wfh' || row.status === 'present' || row.status === 'half_day'));
+    // Checked in, and not on a standing or one-day WFH assignment.
+    // currently_in alone is only "has not punched out".
+    case 'in_office': return row.currently_in && !isWorkFromHome(row);
+    case 'wfh': return Boolean(isWorkFromHome(row) && (row.punch_count > 0 || row.currently_in || row.status === 'wfh' || row.status === 'present' || row.status === 'half_day'));
+    // A wfh day was present before the label was renamed. It stays on the
+    // WFH list and also belongs here.
+    case 'present': return row.status === 'present' || row.status === 'wfh';
     case 'late': return row.late_minutes > 0;
     case 'exceptions': return row.has_exception;
     default: return row.status === filter;
