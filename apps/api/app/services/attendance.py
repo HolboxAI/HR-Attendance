@@ -345,6 +345,10 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
             status_val = AttendanceStatus.PRESENT
         is_regularized = True
 
+    # The stored label stays wfh. "Present" is a count the board adds on top,
+    # not a second status. is_wfh here is a standing assignment
+    # (employee.is_wfh_enabled, left on until HR turns it off) or one approved
+    # request for this date. Either way the day is remote work, not office.
     if is_wfh and status_val == AttendanceStatus.PRESENT:
         status_val = AttendanceStatus.WFH
 
@@ -357,6 +361,20 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
 
     db.flush()
     return day
+
+
+def counts_for_board(status: str, *, in_now: bool, is_wfh: bool) -> tuple[bool, bool]:
+    """(in the office, present) for one person on the live board.
+
+    In the office means checked in and not working from home. A standing WFH
+    flag and a one-day approved request are the same for this: remote until
+    that assignment ends. Present includes a wfh day, because that label is
+    only written after the day had already qualified as present. Someone who
+    has not checked in stays off both counts.
+    """
+    in_office = in_now and not is_wfh
+    present = status == "present" or status == "wfh"
+    return in_office, present
 
 
 def _aware(dt: datetime) -> datetime:

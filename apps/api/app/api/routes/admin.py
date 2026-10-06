@@ -28,7 +28,7 @@ from app.models.leave import LeaveRequest, LeaveType
 from app.models.wfh_request import WFHRequest
 from app.models.org import Department, Organization
 from app.services.attendance import (
-    next_direction, policy_for, recompute_day, record_punch,
+    counts_for_board, next_direction, policy_for, recompute_day, record_punch,
 )
 from app.services import devices, export
 from app.services.enrolment import active_enrolment
@@ -189,7 +189,14 @@ def board(
             counts["late"] += 1
         if record.has_exception:
             counts["exceptions"] += 1
-        if in_now:
+        in_office, also_present = counts_for_board(
+            record.status.value, in_now=in_now, is_wfh=is_wfh,
+        )
+        # status "present" was already counted above. A wfh label is that
+        # same day renamed, so it belongs in Present as well as on the WFH list.
+        if also_present and record.status.value != "present":
+            counts["present"] += 1
+        if in_office:
             counts["currently_in"] += 1
 
     db.commit()

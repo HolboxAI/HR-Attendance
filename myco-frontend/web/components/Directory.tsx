@@ -501,7 +501,12 @@ export function Directory({
                             <span className="inline-block transition-transform duration-300 group-hover:translate-x-3">
                               <span className="flex items-center gap-1.5 font-semibold text-ink group-hover:text-accent transition-colors">
                                 {r.name}
-                                {r.currentlyIn && <span className="sr-only"> (currently in the office)</span>}
+                                {r.currentlyIn && r.status !== 'wfh' && (
+                                  <span className="sr-only"> (currently in the office)</span>
+                                )}
+                                {r.currentlyIn && r.status === 'wfh' && (
+                                  <span className="sr-only"> (checked in, working from home)</span>
+                                )}
                                 {r.role && (
                                   <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                                     r.role === 'hr_admin' || r.role === 'super_admin'

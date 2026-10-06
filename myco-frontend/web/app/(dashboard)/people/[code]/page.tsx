@@ -139,7 +139,10 @@ export default async function EmployeeDetailPage({
             <div>
               <div className="text-[10px] uppercase tracking-widest text-ink-3">Today</div>
               <Status value={todayRow.status} />
-              {todayRow.currently_in && (
+              {todayRow.currently_in && (todayRow.is_wfh_enabled || todayRow.status === 'wfh') && (
+                <div className="text-xs text-accent">working from home</div>
+              )}
+              {todayRow.currently_in && !todayRow.is_wfh_enabled && todayRow.status !== 'wfh' && (
                 <div className="text-xs text-accent">in the office now</div>
               )}
             </div>
