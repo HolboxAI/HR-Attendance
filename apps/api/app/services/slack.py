@@ -127,10 +127,25 @@ def post_leave_request(
     document_bytes: bytes | None = None,
     document_filename: str | None = None,
     is_sick_leave: bool = False,
+    employee_email: str | None = None,
 ) -> tuple[str, str] | None:
-    """Post an interactive leave request message to Slack. Returns (ts, channel_id)."""
+    """Notify admins of a leave request — privately, never the public channel.
+
+    Leave reasons are personal. A public chat.postMessage in the attendance
+    channel meant every employee in that channel (Nikunj included) could read
+    them. Ephemeral messages go only to slack_admin_user_ids.
+
+    Returns (None, channel_id) on success. There is no single public ts to
+    chat.update later; portal/email decisions re-notify admins via ephemeral.
+    Slack button clicks still carry their own message_ts in the interaction.
+    """
     if not settings.slack_bot_token or not settings.slack_channel_id:
         logger.info("Slack bot not configured. Skipping leave request notification.")
+        return None
+
+    admin_ids = getattr(settings, "slack_admin_user_ids", []) or []
+    if not admin_ids:
+        logger.error("slack_admin_user_ids is empty — leave request has nowhere private to go")
         return None
 
     doc_part = f"\n📎 *Attached Document:* <{document_url}|Click to View Document>" if document_url else ""
@@ -138,7 +153,8 @@ def post_leave_request(
         f"🌴 *Leave Request: {employee_name}*\n"
         f"Requested *{days:g} days* of {leave_type} from {from_date} to {to_date}.\n"
         f"📝 *Reason:* {reason}"
-        f"{doc_part}"
+        f"{doc_part}\n\n"
+        f"_Only visible to Holbox admins._"
     )
 
     elements = [
@@ -194,33 +210,29 @@ def post_leave_request(
         }
     ]
 
-    try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": f"Leave Request from {employee_name}",
-                "blocks": blocks,
-            },
-            timeout=5.0,
-        )
-        response.raise_for_status()
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error(f"Slack API error: {res_data.get('error')}")
-            return None
+    channel = settings.slack_channel_id
+    # Never send Approve/Reject to the applicant, even when they are an admin.
+    exclude: list[str] = []
+    applicant_slack = slack_user_id_for_email(employee_email)
+    if applicant_slack:
+        exclude.append(applicant_slack)
+    recipients = [a for a in admin_ids if a not in set(exclude)]
+    if not recipients:
+        logger.error("No remaining admins to receive leave request (applicant was the only admin)")
+        return None
 
-        ts, channel = res_data.get("ts"), res_data.get("channel")
-        if document_bytes and document_filename and channel:
-            upload_document_to_slack(
-                filename=document_filename,
-                data=document_bytes,
-                channel=channel,
-                thread_ts=ts,
-                title=f"Medical document — {employee_name}",
-            )
-        return ts, channel
+    try:
+        post_ephemeral_to_admins(
+            channel,
+            f"Leave Request from {employee_name}",
+            blocks=blocks,
+            exclude_user_ids=exclude,
+        )
+        # document_bytes / document_filename unused on purpose: files.upload
+        # into the attendance channel is public to every member. Admins open
+        # the medical doc via the link inside their private card / email.
+        # No public message_ts — portal/email decide path uses ephemeral sync.
+        return None, channel
     except Exception as e:
         logger.error(f"Failed to post leave request to Slack: {e}")
         return None
@@ -275,7 +287,7 @@ def update_leave_request(
 
 def sync_leave_decision_to_slack(
     channel_id: str,
-    message_ts: str,
+    message_ts: str | None,
     employee_name: str,
     leave_type_name: str,
     from_date: date,
@@ -288,7 +300,12 @@ def sync_leave_decision_to_slack(
     partial_approve: bool = False,
     note: str | None = None,
 ) -> None:
-    """Sync a decision made outside of Slack (e.g. Email or Portal) to Slack."""
+    """Sync a decision made outside of Slack (e.g. Email or Portal) to Slack.
+
+    Leave cards are admin-only ephemerals now. If we still have a public
+    message_ts from an older request, chat.update that. Always also whisper
+    the decision to admins so their pending ephemerals are not the only cue.
+    """
     if not settings.slack_bot_token:
         return
 
@@ -317,25 +334,34 @@ def sync_leave_decision_to_slack(
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{original_text}\n\n_{status_text}_"
+                "text": f"{original_text}\n\n_{status_text}_\n\n_Admin only._"
             }
         }
     ]
 
-    try:
-        httpx.post(
-            "https://slack.com/api/chat.update",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": channel_id,
-                "ts": message_ts,
-                "text": f"Leave Request {action_label}",
-                "blocks": blocks,
-            },
-            timeout=5.0,
+    target_channel = channel_id or settings.slack_channel_id
+    if message_ts and target_channel:
+        try:
+            httpx.post(
+                "https://slack.com/api/chat.update",
+                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                json={
+                    "channel": target_channel,
+                    "ts": message_ts,
+                    "text": f"Leave Request {action_label}",
+                    "blocks": blocks,
+                },
+                timeout=5.0,
+            )
+        except Exception as e:
+            logger.error(f"Failed to sync leave decision to Slack: {e}")
+
+    if target_channel:
+        post_ephemeral_to_admins(
+            target_channel,
+            f"Leave Request {action_label}: {employee_name}",
+            blocks=blocks,
         )
-    except Exception as e:
-        logger.error(f"Failed to sync leave decision to Slack: {e}")
 
 
 
@@ -351,15 +377,23 @@ def post_document_uploaded_alert(
     original_channel_id: str | None = None,
     original_thread_ts: str | None = None,
 ) -> None:
-    """Alert Slack admin channel that an employee has uploaded their medical certificate."""
+    """Whisper medical-certificate upload to admins only — never the channel.
+
+    Same privacy rule as leave requests: reasons and medical docs are personal.
+    document_bytes / original_thread_ts kept for call-site compat; unused on
+    purpose (channel files.upload is visible to every channel member).
+    """
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
+    _ = (document_bytes, document_filename, original_thread_ts)
 
     channel = original_channel_id or settings.slack_channel_id
     text_content = (
         f"📄 *Medical Certificate Uploaded: {employee_name}*\n"
-        f"Employee has submitted medical documentation for *{leave_type_name}* ({from_date} to {to_date}).\n"
-        f"📎 *Medical Document:* <{document_url}|Click Here to View Document>"
+        f"Employee has submitted medical documentation for *{leave_type_name}* "
+        f"({from_date} to {to_date}).\n"
+        f"📎 *Medical Document:* <{document_url}|Click Here to View Document>\n\n"
+        f"_Only visible to Holbox admins._"
     )
 
     blocks = [
@@ -392,25 +426,11 @@ def post_document_uploaded_alert(
     ]
 
     try:
-        httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": channel,
-                "thread_ts": original_thread_ts,
-                "text": f"Medical document submitted by {employee_name}",
-                "blocks": blocks,
-            },
-            timeout=5.0,
+        post_ephemeral_to_admins(
+            channel,
+            f"Medical document submitted by {employee_name}",
+            blocks=blocks,
         )
-        if document_bytes and document_filename:
-            upload_document_to_slack(
-                filename=document_filename,
-                data=document_bytes,
-                channel=channel,
-                thread_ts=original_thread_ts,
-                title=f"Medical document — {employee_name}",
-            )
     except Exception as e:
         logger.error(f"Failed to post document uploaded alert to Slack: {e}")
 
@@ -481,6 +501,27 @@ def format_duration_human(minutes: int) -> str:
     if m == 0:
         return hour_part
     return f"{hour_part} {m} minute{'s' if m != 1 else ''}"
+
+
+def classify_punch_alert(
+    punch_type: str | None,
+    direction: str | None,
+    previous_type: str | None,
+) -> str:
+    """Which Slack line a punch is. A later check-in is still a check-in.
+
+    Break completed is only a return from an open break. Measuring that return
+    from a checkout in between is how a 35-minute break was announced as 2.
+    """
+    if punch_type in ("break_out", "break_start"):
+        return "break_start"
+    if punch_type in ("break_in", "break_end"):
+        return "break_end"
+    if punch_type == "check_out" or (not punch_type and direction == "out"):
+        return "check_out"
+    if not punch_type and direction == "in" and previous_type in ("break_out", "break_start"):
+        return "break_end"
+    return "check_in"
 
 
 def post_checkin_alert(
@@ -717,18 +758,17 @@ def get_slack_user_id(name: str, email: str | None = None) -> str | None:
             _SLACK_USER_CACHE[cache_key] = m.get("id")
             return m.get("id")
 
-    # 3. Substring / alias matching (e.g. Dax, Daksh, Shivam)
+    # A first name is not an identity. "Ritesh Naik" matched Slack user
+    # "Ritesh Kr" and the absent alert tagged the wrong person. No match
+    # means the message shows the name in bold and tags nobody.
+    # Daksh's Slack name is Dax; that one alias is deliberate.
     first = n.split()[0] if n else ""
-    if first:
+    if first.startswith("dax") or first.startswith("daksh"):
         for m in members:
             p = m.get("profile", {})
             real = p.get("real_name", "").lower()
-            disp = p.get("display_name", "").lower()
             uname = m.get("name", "").lower()
-            if first in real or first in disp or first in uname:
-                _SLACK_USER_CACHE[cache_key] = m.get("id")
-                return m.get("id")
-            if (first.startswith("dax") or first.startswith("daksh")) and ("dax" in uname or "dax" in real):
+            if "dax" in uname or "dax" in real:
                 _SLACK_USER_CACHE[cache_key] = m.get("id")
                 return m.get("id")
 
@@ -751,7 +791,10 @@ def post_missed_checkout_alert(employee_name: str, email: str | None, shift_date
         return
 
     mention = format_slack_mention(employee_name, email)
-    text = f"⚠️ *Missed Check-Out:* {mention} You haven't checked out yet for your shift ({shift_end_str}) on {shift_date}. Please remember to clock out."
+    text = (
+        f"⚠️ *Check out:* {mention} Your shift ends at {shift_end_str}. "
+        f"Check out now. If you are working extra, check out before 11:59 PM."
+    )
 
     try:
         response = httpx.post(
@@ -876,6 +919,54 @@ def post_checkout_alert(
     post_channel_message(fallback, blocks=blocks, label="post_checkout_alert")
 
 
+def _extra_bit(row: dict) -> str:
+    minutes = int(row.get("extra_minutes") or 0)
+    if minutes <= 0:
+        return ""
+    return f" | Extra: *{row.get('extra_str') or ''}*"
+
+
+def post_day_close_to_slack(shift_date: date, groups: list[dict]) -> None:
+    """One Slack post at 11:59 PM covering every group."""
+    if not settings.slack_bot_token or not settings.slack_channel_id or not groups:
+        return
+    date_str = shift_date.strftime("%A, %d %B %Y")
+    blocks: list[dict] = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"Final summary — {shift_date.strftime('%d %b')}", "emoji": True},
+        },
+        {
+            "type": "context",
+            "elements": [{"type": "mrkdwn", "text": f"📅 *{date_str}*  •  through 11:59 PM"}],
+        },
+    ]
+    for group in groups:
+        stats = group["stats"]
+        lines = [
+            f"*{group['shift_name']}* ({group['shift_timing']})",
+            (
+                f"Scheduled {stats.get('total', 0)} · Present {stats.get('present', 0)} · "
+                f"Late {stats.get('late', 0)} · Absent {stats.get('absent', 0)} · Leave {stats.get('leave', 0)}"
+            ),
+        ]
+        for row in group["roster"]:
+            lines.append(
+                f"• {row['name']} (`{row['code']}`) — {row.get('status')} · "
+                f"In {row.get('first_in') or '—'} · Out {row.get('last_out') or '—'} · "
+                f"Worked {row.get('hours_str') or '—'}{_extra_bit(row)}"
+            )
+        text = "\n".join(lines)
+        if len(text) > 2900:
+            text = text[:2890] + "\n…"
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": text}})
+    post_channel_message(
+        f"Final summary for {date_str}",
+        blocks=blocks,
+        label="post_day_close_to_slack",
+    )
+
+
 def post_shift_summary_to_slack(
     shift_name: str,
     shift_timing: str,
@@ -943,11 +1034,11 @@ def post_shift_summary_to_slack(
         lines = []
         for r in present_list:
             lines.append(
-                f"• *{r['name']}* (`{r['code']}`) — In: *{r.get('first_in') or '—'}* | Out: *{r.get('last_out') or '—'}* | ☕ Break: *{r.get('break_str') or '0m'}* | ⏱️ Net: *{r.get('hours_str') or '—'}*"
+                f"• *{r['name']}* (`{r['code']}`) — In: *{r.get('first_in') or '—'}* | Out: *{r.get('last_out') or '—'}* | ☕ Break: *{r.get('break_str') or '0m'}* | ⏱️ Net: *{r.get('hours_str') or '—'}*{_extra_bit(r)}"
             )
         for r in late_list:
             lines.append(
-                f"• *{r['name']}* (`{r['code']}`) — In: *{r.get('first_in') or '—'}* ⏳ ({r.get('late_str') or 'Late'}) | Out: *{r.get('last_out') or '—'}* | ☕ Break: *{r.get('break_str') or '0m'}* | ⏱️ Net: *{r.get('hours_str') or '—'}*"
+                f"• *{r['name']}* (`{r['code']}`) — In: *{r.get('first_in') or '—'}* ⏳ ({r.get('late_str') or 'Late'}) | Out: *{r.get('last_out') or '—'}* | ☕ Break: *{r.get('break_str') or '0m'}* | ⏱️ Net: *{r.get('hours_str') or '—'}*{_extra_bit(r)}"
             )
         
         if lines:
@@ -1406,17 +1497,44 @@ def update_signup_decision(
         return False
 
 
+def is_slack_admin(slack_user_id: str | None) -> bool:
+    """True only for the fixed Holbox admin Slack user IDs."""
+    if not slack_user_id:
+        return False
+    return slack_user_id in (getattr(settings, "slack_admin_user_ids", None) or [])
+
+
+def slack_user_id_for_email(email: str | None) -> str | None:
+    """Map an employee email to their Slack user id (best-effort)."""
+    if not email:
+        return None
+    needle = email.strip().lower()
+    for m in _get_all_slack_members():
+        profile_email = (m.get("profile") or {}).get("email") or ""
+        if profile_email.strip().lower() == needle:
+            return m.get("id")
+    return None
+
+
 def post_ephemeral_to_admins(
     channel_id: str,
     text: str,
     blocks: list[dict] | None = None,
+    exclude_user_ids: list[str] | None = None,
 ) -> None:
-    """Send a private ephemeral message inside the channel to all designated admin user IDs."""
+    """Send a private ephemeral message inside the channel to designated admins.
+
+    exclude_user_ids: never send Approve/Reject cards to these users (the
+    applicant, even when they are themselves an admin).
+    """
     if not settings.slack_bot_token:
         return
 
+    skip = set(exclude_user_ids or [])
     admin_ids = getattr(settings, "slack_admin_user_ids", []) or []
     for admin_id in admin_ids:
+        if admin_id in skip:
+            continue
         try:
             payload: dict = {
                 "channel": channel_id,
@@ -1436,6 +1554,19 @@ def post_ephemeral_to_admins(
                 logger.warning("postEphemeral to admin %s failed: %s", admin_id, data.get("error"))
         except Exception as e:
             logger.warning("Error posting ephemeral to admin %s: %s", admin_id, e)
+
+
+def notify_admins_and_employee(
+    channel_id: str,
+    *,
+    text: str,
+    employee_slack_id: str | None = None,
+    blocks: list[dict] | None = None,
+) -> None:
+    """Decision outcome: whisper to every admin and to the employee. Never public."""
+    post_ephemeral_to_admins(channel_id, text, blocks=blocks)
+    if employee_slack_id:
+        post_ephemeral_to_user(channel_id, employee_slack_id, text, blocks=blocks)
 
 
 def post_ephemeral_to_user(
