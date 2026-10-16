@@ -315,6 +315,7 @@ async def apply(
             document_bytes=file_data,
             document_filename=f"medical_doc_{emp.emp_code}.{file_ext}" if file_data and file_ext else None,
             is_sick_leave=is_sick,
+            employee_email=emp.email,
         )
         if slack_resp:
             result.request.slack_message_ts = slack_resp[0]

@@ -1,7 +1,7 @@
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Annotated
 from urllib.parse import parse_qs
 
@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.core.security import generate_action_token
 from app.db.session import get_db
 from app.models.employee import Employee, User, UserRole
-from app.models.enums import CorrectionStatus, LeaveStatus
+from app.models.enums import CorrectionStatus, LeaveStatus, PunchDirection
 from app.models.late_request import LateRequest
 from app.models.leave import LeaveRequest
 from app.models.wfh_request import WFHRequest
@@ -22,11 +22,12 @@ from app.services.leave import decide as leave_decide
 from app.services.slack import (
     _get_all_slack_members,
     format_slack_mention,
+    is_slack_admin,
+    notify_admins_and_employee,
     open_slack_modal,
     post_ephemeral_to_admins,
     post_ephemeral_to_user,
-    post_late_approved_broadcast,
-    post_reply,
+    slack_user_id_for_email,
     update_leave_request,
     verify_slack_signature,
 )
@@ -79,6 +80,111 @@ def _find_employee_by_slack(db: Session, slack_user_id: str, username: str | Non
     return None
 
 
+def _slack_approver_user(db: Session, slack_user_id: str, username: str | None) -> User | None:
+    """Map the Slack clicker to their Holbox User row (must be HR/super admin)."""
+    emp = _find_employee_by_slack(db, slack_user_id, username)
+    if emp is None:
+        return None
+    user = db.scalar(
+        select(User).where(
+            User.employee_id == emp.id,
+            User.is_active.is_(True),
+            User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
+        )
+    )
+    return user
+
+
+def _refuse_non_admin(response_url: str | None, slack_user_id: str | None) -> dict | None:
+    if is_slack_admin(slack_user_id):
+        return None
+    msg = "Only Holbox admins can approve or reject this request."
+    if response_url:
+        import httpx
+        try:
+            httpx.post(
+                response_url,
+                json={"text": f"⛔ {msg}", "replace_original": False},
+                timeout=5.0,
+            )
+        except Exception:
+            pass
+    return {"message": msg}
+
+
+def _refuse_self_decide(
+    response_url: str | None,
+    clicker_emp: Employee | None,
+    request_employee_id,
+) -> dict | None:
+    if clicker_emp is None or clicker_emp.id != request_employee_id:
+        return None
+    msg = "You cannot approve or reject your own request. Another admin must decide."
+    if response_url:
+        import httpx
+        try:
+            httpx.post(
+                response_url,
+                json={"text": f"⛔ {msg}", "replace_original": False},
+                timeout=5.0,
+            )
+        except Exception:
+            pass
+    return {"message": msg}
+
+
+def _open_approve_reason_modal(
+    *,
+    trigger_id: str,
+    kind: str,
+    request_id: str,
+    channel_id: str | None,
+    message_ts: str | None,
+    response_url: str | None,
+) -> dict:
+    """Approve always asks for a mandatory decision reason first."""
+    view = {
+        "type": "modal",
+        "callback_id": "submit_admin_decision_reason",
+        "title": {"type": "plain_text", "text": "Approval reason"},
+        "submit": {"type": "plain_text", "text": "Approve"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "private_metadata": json.dumps({
+            "kind": kind,
+            "request_id": request_id,
+            "channel_id": channel_id,
+            "message_ts": message_ts,
+            "response_url": response_url,
+        }),
+        "blocks": [
+            {
+                "type": "input",
+                "block_id": "decision_reason_block",
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "decision_reason_input",
+                    "multiline": True,
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Why are you approving? (required)",
+                    },
+                },
+                "label": {"type": "plain_text", "text": "Reason for approval"},
+            },
+        ],
+    }
+    ok = open_slack_modal(trigger_id, view)
+    if not ok:
+        return {"message": "Could not open approval reason form"}
+    return {"message": "ok"}
+
+
+APPLICANT_WAIT_TEXT = (
+    "✅ Sent to Holbox admins for review. You will be notified privately when they respond. "
+    "You cannot approve or reject your own request."
+)
+
+
 @router.post("/commands")
 async def slack_commands(
     request: Request,
@@ -119,6 +225,20 @@ async def slack_commands(
         }
         action_type = punch_type_map[command]
         action_label = label_map[command]
+
+        if command == "/checkout" and emp is not None:
+            from app.services.attendance import next_direction, policy_for
+            from app.services.resolver import shift_date_for
+            policy, _ = policy_for(db, emp, org_today())
+            shift_date = shift_date_for(datetime.now(timezone.utc), policy)
+            if next_direction(db, emp, shift_date) != PunchDirection.OUT:
+                return {
+                    "response_type": "ephemeral",
+                    "text": (
+                        "You are not checked in. A new day starts at 5:00 AM, "
+                        "so yesterday's shift no longer needs a checkout. Use /checkin."
+                    ),
+                }
 
         if not emp:
             return {
@@ -362,6 +482,129 @@ async def slack_commands(
         open_slack_modal(trigger_id, view)
         return Response(status_code=200)
 
+    # 6. /correction & /correct -> Private modal for Attendance Regularization / Missed Punch / Late Arrival
+    if command in ("/correction", "/correct", "/regularize"):
+        if not emp:
+            return {
+                "response_type": "ephemeral",
+                "text": f"⚠️ Could not map your Slack user (`{user_name}`) to an employee profile.",
+            }
+
+        yesterday_str = (org_today() - timedelta(days=1)).isoformat()
+        view = {
+            "type": "modal",
+            "callback_id": "submit_correction_request",
+            "title": {"type": "plain_text", "text": "Attendance Correction"},
+            "submit": {"type": "plain_text", "text": "Submit"},
+            "close": {"type": "plain_text", "text": "Cancel"},
+            "private_metadata": json.dumps({"channel_id": channel_id, "user_id": user_id}),
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"👋 *{emp.full_name}*, submit a correction to regularize late arrival, missed check-in, or missed check-out. Admins will review your request.",
+                    },
+                },
+                {
+                    "type": "input",
+                    "block_id": "correction_date_block",
+                    "element": {
+                        "type": "datepicker",
+                        "action_id": "correction_date_input",
+                        "initial_date": yesterday_str,
+                        "placeholder": {"type": "plain_text", "text": "Select shift date"},
+                    },
+                    "label": {"type": "plain_text", "text": "Shift Date"},
+                },
+                {
+                    "type": "input",
+                    "block_id": "correction_category_block",
+                    "element": {
+                        "type": "static_select",
+                        "action_id": "correction_category_input",
+                        "placeholder": {"type": "plain_text", "text": "Select correction type"},
+                        "initial_option": {
+                            "text": {"type": "plain_text", "text": "Late Arrival / Shift Regularization"},
+                            "value": "late_arrival",
+                        },
+                        "options": [
+                            {
+                                "text": {"type": "plain_text", "text": "Late Arrival / Shift Regularization"},
+                                "value": "late_arrival",
+                            },
+                            {
+                                "text": {"type": "plain_text", "text": "Missed Check-In"},
+                                "value": "missed_check_in",
+                            },
+                            {
+                                "text": {"type": "plain_text", "text": "Missed Check-Out"},
+                                "value": "missed_check_out",
+                            },
+                            {
+                                "text": {"type": "plain_text", "text": "Biometric / Device Glitch"},
+                                "value": "device_glitch",
+                            },
+                            {
+                                "text": {"type": "plain_text", "text": "Other"},
+                                "value": "other",
+                            },
+                        ],
+                    },
+                    "label": {"type": "plain_text", "text": "Reason Category"},
+                },
+                {
+                    "type": "input",
+                    "block_id": "correction_dir_block",
+                    "element": {
+                        "type": "static_select",
+                        "action_id": "correction_dir_input",
+                        "placeholder": {"type": "plain_text", "text": "Select punch direction"},
+                        "initial_option": {
+                            "text": {"type": "plain_text", "text": "Check-In (IN)"},
+                            "value": "in",
+                        },
+                        "options": [
+                            {
+                                "text": {"type": "plain_text", "text": "Check-In (IN)"},
+                                "value": "in",
+                            },
+                            {
+                                "text": {"type": "plain_text", "text": "Check-Out (OUT)"},
+                                "value": "out",
+                            },
+                        ],
+                    },
+                    "label": {"type": "plain_text", "text": "Punch Direction"},
+                },
+                {
+                    "type": "input",
+                    "block_id": "correction_time_block",
+                    "element": {
+                        "type": "timepicker",
+                        "action_id": "correction_time_input",
+                        "initial_time": "18:00",
+                        "placeholder": {"type": "plain_text", "text": "Select actual punch time"},
+                    },
+                    "label": {"type": "plain_text", "text": "Actual Punch Time (IST)"},
+                },
+                {
+                    "type": "input",
+                    "block_id": "correction_reason_block",
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "correction_reason_input",
+                        "multiline": True,
+                        "placeholder": {"type": "plain_text", "text": "Explain reason (e.g. Traffic delay, forgot to punch, system error)..."},
+                        "initial_value": text if text else "",
+                    },
+                    "label": {"type": "plain_text", "text": "Detailed Reason"},
+                },
+            ],
+        }
+        open_slack_modal(trigger_id, view)
+        return Response(status_code=200)
+
     return {"response_type": "ephemeral", "text": f"Unknown command {command}"}
 
 
@@ -414,6 +657,38 @@ async def slack_interactions(
         except Exception:
             meta = {}
         channel_id = meta.get("channel_id") or settings.slack_channel_id
+
+        if callback_id == "submit_admin_decision_reason":
+            reason = values.get("decision_reason_block", {}).get("decision_reason_input", {}).get("value", "").strip()
+            if not reason:
+                return {
+                    "response_action": "errors",
+                    "errors": {"decision_reason_block": "An approval reason is required."},
+                }
+            kind = meta.get("kind") or ""
+            request_id = meta.get("request_id") or ""
+            channel_id = meta.get("channel_id") or settings.slack_channel_id
+            message_ts = meta.get("message_ts")
+            response_url = meta.get("response_url")
+            result = _apply_admin_decision(
+                db,
+                kind=kind,
+                request_id=request_id,
+                approve=True,
+                decision_reason=reason,
+                slack_user_id=slack_user_id,
+                slack_user=slack_user_name,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                response_url=response_url,
+                partial_approve=(kind == "partial_approve"),
+            )
+            if result.get("error"):
+                return {
+                    "response_action": "errors",
+                    "errors": {"decision_reason_block": result["error"]},
+                }
+            return {"response_action": "clear"}
 
         emp = _find_employee_by_slack(db, slack_user_id, slack_user_name)
         if not emp:
@@ -472,11 +747,12 @@ async def slack_interactions(
                     channel_id=channel_id,
                     text=f"Late arrival request from {emp.full_name}",
                     blocks=admin_blocks,
+                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
                     channel_id=channel_id,
                     user_id=slack_user_id,
-                    text="✅ Your late arrival reason was submitted privately to admins for approval.",
+                    text=APPLICANT_WAIT_TEXT,
                 )
 
             return {"response_action": "clear"}
@@ -532,11 +808,78 @@ async def slack_interactions(
                     channel_id=channel_id,
                     text=f"WFH request from {emp.full_name}",
                     blocks=admin_blocks,
+                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
                     channel_id=channel_id,
                     user_id=slack_user_id,
-                    text="✅ Your WFH request was submitted privately to admins for approval.",
+                    text=APPLICANT_WAIT_TEXT,
+                )
+            return {"response_action": "clear"}
+
+        if callback_id == "submit_early_checkout_request":
+            reason = values.get("early_reason_block", {}).get("early_reason_input", {}).get("value", "").strip()
+            if not reason:
+                return {
+                    "response_action": "errors",
+                    "errors": {"early_reason_block": "Reason is required."},
+                }
+            today_date = org_today()
+            # Reuse late_requests row with a clear prefix — same admin decide path.
+            early_req = LateRequest(
+                id=uuid.uuid4(),
+                org_id=emp.org_id,
+                employee_id=emp.id,
+                shift_date=today_date,
+                reason=f"[Early checkout] {reason}",
+                status=CorrectionStatus.PENDING,
+            )
+            db.add(early_req)
+            db.commit()
+            admin_blocks = [
+                {
+                    "type": "header",
+                    "text": {"type": "plain_text", "text": "🏃 Early Checkout Request (Private to Admins)", "emoji": True},
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{emp.full_name}* (`{emp.emp_code}`) requested early checkout for "
+                            f"*{today_date.strftime('%d %b %Y')}*.\n📝 *Reason:* _{reason}_"
+                        ),
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "✅ Approve Early Checkout", "emoji": True},
+                            "style": "primary",
+                            "value": f"approve_early:{early_req.id}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "❌ Reject", "emoji": True},
+                            "style": "danger",
+                            "value": f"reject_early:{early_req.id}",
+                        },
+                    ],
+                },
+            ]
+            if channel_id:
+                post_ephemeral_to_admins(
+                    channel_id=channel_id,
+                    text=f"Early checkout request from {emp.full_name}",
+                    blocks=admin_blocks,
+                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
+                )
+                post_ephemeral_to_user(
+                    channel_id=channel_id,
+                    user_id=slack_user_id,
+                    text=APPLICANT_WAIT_TEXT,
                 )
             return {"response_action": "clear"}
 
@@ -612,11 +955,107 @@ async def slack_interactions(
                     channel_id=channel_id,
                     text=f"Leave request from {emp.full_name}",
                     blocks=admin_blocks,
+                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
                     channel_id=channel_id,
                     user_id=slack_user_id,
-                    text=f"✅ Your leave request ({from_date} to {to_date}) was submitted privately to admins for approval.",
+                    text=APPLICANT_WAIT_TEXT,
+                )
+            return {"response_action": "clear"}
+
+        if callback_id == "submit_correction_request":
+            date_str = values.get("correction_date_block", {}).get("correction_date_input", {}).get("selected_date")
+            cat_val = values.get("correction_category_block", {}).get("correction_category_input", {}).get("selected_option", {}).get("value", "late_arrival")
+            dir_val = values.get("correction_dir_block", {}).get("correction_dir_input", {}).get("selected_option", {}).get("value", "in")
+            time_str = values.get("correction_time_block", {}).get("correction_time_input", {}).get("selected_time", "18:00")
+            reason = values.get("correction_reason_block", {}).get("correction_reason_input", {}).get("value", "").strip()
+
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date() if date_str else org_today()
+            target_dir = PunchDirection.IN if dir_val == "in" else PunchDirection.OUT
+
+            from zoneinfo import ZoneInfo
+            from app.services import corrections as correction_service
+            try:
+                hh, mm = [int(x) for x in (time_str or "18:00").split(":")[:2]]
+                dt_local = datetime(target_date.year, target_date.month, target_date.day, hh, mm, tzinfo=ZoneInfo("Asia/Kolkata"))
+                claimed_at_utc = dt_local.astimezone(timezone.utc)
+            except Exception:
+                claimed_at_utc = datetime.combine(target_date, time(18, 0), tzinfo=timezone.utc)
+
+            outcome = correction_service.submit(
+                db,
+                employee=emp,
+                shift_date=target_date,
+                direction=target_dir,
+                claimed_at=claimed_at_utc,
+                reason=reason or "Applied via Slack",
+                category=cat_val,
+            )
+
+            if not outcome.ok:
+                return {
+                    "response_action": "errors",
+                    "errors": {"correction_reason_block": outcome.reason or "Could not submit correction request."},
+                }
+
+            corr_req = outcome.request
+            db.commit()
+
+            category_labels = {
+                "late_arrival": "Late Arrival / Shift Regularization",
+                "missed_check_in": "Missed Check-In",
+                "missed_check_out": "Missed Check-Out",
+                "device_glitch": "Biometric / Device Glitch",
+                "other": "Other",
+            }
+            cat_label = category_labels.get(cat_val, cat_val)
+
+            admin_blocks = [
+                {
+                    "type": "header",
+                    "text": {"type": "plain_text", "text": "📝 Attendance Correction Request (Private to Admins)", "emoji": True},
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{emp.full_name}* (`{emp.emp_code}`) requested an attendance correction:\n\n"
+                                f"📅 *Shift Date:* {target_date.strftime('%d %b %Y')}\n"
+                                f"🏷️ *Type:* {cat_label}\n"
+                                f"⏰ *Claimed Punch:* {target_dir.value.upper()} at {time_str} IST\n"
+                                f"📝 *Reason:* _{reason}_",
+                    },
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "✅ Approve Correction", "emoji": True},
+                            "style": "primary",
+                            "value": f"approve_correction:{corr_req.id}",
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "❌ Reject", "emoji": True},
+                            "style": "danger",
+                            "value": f"reject_correction:{corr_req.id}",
+                        },
+                    ],
+                },
+            ]
+            if channel_id:
+                post_ephemeral_to_admins(
+                    channel_id=channel_id,
+                    text=f"Attendance correction from {emp.full_name}",
+                    blocks=admin_blocks,
+                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
+                )
+                post_ephemeral_to_user(
+                    channel_id=channel_id,
+                    user_id=slack_user_id,
+                    text=APPLICANT_WAIT_TEXT,
                 )
             return {"response_action": "clear"}
 
@@ -633,107 +1072,66 @@ async def slack_interactions(
     channel_id = data.get("channel", {}).get("id")
     message_ts = data.get("message", {}).get("ts")
     response_url = data.get("response_url")
+    trigger_id = data.get("trigger_id")
 
-    # 1. Late Approval / Rejection
-    if action_value.startswith("approve_late:") or action_value.startswith("reject_late:"):
-        is_approve = action_value.startswith("approve_late:")
-        late_id_str = action_value.split(":", 1)[1]
-        try:
-            late_id = uuid.UUID(late_id_str)
-        except ValueError:
-            return {"message": "Invalid late request ID"}
+    # Shared gate for every approve/reject card (leave / late / early / wfh / correction).
+    DECIDABLE_PREFIXES = (
+        "approve_late:", "reject_late:",
+        "approve_early:", "reject_early:",
+        "approve_wfh:", "reject_wfh:",
+        "approve_correction:", "reject_correction:",
+        "approve:", "reject:", "partial_approve:",
+    )
+    if action_value.startswith(DECIDABLE_PREFIXES):
+        refused = _refuse_non_admin(response_url, slack_user_id)
+        if refused:
+            return refused
 
-        late_req = db.get(LateRequest, late_id)
-        if not late_req:
-            return {"message": "Late request not found"}
+        kind, _, request_id = action_value.partition(":")
+        is_approve = kind.startswith("approve") or kind == "partial_approve"
+        # Map request -> employee for self-decide check
+        clicker_emp = _find_employee_by_slack(db, slack_user_id, slack_user)
+        request_employee_id = _request_employee_id(db, kind, request_id)
+        if request_employee_id is not None:
+            refused = _refuse_self_decide(response_url, clicker_emp, request_employee_id)
+            if refused:
+                return refused
 
-        req_emp = db.get(Employee, late_req.employee_id)
-
-        hr_admin = db.scalar(
-            select(User).where(
-                User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
-                User.is_active.is_(True),
-            ).limit(1)
-        )
-
-        late_req.status = CorrectionStatus.APPROVED if is_approve else CorrectionStatus.REJECTED
-        late_req.decided_by_id = hr_admin.id if hr_admin else None
-        late_req.decided_by_slack_id = slack_user_id
-        late_req.decided_by_name = slack_user
-        late_req.decided_at = datetime.now(timezone.utc)
-        late_req.decided_note = f"Decided via Slack by @{slack_user}"
-
-        db.commit()
-
-        # Recompute attendance day so employee is immediately marked PRESENT
-        if req_emp and is_approve:
-            from app.services.attendance import recompute_day
-            recompute_day(db, req_emp, late_req.shift_date)
-            db.commit()
-
-            # Broadcast public late approval with warning message tagged to employee
-            post_late_approved_broadcast(
-                employee_name=req_emp.full_name,
-                employee_email=req_emp.email,
-                admin_name=slack_user,
+        if is_approve:
+            # Mandatory approval reason via modal (including partial approve).
+            if not trigger_id:
+                return {"message": "Missing Slack trigger_id for approval reason"}
+            return _open_approve_reason_modal(
+                trigger_id=trigger_id,
+                kind=kind,
+                request_id=request_id,
                 channel_id=channel_id,
+                message_ts=message_ts,
+                response_url=response_url,
             )
 
-        # Notify the admin who clicked
-        import httpx
-        if response_url:
-            status_text = f"✅ Late arrival approved for {req_emp.full_name if req_emp else 'employee'}." if is_approve else f"❌ Late arrival rejected for {req_emp.full_name if req_emp else 'employee'}."
-            try:
-                httpx.post(
-                    response_url,
-                    json={"text": f"{status_text} (Recorded by @{slack_user})", "replace_original": True},
-                    timeout=5.0,
-                )
-            except Exception:
-                pass
+        # Reject proceeds immediately — no mandatory reason.
+        result = _apply_admin_decision(
+            db,
+            kind=kind,
+            request_id=request_id,
+            approve=False,
+            decision_reason=None,
+            slack_user_id=slack_user_id,
+            slack_user=slack_user,
+            channel_id=channel_id,
+            message_ts=message_ts,
+            response_url=response_url,
+            partial_approve=False,
+        )
+        return {"message": result.get("error") or "Success"}
 
-        return {"message": "Success"}
-
-    # 2. WFH Approval / Rejection
-    if action_value.startswith("approve_wfh:") or action_value.startswith("reject_wfh:"):
-        is_approve = action_value.startswith("approve_wfh:")
-        wfh_id_str = action_value.split(":", 1)[1]
-        try:
-            wfh_id = uuid.UUID(wfh_id_str)
-        except ValueError:
-            return {"message": "Invalid WFH request ID"}
-
-        wfh_req = db.get(WFHRequest, wfh_id)
-        if not wfh_req:
-            return {"message": "WFH request not found"}
-
-        req_emp = db.get(Employee, wfh_req.employee_id)
-        wfh_req.status = CorrectionStatus.APPROVED if is_approve else CorrectionStatus.REJECTED
-        wfh_req.decided_at = datetime.now(timezone.utc)
-        wfh_req.decided_note = f"Decided via Slack by @{slack_user}"
-        db.commit()
-
-        if req_emp and is_approve:
-            from app.services.attendance import recompute_day
-            recompute_day(db, req_emp, wfh_req.shift_date)
-            db.commit()
-
-        import httpx
-        if response_url:
-            status_text = f"✅ WFH approved for {req_emp.full_name if req_emp else 'employee'} on {wfh_req.shift_date}." if is_approve else f"❌ WFH rejected for {req_emp.full_name if req_emp else 'employee'}."
-            try:
-                httpx.post(
-                    response_url,
-                    json={"text": f"{status_text} (Recorded by @{slack_user})", "replace_original": True},
-                    timeout=5.0,
-                )
-            except Exception:
-                pass
-
-        return {"message": "Success"}
-
-    # 3. Existing Signup & Leave Actions
+    # Signup decline (admins only)
     if action_value.startswith("decline_signup:"):
+        refused = _refuse_non_admin(response_url, slack_user_id)
+        if refused:
+            return refused
+
         from app.api.routes.admin_signups import apply_decline
         from app.models.signup_request import SignupRequest
 
@@ -768,111 +1166,259 @@ async def slack_interactions(
             return {"message": str(exc.detail)}
         return {"message": "Success"}
 
-    if action_value.startswith("partial_approve:"):
-        action_type = "partial_approve"
-        request_id_str = action_value.split(":", 1)[1]
-        partial_approve = True
-        approve = True
-        decision_note = f"Partially approved via Slack by @{slack_user}. Please submit your medical certificate / doctor's prescription."
-    elif action_value.startswith("approve:"):
-        action_type = "approve"
-        request_id_str = action_value.split(":", 1)[1]
-        partial_approve = False
-        approve = True
-        decision_note = f"Decided via Slack by @{slack_user}"
-    elif action_value.startswith("reject:"):
-        action_type = "reject"
-        request_id_str = action_value.split(":", 1)[1]
-        partial_approve = False
-        approve = False
-        decision_note = f"Decided via Slack by @{slack_user}"
-    else:
-        return {"message": "Ignored unknown action"}
+    return {"message": "Ignored unknown action"}
 
-    original_text = data.get("message", {}).get("blocks", [{}])[0].get("text", {}).get("text", "Leave Request")
 
+def _request_employee_id(db: Session, kind: str, request_id: str):
+    """Resolve the employee_id for a pending Slack decide card."""
     try:
-        leave_request_id = uuid.UUID(request_id_str)
+        rid = uuid.UUID(request_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid leave request ID")
+        return None
+    if kind in ("approve_late", "reject_late", "approve_early", "reject_early"):
+        row = db.get(LateRequest, rid)
+        return row.employee_id if row else None
+    if kind in ("approve_wfh", "reject_wfh"):
+        row = db.get(WFHRequest, rid)
+        return row.employee_id if row else None
+    if kind in ("approve_correction", "reject_correction"):
+        from app.models.correction import CorrectionRequest
+        row = db.get(CorrectionRequest, rid)
+        return row.employee_id if row else None
+    if kind in ("approve", "reject", "partial_approve"):
+        row = db.get(LeaveRequest, rid)
+        return row.employee_id if row else None
+    return None
 
-    leave_req = db.get(LeaveRequest, leave_request_id)
-    if not leave_req:
-        return {"message": "Leave request not found"}
 
-    hr_admin = db.scalar(
-        select(User).where(User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]), User.is_active.is_(True)).limit(1)
-    )
-    if not hr_admin:
-        hr_admin = db.scalar(select(User).where(User.is_active.is_(True)).limit(1))
-    if not hr_admin:
-        return {"message": "Internal error: No valid approver found"}
-
-    outcome = leave_decide(
-        db,
-        request=leave_req,
-        approver=hr_admin,
-        approve=approve,
-        partial_approve=partial_approve,
-        note=decision_note,
-        allow_self_approval=True,
-    )
-
-    if not outcome.ok:
-        if response_url:
-            import httpx
-            try:
-                httpx.post(response_url, json={"text": f"⚠️ {outcome.reason}", "replace_original": False}, timeout=5.0)
-            except Exception:
-                pass
-        return {"message": outcome.reason}
-
-    db.commit()
-
+def _whisper_decision(
+    *,
+    channel_id: str | None,
+    req_emp: Employee | None,
+    text: str,
+    response_url: str | None,
+    admin_status: str,
+) -> None:
     import httpx
-    target_channel = channel_id or settings.slack_channel_id
-    req_emp = leave_req.employee if leave_req else None
-    emp_name = req_emp.full_name if req_emp else "Employee"
-    emp_email = req_emp.email if req_emp else None
-    mention = format_slack_mention(emp_name, emp_email)
-    action_word = "approved" if approve else ("partially approved" if partial_approve else "rejected")
-
-    # Broadcast notification tagging employee in the attendance channel
-    if target_channel and settings.slack_bot_token:
-        broadcast_msg = f"🌴 *Leave Request {action_word.capitalize()}*: {mention}, your leave request ({leave_req.from_date.strftime('%d %b')} to {leave_req.to_date.strftime('%d %b')}) was *{action_word}* by *@{slack_user}*."
-        try:
-            httpx.post(
-                "https://slack.com/api/chat.postMessage",
-                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-                json={"channel": target_channel, "text": broadcast_msg},
-                timeout=5.0,
-            )
-        except Exception:
-            pass
-
+    target = channel_id or settings.slack_channel_id
+    emp_slack = slack_user_id_for_email(req_emp.email if req_emp else None)
+    if target:
+        notify_admins_and_employee(
+            target,
+            text=text,
+            employee_slack_id=emp_slack,
+        )
     if response_url:
-        status_text = f"✅ Leave request approved for {emp_name}." if approve else f"❌ Leave request rejected for {emp_name}."
         try:
             httpx.post(
                 response_url,
-                json={"text": f"{status_text} (Recorded by @{slack_user})", "replace_original": True},
+                json={"text": admin_status, "replace_original": True},
                 timeout=5.0,
             )
         except Exception:
             pass
 
-    if channel_id and message_ts:
-        update_leave_request(
-            channel_id=channel_id,
-            message_ts=message_ts,
-            original_text=original_text,
-            approved=approve,
-            actor_name=slack_user,
-            partial_approve=partial_approve,
-            note="Please submit your medical certificate / doctor's prescription." if partial_approve else None,
-        )
 
-    return {"message": "Success"}
+def _apply_admin_decision(
+    db: Session,
+    *,
+    kind: str,
+    request_id: str,
+    approve: bool,
+    decision_reason: str | None,
+    slack_user_id: str | None,
+    slack_user: str,
+    channel_id: str | None,
+    message_ts: str | None,
+    response_url: str | None,
+    partial_approve: bool | None = None,
+) -> dict:
+    """Execute an admin decide for leave / late / early / wfh / correction.
+
+    Approvals require a non-empty decision_reason. Never public-posts the outcome.
+    """
+    if partial_approve is None:
+        partial_approve = kind == "partial_approve"
+    if approve and not (decision_reason or "").strip():
+        return {"error": "An approval reason is required."}
+
+    if not is_slack_admin(slack_user_id):
+        return {"error": "Only Holbox admins can approve or reject this request."}
+
+    clicker_emp = _find_employee_by_slack(db, slack_user_id or "", slack_user)
+    request_employee_id = _request_employee_id(db, kind, request_id)
+    if (
+        clicker_emp is not None
+        and request_employee_id is not None
+        and clicker_emp.id == request_employee_id
+    ):
+        return {"error": "You cannot approve or reject your own request. Another admin must decide."}
+
+    approver = _slack_approver_user(db, slack_user_id or "", slack_user)
+    if approver is None:
+        approver = db.scalar(
+            select(User).where(
+                User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
+                User.is_active.is_(True),
+            ).limit(1)
+        )
+    if approver is None:
+        return {"error": "No valid admin user found to record the decision."}
+
+    note = (decision_reason or "").strip()
+    if approve and partial_approve:
+        note = (
+            f"Partially approved via Slack by @{slack_user}. {note}. "
+            "Please submit your medical certificate / doctor's prescription."
+        )
+    elif approve:
+        note = f"Approved via Slack by @{slack_user}: {note}"
+    else:
+        note = f"Rejected via Slack by @{slack_user}" + (f": {note}" if note else "")
+
+    try:
+        rid = uuid.UUID(request_id)
+    except ValueError:
+        return {"error": "Invalid request id"}
+
+    # --- Late / early (same table) ---
+    if kind in ("approve_late", "reject_late", "approve_early", "reject_early"):
+        late_req = db.get(LateRequest, rid)
+        if not late_req:
+            return {"error": "Request not found"}
+        if late_req.status != CorrectionStatus.PENDING:
+            return {"error": f"Already {late_req.status.value}"}
+        req_emp = db.get(Employee, late_req.employee_id)
+        is_early = kind.endswith("early") or (late_req.reason or "").startswith("[Early checkout]")
+        late_req.status = CorrectionStatus.APPROVED if approve else CorrectionStatus.REJECTED
+        late_req.decided_by_id = approver.id
+        late_req.decided_by_slack_id = slack_user_id
+        late_req.decided_by_name = slack_user
+        late_req.decided_at = datetime.now(timezone.utc)
+        late_req.decided_note = note
+        db.commit()
+        if req_emp and approve:
+            from app.services.attendance import recompute_day
+            recompute_day(db, req_emp, late_req.shift_date)
+            db.commit()
+        label = "early checkout" if is_early else "late arrival"
+        outcome_text = (
+            f"✅ Your *{label}* for *{late_req.shift_date.strftime('%d %b %Y')}* was *approved* by *@{slack_user}*.\n> {note}"
+            if approve else
+            f"❌ Your *{label}* for *{late_req.shift_date.strftime('%d %b %Y')}* was *rejected* by *@{slack_user}*."
+        )
+        _whisper_decision(
+            channel_id=channel_id,
+            req_emp=req_emp,
+            text=outcome_text,
+            response_url=response_url,
+            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} {label} for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+        )
+        return {"ok": True}
+
+    # --- WFH ---
+    if kind in ("approve_wfh", "reject_wfh"):
+        wfh_req = db.get(WFHRequest, rid)
+        if not wfh_req:
+            return {"error": "WFH request not found"}
+        if wfh_req.status != CorrectionStatus.PENDING:
+            return {"error": f"Already {wfh_req.status.value}"}
+        req_emp = db.get(Employee, wfh_req.employee_id)
+        wfh_req.status = CorrectionStatus.APPROVED if approve else CorrectionStatus.REJECTED
+        wfh_req.decided_at = datetime.now(timezone.utc)
+        wfh_req.decided_note = note
+        db.commit()
+        if req_emp and approve:
+            from app.services.attendance import recompute_day
+            recompute_day(db, req_emp, wfh_req.shift_date)
+            db.commit()
+        outcome_text = (
+            f"✅ Your *WFH* on *{wfh_req.shift_date.strftime('%d %b %Y')}* was *approved* by *@{slack_user}*.\n> {note}"
+            if approve else
+            f"❌ Your *WFH* on *{wfh_req.shift_date.strftime('%d %b %Y')}* was *rejected* by *@{slack_user}*."
+        )
+        _whisper_decision(
+            channel_id=channel_id,
+            req_emp=req_emp,
+            text=outcome_text,
+            response_url=response_url,
+            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} WFH for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+        )
+        return {"ok": True}
+
+    # --- Correction / regularization ---
+    if kind in ("approve_correction", "reject_correction"):
+        from app.models.correction import CorrectionRequest
+        from app.services import corrections as correction_service
+        corr_req = db.get(CorrectionRequest, rid)
+        if not corr_req:
+            return {"error": "Correction request not found"}
+        req_emp = db.get(Employee, corr_req.employee_id)
+        outcome = correction_service.decide(
+            db, request=corr_req, actor=approver, approve=approve, note=note,
+        )
+        if not outcome.ok:
+            return {"error": outcome.reason or "Could not decide"}
+        db.commit()
+        outcome_text = (
+            f"✅ Your *attendance correction* for *{corr_req.shift_date.strftime('%d %b %Y')}* was *approved* by *@{slack_user}*.\n> {note}"
+            if approve else
+            f"❌ Your *attendance correction* for *{corr_req.shift_date.strftime('%d %b %Y')}* was *rejected* by *@{slack_user}*."
+        )
+        _whisper_decision(
+            channel_id=channel_id,
+            req_emp=req_emp,
+            text=outcome_text,
+            response_url=response_url,
+            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} correction for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+        )
+        return {"ok": True}
+
+    # --- Leave ---
+    if kind in ("approve", "reject", "partial_approve"):
+        leave_req = db.get(LeaveRequest, rid)
+        if not leave_req:
+            return {"error": "Leave request not found"}
+        req_emp = db.get(Employee, leave_req.employee_id)
+        outcome = leave_decide(
+            db,
+            request=leave_req,
+            approver=approver,
+            approve=approve,
+            partial_approve=partial_approve,
+            note=note,
+            allow_self_approval=False,
+        )
+        if not outcome.ok:
+            return {"error": outcome.reason or "Could not decide"}
+        db.commit()
+        action_word = (
+            "partially approved" if partial_approve else ("approved" if approve else "rejected")
+        )
+        outcome_text = (
+            f"🌴 Your *leave* ({leave_req.from_date.strftime('%d %b')}–{leave_req.to_date.strftime('%d %b')}) "
+            f"was *{action_word}* by *@{slack_user}*.\n> {note}"
+        )
+        _whisper_decision(
+            channel_id=channel_id,
+            req_emp=req_emp,
+            text=outcome_text,
+            response_url=response_url,
+            admin_status=f"Leave {action_word} for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+        )
+        if channel_id and message_ts:
+            update_leave_request(
+                channel_id=channel_id,
+                message_ts=message_ts,
+                original_text="Leave Request",
+                approved=approve,
+                actor_name=slack_user,
+                partial_approve=partial_approve,
+                note=note if partial_approve else None,
+            )
+        return {"ok": True}
+
+    return {"error": f"Unknown decision kind: {kind}"}
 
 
 @router.post("/events")
