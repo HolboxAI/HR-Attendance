@@ -75,7 +75,7 @@ class UpdateRequest(BaseModel):
     manager_code: str | None = None
     role: UserRole | None = None
     shift: str | None = None
-    correction_limit: int | None = None
+    correction_limit: int | None = Field(default=None, ge=1, le=100)
 
 
 class CreatedResponse(BaseModel):
