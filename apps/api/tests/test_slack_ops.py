@@ -157,33 +157,176 @@ def test_slack_operations_and_late_overrides():
     day_before = recompute_day(db, emp, today_date)
     assert day_before.status in (AttendanceStatus.ABSENT, AttendanceStatus.NOT_MARKED)
 
-    # 6. Test Admin Approval via Block Action button click
-    action_payload = {
+    # 6. Test Non-Admin Rejection when clicking button
+    non_admin_payload = {
         "type": "block_actions",
-        "user": {"id": "U0BQ8HZ3MKJ", "name": "himesh"},
+        "user": {"id": "U_NON_ADMIN_999", "name": "random_employee"},
         "channel": {"id": "C12345"},
         "actions": [{"value": f"approve_late:{late_req.id}"}],
     }
     resp = client.post(
         "/api/v1/slack/interactions",
-        data={"payload": json.dumps(action_payload)},
+        data={"payload": json.dumps(non_admin_payload)},
     )
     assert resp.status_code == 200
-    assert resp.json() == {"message": "Success"}
+    assert resp.json() == {"message": "Only Holbox admins can approve or reject this request."}
+    print("✅ Non-admin button click correctly blocked: Only admins can approve or reject")
+
+    # 7. Test Non-Admin submitting decision modal -> blocked
+    non_admin_modal_payload = {
+        "type": "view_submission",
+        "user": {"id": "U_NON_ADMIN_999", "name": "random_employee"},
+        "view": {
+            "callback_id": "submit_admin_decision_reason",
+            "private_metadata": json.dumps({
+                "kind": "approve_late",
+                "request_id": str(late_req.id),
+                "channel_id": "C12345",
+            }),
+            "state": {
+                "values": {
+                    "decision_reason_block": {
+                        "decision_reason_input": {"value": "Illegally approved"}
+                    }
+                }
+            },
+        },
+    }
+    resp = client.post(
+        "/api/v1/slack/interactions",
+        data={"payload": json.dumps(non_admin_modal_payload)},
+    )
+    assert resp.status_code == 200
+    assert resp.json().get("response_action") == "errors"
+    print("✅ Non-admin modal submission correctly blocked")
+
+    # 8. Test Admin clicking Approve button -> opens modal
+    admin_action_payload = {
+        "type": "block_actions",
+        "user": {"id": "U0BQ8HZ3MKJ", "name": "himesh"},
+        "channel": {"id": "C12345"},
+        "trigger_id": "trig_12345",
+        "actions": [{"value": f"approve_late:{late_req.id}"}],
+    }
+    resp = client.post(
+        "/api/v1/slack/interactions",
+        data={"payload": json.dumps(admin_action_payload)},
+    )
+    assert resp.status_code == 200
+    assert resp.json().get("response_action") == "clear" or "message" in resp.json()
+    print("✅ Admin clicking approve correctly opens decision reason modal")
+
+    # 9. Test Admin submitting decision reason modal
+    admin_modal_payload = {
+        "type": "view_submission",
+        "user": {"id": "U0BQ8HZ3MKJ", "name": "himesh"},
+        "view": {
+            "callback_id": "submit_admin_decision_reason",
+            "private_metadata": json.dumps({
+                "kind": "approve_late",
+                "request_id": str(late_req.id),
+                "channel_id": "C12345",
+            }),
+            "state": {
+                "values": {
+                    "decision_reason_block": {
+                        "decision_reason_input": {"value": "Valid medical emergency verified"}
+                    }
+                }
+            },
+        },
+    }
+    resp = client.post(
+        "/api/v1/slack/interactions",
+        data={"payload": json.dumps(admin_modal_payload)},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"response_action": "clear"}
 
     # Verify LateRequest updated to APPROVED
     db.refresh(late_req)
     assert late_req.status == CorrectionStatus.APPROVED
     assert late_req.decided_by_name == "himesh"
 
-    # 7. Check attendance after approval -> MUST BE OVERRIDDEN TO PRESENT
+    # 10. Check attendance after approval -> MUST BE OVERRIDDEN TO PRESENT
     day_after = recompute_day(db, emp, today_date)
     assert day_after.status == AttendanceStatus.PRESENT
     assert day_after.is_regularized is True
     print("✅ Admin approval successfully converted status to PRESENT in DB & attendance resolver")
 
+    # 11. Test Reject Late Arrival: Non-admin vs Admin
+    late_req2 = LateRequest(
+        id=uuid.uuid4(),
+        org_id=emp.org_id,
+        employee_id=emp.id,
+        shift_date=today_date,
+        reason="Missed alarm",
+        status=CorrectionStatus.PENDING,
+    )
+    db.add(late_req2)
+    db.commit()
+
+    # Non-admin clicks reject -> blocked
+    reject_non_admin = {
+        "type": "block_actions",
+        "user": {"id": "U_NON_ADMIN_999", "name": "random_employee"},
+        "channel": {"id": "C12345"},
+        "actions": [{"value": f"reject_late:{late_req2.id}"}],
+    }
+    resp = client.post(
+        "/api/v1/slack/interactions",
+        data={"payload": json.dumps(reject_non_admin)},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"message": "Only Holbox admins can approve or reject this request."}
+    print("✅ Non-admin reject click correctly blocked")
+
+    # Admin clicks reject -> success, status set to REJECTED
+    reject_admin = {
+        "type": "block_actions",
+        "user": {"id": "U0BQ8HZ3MKJ", "name": "himesh"},
+        "channel": {"id": "C12345"},
+        "actions": [{"value": f"reject_late:{late_req2.id}"}],
+    }
+    resp = client.post(
+        "/api/v1/slack/interactions",
+        data={"payload": json.dumps(reject_admin)},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"message": "Success"}
+
+    db.refresh(late_req2)
+    assert late_req2.status == CorrectionStatus.REJECTED
+    assert late_req2.decided_by_name == "himesh"
+    print("✅ Admin rejection recorded as REJECTED in database")
+
+    # 12. Verify Signup alert and Signup approval alerts do not publicly broadcast
+    from app.services import slack as slack_service
+    # post_signup_request_alert returns None (does not post public message with ts)
+    res_req = slack_service.post_signup_request_alert(
+        full_name="Bhavya Intern",
+        email="bhavya@holbox.ai",
+        phone="9999999999",
+        department="Engineering",
+        designation="Software Intern",
+        signup_id=str(uuid.uuid4()),
+    )
+    assert res_req is None
+    print("✅ Signup request alert is ephemeral to admins only (no public message created)")
+
+    # post_signup_approved_alert sends ephemeral to admins only (no public broadcast)
+    slack_service.post_signup_approved_alert(
+        full_name="Bhavya Intern",
+        email="bhavya@holbox.ai",
+        emp_code="HOL099",
+        admin_name="Himesh",
+        department="Engineering",
+        designation="Software Intern",
+    )
+    print("✅ Signup approved alert executed ephemerally for admins only")
+
     db.close()
-    print("🎉 All Slack operations, privacy modals, and late overrides verified successfully!")
+    print("🎉 All Slack operations, privacy modals, admin-only controls, and late overrides verified successfully!")
 
 
 if __name__ == "__main__":

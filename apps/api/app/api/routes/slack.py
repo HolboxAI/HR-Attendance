@@ -22,6 +22,7 @@ from app.services.leave import decide as leave_decide
 from app.services.slack import (
     _get_all_slack_members,
     format_slack_mention,
+    get_slack_user_id,
     is_slack_admin,
     notify_admins_and_employee,
     open_slack_modal,
@@ -95,31 +96,10 @@ def _slack_approver_user(db: Session, slack_user_id: str, username: str | None) 
     return user
 
 
-def _refuse_non_admin(response_url: str | None, slack_user_id: str | None) -> dict | None:
-    if is_slack_admin(slack_user_id):
+def _refuse_non_admin(response_url: str | None, slack_user_id: str | None, db: Session | None = None) -> dict | None:
+    if is_slack_admin(slack_user_id, db=db):
         return None
     msg = "Only Holbox admins can approve or reject this request."
-    if response_url:
-        import httpx
-        try:
-            httpx.post(
-                response_url,
-                json={"text": f"⛔ {msg}", "replace_original": False},
-                timeout=5.0,
-            )
-        except Exception:
-            pass
-    return {"message": msg}
-
-
-def _refuse_self_decide(
-    response_url: str | None,
-    clicker_emp: Employee | None,
-    request_employee_id,
-) -> dict | None:
-    if clicker_emp is None or clicker_emp.id != request_employee_id:
-        return None
-    msg = "You cannot approve or reject your own request. Another admin must decide."
     if response_url:
         import httpx
         try:
@@ -180,8 +160,7 @@ def _open_approve_reason_modal(
 
 
 APPLICANT_WAIT_TEXT = (
-    "✅ Sent to Holbox admins for review. You will be notified privately when they respond. "
-    "You cannot approve or reject your own request."
+    "✅ Sent to Holbox admins for review. You will be notified privately when they respond."
 )
 
 
@@ -659,6 +638,11 @@ async def slack_interactions(
         channel_id = meta.get("channel_id") or settings.slack_channel_id
 
         if callback_id == "submit_admin_decision_reason":
+            if not is_slack_admin(slack_user_id, db=db):
+                return {
+                    "response_action": "errors",
+                    "errors": {"decision_reason_block": "Only Holbox admins can approve requests."},
+                }
             reason = values.get("decision_reason_block", {}).get("decision_reason_input", {}).get("value", "").strip()
             if not reason:
                 return {
@@ -742,15 +726,15 @@ async def slack_interactions(
                 },
             ]
 
-            if channel_id:
+            target_chan = channel_id or settings.slack_channel_id
+            if target_chan:
                 post_ephemeral_to_admins(
-                    channel_id=channel_id,
+                    channel_id=target_chan,
                     text=f"Late arrival request from {emp.full_name}",
                     blocks=admin_blocks,
-                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
-                    channel_id=channel_id,
+                    channel_id=target_chan,
                     user_id=slack_user_id,
                     text=APPLICANT_WAIT_TEXT,
                 )
@@ -808,7 +792,6 @@ async def slack_interactions(
                     channel_id=channel_id,
                     text=f"WFH request from {emp.full_name}",
                     blocks=admin_blocks,
-                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
                     channel_id=channel_id,
@@ -874,7 +857,6 @@ async def slack_interactions(
                     channel_id=channel_id,
                     text=f"Early checkout request from {emp.full_name}",
                     blocks=admin_blocks,
-                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
                     channel_id=channel_id,
@@ -955,7 +937,6 @@ async def slack_interactions(
                     channel_id=channel_id,
                     text=f"Leave request from {emp.full_name}",
                     blocks=admin_blocks,
-                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
                     channel_id=channel_id,
@@ -1050,7 +1031,6 @@ async def slack_interactions(
                     channel_id=channel_id,
                     text=f"Attendance correction from {emp.full_name}",
                     blocks=admin_blocks,
-                    exclude_user_ids=[slack_user_id] if slack_user_id else None,
                 )
                 post_ephemeral_to_user(
                     channel_id=channel_id,
@@ -1083,19 +1063,12 @@ async def slack_interactions(
         "approve:", "reject:", "partial_approve:",
     )
     if action_value.startswith(DECIDABLE_PREFIXES):
-        refused = _refuse_non_admin(response_url, slack_user_id)
+        refused = _refuse_non_admin(response_url, slack_user_id, db=db)
         if refused:
             return refused
 
         kind, _, request_id = action_value.partition(":")
         is_approve = kind.startswith("approve") or kind == "partial_approve"
-        # Map request -> employee for self-decide check
-        clicker_emp = _find_employee_by_slack(db, slack_user_id, slack_user)
-        request_employee_id = _request_employee_id(db, kind, request_id)
-        if request_employee_id is not None:
-            refused = _refuse_self_decide(response_url, clicker_emp, request_employee_id)
-            if refused:
-                return refused
 
         if is_approve:
             # Mandatory approval reason via modal (including partial approve).
@@ -1128,7 +1101,7 @@ async def slack_interactions(
 
     # Signup decline (admins only)
     if action_value.startswith("decline_signup:"):
-        refused = _refuse_non_admin(response_url, slack_user_id)
+        refused = _refuse_non_admin(response_url, slack_user_id, db=db)
         if refused:
             return refused
 
@@ -1198,14 +1171,19 @@ def _whisper_decision(
     text: str,
     response_url: str | None,
     admin_status: str,
+    employee_text: str | None = None,
 ) -> None:
     import httpx
     target = channel_id or settings.slack_channel_id
-    emp_slack = slack_user_id_for_email(req_emp.email if req_emp else None)
+    emp_slack = (
+        slack_user_id_for_email(req_emp.email if req_emp else None)
+        or (get_slack_user_id(req_emp.full_name, req_emp.email) if req_emp else None)
+    )
     if target:
         notify_admins_and_employee(
             target,
             text=text,
+            employee_text=employee_text,
             employee_slack_id=emp_slack,
         )
     if response_url:
@@ -1242,17 +1220,8 @@ def _apply_admin_decision(
     if approve and not (decision_reason or "").strip():
         return {"error": "An approval reason is required."}
 
-    if not is_slack_admin(slack_user_id):
+    if not is_slack_admin(slack_user_id, db=db):
         return {"error": "Only Holbox admins can approve or reject this request."}
-
-    clicker_emp = _find_employee_by_slack(db, slack_user_id or "", slack_user)
-    request_employee_id = _request_employee_id(db, kind, request_id)
-    if (
-        clicker_emp is not None
-        and request_employee_id is not None
-        and clicker_emp.id == request_employee_id
-    ):
-        return {"error": "You cannot approve or reject your own request. Another admin must decide."}
 
     approver = _slack_approver_user(db, slack_user_id or "", slack_user)
     if approver is None:
@@ -1302,17 +1271,28 @@ def _apply_admin_decision(
             recompute_day(db, req_emp, late_req.shift_date)
             db.commit()
         label = "early checkout" if is_early else "late arrival"
-        outcome_text = (
-            f"✅ Your *{label}* for *{late_req.shift_date.strftime('%d %b %Y')}* was *approved* by *@{slack_user}*.\n> {note}"
+        emp_name = req_emp.full_name if req_emp else "Employee"
+        emp_code = f" (`{req_emp.emp_code}`)" if req_emp and req_emp.emp_code else ""
+        date_str = late_req.shift_date.strftime('%d %b %Y')
+        admin_outcome_text = (
+            f"✅ *{label.title()}* for *{emp_name}*{emp_code} on *{date_str}* was *approved* by *@{slack_user}*.\n> {note}"
             if approve else
-            f"❌ Your *{label}* for *{late_req.shift_date.strftime('%d %b %Y')}* was *rejected* by *@{slack_user}*."
+            f"❌ *{label.title()}* for *{emp_name}*{emp_code} on *{date_str}* was *rejected* by *@{slack_user}*."
+            + (f"\n> *Reason:* _{note}_" if note else "")
+        )
+        emp_outcome_text = (
+            f"✅ Your *{label}* request for *{date_str}* was *approved* by *@{slack_user}*.\n> {note}"
+            if approve else
+            f"❌ Your *{label}* request for *{date_str}* was *rejected* by *@{slack_user}*."
+            + (f"\n> *Reason:* _{note}_" if note else "")
         )
         _whisper_decision(
             channel_id=channel_id,
             req_emp=req_emp,
-            text=outcome_text,
+            text=admin_outcome_text,
+            employee_text=emp_outcome_text,
             response_url=response_url,
-            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} {label} for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} {label} for {emp_name} (by @{slack_user})",
         )
         return {"ok": True}
 
@@ -1332,17 +1312,28 @@ def _apply_admin_decision(
             from app.services.attendance import recompute_day
             recompute_day(db, req_emp, wfh_req.shift_date)
             db.commit()
-        outcome_text = (
-            f"✅ Your *WFH* on *{wfh_req.shift_date.strftime('%d %b %Y')}* was *approved* by *@{slack_user}*.\n> {note}"
+        emp_name = req_emp.full_name if req_emp else "Employee"
+        emp_code = f" (`{req_emp.emp_code}`)" if req_emp and req_emp.emp_code else ""
+        date_str = wfh_req.shift_date.strftime('%d %b %Y')
+        admin_outcome_text = (
+            f"✅ *WFH* request for *{emp_name}*{emp_code} on *{date_str}* was *approved* by *@{slack_user}*.\n> {note}"
             if approve else
-            f"❌ Your *WFH* on *{wfh_req.shift_date.strftime('%d %b %Y')}* was *rejected* by *@{slack_user}*."
+            f"❌ *WFH* request for *{emp_name}*{emp_code} on *{date_str}* was *rejected* by *@{slack_user}*."
+            + (f"\n> *Reason:* _{note}_" if note else "")
+        )
+        emp_outcome_text = (
+            f"✅ Your *WFH* request for *{date_str}* was *approved* by *@{slack_user}*.\n> {note}"
+            if approve else
+            f"❌ Your *WFH* request for *{date_str}* was *rejected* by *@{slack_user}*."
+            + (f"\n> *Reason:* _{note}_" if note else "")
         )
         _whisper_decision(
             channel_id=channel_id,
             req_emp=req_emp,
-            text=outcome_text,
+            text=admin_outcome_text,
+            employee_text=emp_outcome_text,
             response_url=response_url,
-            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} WFH for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} WFH for {emp_name} (by @{slack_user})",
         )
         return {"ok": True}
 
@@ -1360,17 +1351,28 @@ def _apply_admin_decision(
         if not outcome.ok:
             return {"error": outcome.reason or "Could not decide"}
         db.commit()
-        outcome_text = (
-            f"✅ Your *attendance correction* for *{corr_req.shift_date.strftime('%d %b %Y')}* was *approved* by *@{slack_user}*.\n> {note}"
+        emp_name = req_emp.full_name if req_emp else "Employee"
+        emp_code = f" (`{req_emp.emp_code}`)" if req_emp and req_emp.emp_code else ""
+        date_str = corr_req.shift_date.strftime('%d %b %Y')
+        admin_outcome_text = (
+            f"✅ *Attendance correction* for *{emp_name}*{emp_code} on *{date_str}* was *approved* by *@{slack_user}*.\n> {note}"
             if approve else
-            f"❌ Your *attendance correction* for *{corr_req.shift_date.strftime('%d %b %Y')}* was *rejected* by *@{slack_user}*."
+            f"❌ *Attendance correction* for *{emp_name}*{emp_code} on *{date_str}* was *rejected* by *@{slack_user}*."
+            + (f"\n> *Reason:* _{note}_" if note else "")
+        )
+        emp_outcome_text = (
+            f"✅ Your *attendance correction* for *{date_str}* was *approved* by *@{slack_user}*.\n> {note}"
+            if approve else
+            f"❌ Your *attendance correction* for *{date_str}* was *rejected* by *@{slack_user}*."
+            + (f"\n> *Reason:* _{note}_" if note else "")
         )
         _whisper_decision(
             channel_id=channel_id,
             req_emp=req_emp,
-            text=outcome_text,
+            text=admin_outcome_text,
+            employee_text=emp_outcome_text,
             response_url=response_url,
-            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} correction for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+            admin_status=f"{'✅ Approved' if approve else '❌ Rejected'} correction for {emp_name} (by @{slack_user})",
         )
         return {"ok": True}
 
@@ -1387,7 +1389,7 @@ def _apply_admin_decision(
             approve=approve,
             partial_approve=partial_approve,
             note=note,
-            allow_self_approval=False,
+            allow_self_approval=True,
         )
         if not outcome.ok:
             return {"error": outcome.reason or "Could not decide"}
@@ -1395,16 +1397,22 @@ def _apply_admin_decision(
         action_word = (
             "partially approved" if partial_approve else ("approved" if approve else "rejected")
         )
-        outcome_text = (
-            f"🌴 Your *leave* ({leave_req.from_date.strftime('%d %b')}–{leave_req.to_date.strftime('%d %b')}) "
-            f"was *{action_word}* by *@{slack_user}*.\n> {note}"
+        emp_name = req_emp.full_name if req_emp else "Employee"
+        emp_code = f" (`{req_emp.emp_code}`)" if req_emp and req_emp.emp_code else ""
+        date_range = f"{leave_req.from_date.strftime('%d %b')}–{leave_req.to_date.strftime('%d %b')}"
+        admin_outcome_text = (
+            f"🌴 *Leave* for *{emp_name}*{emp_code} ({date_range}) was *{action_word}* by *@{slack_user}*.\n> {note}"
+        )
+        emp_outcome_text = (
+            f"🌴 Your *leave* ({date_range}) was *{action_word}* by *@{slack_user}*.\n> {note}"
         )
         _whisper_decision(
             channel_id=channel_id,
             req_emp=req_emp,
-            text=outcome_text,
+            text=admin_outcome_text,
+            employee_text=emp_outcome_text,
             response_url=response_url,
-            admin_status=f"Leave {action_word} for {req_emp.full_name if req_emp else 'employee'} (by @{slack_user})",
+            admin_status=f"Leave {action_word} for {emp_name} (by @{slack_user})",
         )
         if channel_id and message_ts:
             update_leave_request(
