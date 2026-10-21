@@ -113,7 +113,7 @@ Store the selected category separately from the employee’s explanation.
 4.2 Correction Limits
 - Default correction limit: 5.
 - Admin can increase the limit.
-- Maximum: 15.
+- Maximum: 100.
 - The limit is an overall employee/policy limit, not a separate allowance per reason.
 - Block new requests after the configured limit is reached.
 - Show the employee a clear explanation when blocked.

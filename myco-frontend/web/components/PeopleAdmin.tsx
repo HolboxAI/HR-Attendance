@@ -785,11 +785,11 @@ export function EditCorrectionLimitButton({
             <h2 className="font-display text-lg font-bold text-ink mb-4">Edit Correction Limit</h2>
             <form onSubmit={submit} className="space-y-4">
               <label className="block text-sm font-mono text-ink-3">
-                Limit (1-15)
+                Limit (1-100)
                 <input
                   type="number"
                   min={1}
-                  max={15}
+                  max={100}
                   value={limit}
                   onChange={(e) => setLimit(Number(e.target.value))}
                   className="mt-1 block w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/40"
