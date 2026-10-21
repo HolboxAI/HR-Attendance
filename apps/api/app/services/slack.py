@@ -211,22 +211,12 @@ def post_leave_request(
     ]
 
     channel = settings.slack_channel_id
-    # Never send Approve/Reject to the applicant, even when they are an admin.
-    exclude: list[str] = []
-    applicant_slack = slack_user_id_for_email(employee_email)
-    if applicant_slack:
-        exclude.append(applicant_slack)
-    recipients = [a for a in admin_ids if a not in set(exclude)]
-    if not recipients:
-        logger.error("No remaining admins to receive leave request (applicant was the only admin)")
-        return None
 
     try:
         post_ephemeral_to_admins(
             channel,
             f"Leave Request from {employee_name}",
             blocks=blocks,
-            exclude_user_ids=exclude,
         )
         # document_bytes / document_filename unused on purpose: files.upload
         # into the attendance channel is public to every member. Admins open
@@ -1198,7 +1188,7 @@ def post_signup_request_alert(
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "✨ New Employee Registration Request",
+                "text": "✨ New Employee Registration Request (Private to Admins)",
                 "emoji": True,
             },
         },
@@ -1260,30 +1250,19 @@ def post_signup_request_alert(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "Holbox HRMS Portal • Review candidate under People Directory or Notifications",
+                    "text": "🔒 Holbox HRMS Portal • Admin Alert only (hidden from employees)",
                 }
             ],
         },
     ]
 
     try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": f"✨ New Employee Registration: {full_name} ({email}) wants to join. {himesh_mention} you have to approve him through your dashboard.",
-                "blocks": blocks,
-            },
-            timeout=5.0,
+        text = f"✨ New Employee Registration: {full_name} ({email}) wants to join. {himesh_mention} review in dashboard."
+        post_ephemeral_to_admins(
+            channel_id=settings.slack_channel_id,
+            text=text,
+            blocks=blocks,
         )
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error(f"Slack API error in post_signup_request_alert: {res_data.get('error')}")
-            return None
-        ts, channel = res_data.get("ts"), res_data.get("channel")
-        if ts and channel:
-            return ts, channel
         return None
     except Exception as e:
         logger.error(f"Failed to post signup request alert to Slack: {e}")
@@ -1299,7 +1278,7 @@ def post_signup_approved_alert(
     department: str | None = None,
     designation: str | None = None,
 ) -> None:
-    """Tell the admin channel a signup was approved from the dashboard."""
+    """Tell admins a signup was approved from the dashboard (ephemeral to admins only)."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return
 
@@ -1311,7 +1290,7 @@ def post_signup_approved_alert(
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "✅ Employee Approved",
+                "text": "✅ Employee Approved (Private to Admins)",
                 "emoji": True,
             },
         },
@@ -1335,31 +1314,19 @@ def post_signup_approved_alert(
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "Holbox HRMS Portal • Approved from the dashboard",
+                    "text": "🔒 Holbox HRMS Portal • Admin Alert only (hidden from employees)",
                 }
             ],
         },
     ]
 
     try:
-        response = httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": settings.slack_channel_id,
-                "text": (
-                    f"✅ {full_name} ({emp_code}) got approved by admin {admin_name}."
-                ),
-                "blocks": blocks,
-            },
-            timeout=5.0,
+        text = f"✅ {full_name} ({emp_code}) got approved by admin {admin_name}."
+        post_ephemeral_to_admins(
+            channel_id=settings.slack_channel_id,
+            text=text,
+            blocks=blocks,
         )
-        res_data = response.json()
-        if not res_data.get("ok"):
-            logger.error(
-                "Slack API error in post_signup_approved_alert: %s",
-                res_data.get("error"),
-            )
     except Exception as e:
         logger.error("Failed to post signup approved alert to Slack: %s", e)
 
@@ -1402,7 +1369,7 @@ def update_signup_decision(
     channel_id: str | None = None,
     reason: str | None = None,
 ) -> bool:
-    """Replace the original signup Slack post with the decision. No leftover buttons."""
+    """Notify admins of signup decision without public broadcasting."""
     if not settings.slack_bot_token or not settings.slack_channel_id:
         return False
 
@@ -1415,28 +1382,25 @@ def update_signup_decision(
     if not ts:
         if approved:
             return False
+        # If declined and no message_ts, send private ephemeral to admins (never public)
         try:
-            httpx.post(
-                "https://slack.com/api/chat.postMessage",
-                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-                json={
-                    "channel": settings.slack_channel_id,
-                    "text": f"❌ {full_name} ({email}) was declined by {admin_name}.",
-                    "blocks": [
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": (
-                                    f"❌ *Registration declined*\n"
-                                    f"*{full_name}* (`{email}`) was declined by *{admin_name}*."
-                                    + (f"\n_{reason}_" if reason else "")
-                                ),
-                            },
-                        }
-                    ],
-                },
-                timeout=5.0,
+            declined_blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"❌ *Registration declined (Private to Admins)*\n"
+                            f"*{full_name}* (`{email}`) was declined by *{admin_name}*."
+                            + (f"\n_{reason}_" if reason else "")
+                        ),
+                    },
+                }
+            ]
+            post_ephemeral_to_admins(
+                channel_id=settings.slack_channel_id,
+                text=f"❌ {full_name} ({email}) was declined by {admin_name}.",
+                blocks=declined_blocks,
             )
         except Exception as e:
             logger.error("Failed to post signup declined alert: %s", e)
@@ -1497,11 +1461,34 @@ def update_signup_decision(
         return False
 
 
-def is_slack_admin(slack_user_id: str | None) -> bool:
-    """True only for the fixed Holbox admin Slack user IDs."""
+def is_slack_admin(slack_user_id: str | None, db: Any = None) -> bool:
+    """True only for the fixed Holbox admin Slack user IDs or HR/Super Admin in DB."""
     if not slack_user_id:
         return False
-    return slack_user_id in (getattr(settings, "slack_admin_user_ids", None) or [])
+    if slack_user_id in (getattr(settings, "slack_admin_user_ids", None) or []):
+        return True
+    if db is not None:
+        try:
+            from app.models.employee import User
+            from app.models.enums import UserRole
+            from sqlalchemy import select
+            for m in _get_all_slack_members():
+                if m.get("id") == slack_user_id:
+                    p_email = (m.get("profile") or {}).get("email")
+                    if p_email:
+                        user = db.scalar(
+                            select(User).where(
+                                User.email == p_email.strip().lower(),
+                                User.is_active.is_(True),
+                                User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
+                            )
+                        )
+                        if user:
+                            return True
+                    break
+        except Exception as e:
+            logger.warning("Error checking db admin role for slack user %s: %s", slack_user_id, e)
+    return False
 
 
 def slack_user_id_for_email(email: str | None) -> str | None:
@@ -1513,7 +1500,7 @@ def slack_user_id_for_email(email: str | None) -> str | None:
         profile_email = (m.get("profile") or {}).get("email") or ""
         if profile_email.strip().lower() == needle:
             return m.get("id")
-    return None
+    return get_slack_user_id("", email)
 
 
 def post_ephemeral_to_admins(
@@ -1522,11 +1509,7 @@ def post_ephemeral_to_admins(
     blocks: list[dict] | None = None,
     exclude_user_ids: list[str] | None = None,
 ) -> None:
-    """Send a private ephemeral message inside the channel to designated admins.
-
-    exclude_user_ids: never send Approve/Reject cards to these users (the
-    applicant, even when they are themselves an admin).
-    """
+    """Send a private ephemeral message inside the channel to designated admins."""
     if not settings.slack_bot_token:
         return
 
@@ -1556,17 +1539,44 @@ def post_ephemeral_to_admins(
             logger.warning("Error posting ephemeral to admin %s: %s", admin_id, e)
 
 
+def send_slack_dm(user_id: str, text: str, blocks: list[dict] | None = None) -> bool:
+    """Send a private direct message to a single user via bot DM. Never public."""
+    if not settings.slack_bot_token or not user_id:
+        return False
+    try:
+        payload: dict = {"channel": user_id, "text": text}
+        if blocks:
+            payload["blocks"] = blocks
+        resp = httpx.post(
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+            json=payload,
+            timeout=5.0,
+        )
+        return resp.json().get("ok", False)
+    except Exception as e:
+        logger.warning("Error sending Slack DM to user %s: %s", user_id, e)
+        return False
+
+
 def notify_admins_and_employee(
     channel_id: str,
     *,
     text: str,
+    employee_text: str | None = None,
     employee_slack_id: str | None = None,
     blocks: list[dict] | None = None,
+    employee_blocks: list[dict] | None = None,
 ) -> None:
     """Decision outcome: whisper to every admin and to the employee. Never public."""
     post_ephemeral_to_admins(channel_id, text, blocks=blocks)
     if employee_slack_id:
-        post_ephemeral_to_user(channel_id, employee_slack_id, text, blocks=blocks)
+        emp_msg = employee_text or text
+        emp_blk = employee_blocks or blocks
+        # 1. Private ephemeral inside channel
+        post_ephemeral_to_user(channel_id, employee_slack_id, emp_msg, blocks=emp_blk)
+        # 2. Private direct 1-on-1 DM from bot so employee receives push notification
+        send_slack_dm(employee_slack_id, emp_msg, blocks=emp_blk)
 
 
 def post_ephemeral_to_user(
@@ -1622,29 +1632,30 @@ def post_late_approved_broadcast(
     employee_email: str | None,
     admin_name: str,
     channel_id: str | None = None,
+    note: str | None = None,
 ) -> None:
-    """Broadcast public late arrival approval and warning message tagged to employee."""
+    """Send private late arrival approval notification to admins and requesting employee only. Never public."""
     if not settings.slack_bot_token:
         return
     target_channel = channel_id or settings.slack_channel_id
     if not target_channel:
         return
 
-    mention = format_slack_mention(employee_name, employee_email)
-    text = (
-        f"Approved by *@{admin_name}*: {mention}, your late arrival is approved. "
-        f"Make sure you don't miss check-in on time from onwards."
+    emp_slack = (
+        slack_user_id_for_email(employee_email)
+        or get_slack_user_id(employee_name, employee_email)
     )
-    try:
-        httpx.post(
-            "https://slack.com/api/chat.postMessage",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json={
-                "channel": target_channel,
-                "text": text,
-            },
-            timeout=5.0,
-        )
-    except Exception as e:
-        logger.error("Failed to broadcast late approval: %s", e)
+    admin_text = f"✅ Late arrival for *{employee_name}* was approved by *@{admin_name}*."
+    emp_text = f"✅ Your late arrival was approved by *@{admin_name}*."
+    if note:
+        admin_text += f"\n> *Note:* _{note}_"
+        emp_text += f"\n> *Note:* _{note}_"
+
+    notify_admins_and_employee(
+        target_channel,
+        text=admin_text,
+        employee_text=emp_text,
+        employee_slack_id=emp_slack,
+    )
+
 
