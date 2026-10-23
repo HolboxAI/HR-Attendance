@@ -787,17 +787,17 @@ async def slack_interactions(
                     ],
                 },
             ]
-            if channel_id:
-                post_ephemeral_to_admins(
-                    channel_id=channel_id,
-                    text=f"WFH request from {emp.full_name}",
-                    blocks=admin_blocks,
-                )
-                post_ephemeral_to_user(
-                    channel_id=channel_id,
-                    user_id=slack_user_id,
-                    text=APPLICANT_WAIT_TEXT,
-                )
+            target_chan = channel_id or settings.slack_channel_id
+            post_ephemeral_to_admins(
+                channel_id=target_chan,
+                text=f"WFH request from {emp.full_name}",
+                blocks=admin_blocks,
+            )
+            post_ephemeral_to_user(
+                channel_id=target_chan,
+                user_id=slack_user_id,
+                text=APPLICANT_WAIT_TEXT,
+            )
             return {"response_action": "clear"}
 
         if callback_id == "submit_early_checkout_request":
@@ -852,17 +852,17 @@ async def slack_interactions(
                     ],
                 },
             ]
-            if channel_id:
-                post_ephemeral_to_admins(
-                    channel_id=channel_id,
-                    text=f"Early checkout request from {emp.full_name}",
-                    blocks=admin_blocks,
-                )
-                post_ephemeral_to_user(
-                    channel_id=channel_id,
-                    user_id=slack_user_id,
-                    text=APPLICANT_WAIT_TEXT,
-                )
+            target_chan = channel_id or settings.slack_channel_id
+            post_ephemeral_to_admins(
+                channel_id=target_chan,
+                text=f"Early checkout request from {emp.full_name}",
+                blocks=admin_blocks,
+            )
+            post_ephemeral_to_user(
+                channel_id=target_chan,
+                user_id=slack_user_id,
+                text=APPLICANT_WAIT_TEXT,
+            )
             return {"response_action": "clear"}
 
         if callback_id == "submit_leave_request":
@@ -932,17 +932,17 @@ async def slack_interactions(
                     ],
                 },
             ]
-            if channel_id:
-                post_ephemeral_to_admins(
-                    channel_id=channel_id,
-                    text=f"Leave request from {emp.full_name}",
-                    blocks=admin_blocks,
-                )
-                post_ephemeral_to_user(
-                    channel_id=channel_id,
-                    user_id=slack_user_id,
-                    text=APPLICANT_WAIT_TEXT,
-                )
+            target_chan = channel_id or settings.slack_channel_id
+            post_ephemeral_to_admins(
+                channel_id=target_chan,
+                text=f"Leave request from {emp.full_name}",
+                blocks=admin_blocks,
+            )
+            post_ephemeral_to_user(
+                channel_id=target_chan,
+                user_id=slack_user_id,
+                text=APPLICANT_WAIT_TEXT,
+            )
             return {"response_action": "clear"}
 
         if callback_id == "submit_correction_request":
@@ -1026,17 +1026,17 @@ async def slack_interactions(
                     ],
                 },
             ]
-            if channel_id:
-                post_ephemeral_to_admins(
-                    channel_id=channel_id,
-                    text=f"Attendance correction from {emp.full_name}",
-                    blocks=admin_blocks,
-                )
-                post_ephemeral_to_user(
-                    channel_id=channel_id,
-                    user_id=slack_user_id,
-                    text=APPLICANT_WAIT_TEXT,
-                )
+            target_chan = channel_id or settings.slack_channel_id
+            post_ephemeral_to_admins(
+                channel_id=target_chan,
+                text=f"Attendance correction from {emp.full_name}",
+                blocks=admin_blocks,
+            )
+            post_ephemeral_to_user(
+                channel_id=target_chan,
+                user_id=slack_user_id,
+                text=APPLICANT_WAIT_TEXT,
+            )
             return {"response_action": "clear"}
 
         return {"response_action": "clear"}
