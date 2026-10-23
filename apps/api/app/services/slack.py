@@ -1505,12 +1505,12 @@ def slack_user_id_for_email(email: str | None) -> str | None:
 
 
 def post_ephemeral_to_admins(
-    channel_id: str,
+    channel_id: str | None,
     text: str,
     blocks: list[dict] | None = None,
     exclude_user_ids: list[str] | None = None,
 ) -> None:
-    """Send a private ephemeral message inside the channel to designated admins."""
+    """Send request/alert to designated admins via permanent Bot DM so it never vanishes."""
     if not settings.slack_bot_token:
         return
 
@@ -1519,25 +1519,30 @@ def post_ephemeral_to_admins(
     for admin_id in admin_ids:
         if admin_id in skip:
             continue
-        try:
-            payload: dict = {
-                "channel": channel_id,
-                "user": admin_id,
-                "text": text,
-            }
-            if blocks:
-                payload["blocks"] = blocks
-            resp = httpx.post(
-                "https://slack.com/api/chat.postEphemeral",
-                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-                json=payload,
-                timeout=5.0,
-            )
-            data = resp.json()
-            if not data.get("ok"):
-                logger.warning("postEphemeral to admin %s failed: %s", admin_id, data.get("error"))
-        except Exception as e:
-            logger.warning("Error posting ephemeral to admin %s: %s", admin_id, e)
+        # 1. Send permanent Bot DM so the card NEVER vanishes and alerts admin directly
+        send_slack_dm(admin_id, text, blocks=blocks)
+
+        # 2. Also send ephemeral inside channel if user is actively in a public channel
+        if channel_id and not channel_id.startswith("D"):
+            try:
+                payload: dict = {
+                    "channel": channel_id,
+                    "user": admin_id,
+                    "text": text,
+                }
+                if blocks:
+                    payload["blocks"] = blocks
+                resp = httpx.post(
+                    "https://slack.com/api/chat.postEphemeral",
+                    headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                    json=payload,
+                    timeout=5.0,
+                )
+                data = resp.json()
+                if not data.get("ok"):
+                    logger.warning("postEphemeral to admin %s failed: %s", admin_id, data.get("error"))
+            except Exception as e:
+                logger.warning("Error posting ephemeral to admin %s: %s", admin_id, e)
 
 
 def send_slack_dm(user_id: str, text: str, blocks: list[dict] | None = None) -> bool:
@@ -1554,14 +1559,18 @@ def send_slack_dm(user_id: str, text: str, blocks: list[dict] | None = None) -> 
             json=payload,
             timeout=5.0,
         )
-        return resp.json().get("ok", False)
+        data = resp.json()
+        if not data.get("ok"):
+            logger.warning("Error sending Slack DM to user %s: %s", user_id, data.get("error"))
+            return False
+        return True
     except Exception as e:
         logger.warning("Error sending Slack DM to user %s: %s", user_id, e)
         return False
 
 
 def notify_admins_and_employee(
-    channel_id: str,
+    channel_id: str | None,
     *,
     text: str,
     employee_text: str | None = None,
@@ -1569,42 +1578,44 @@ def notify_admins_and_employee(
     blocks: list[dict] | None = None,
     employee_blocks: list[dict] | None = None,
 ) -> None:
-    """Decision outcome: whisper to every admin and to the employee. Never public."""
+    """Decision outcome: whisper to every admin and to the employee via permanent DM."""
     post_ephemeral_to_admins(channel_id, text, blocks=blocks)
     if employee_slack_id:
         emp_msg = employee_text or text
         emp_blk = employee_blocks or blocks
-        # 1. Private ephemeral inside channel
         post_ephemeral_to_user(channel_id, employee_slack_id, emp_msg, blocks=emp_blk)
-        # 2. Private direct 1-on-1 DM from bot so employee receives push notification
-        send_slack_dm(employee_slack_id, emp_msg, blocks=emp_blk)
 
 
 def post_ephemeral_to_user(
-    channel_id: str,
+    channel_id: str | None,
     user_id: str,
     text: str,
     blocks: list[dict] | None = None,
 ) -> None:
-    """Send a private ephemeral message to a single user in a channel."""
-    if not settings.slack_bot_token:
+    """Send private notification to a single user: permanent Bot DM + ephemeral in channel."""
+    if not settings.slack_bot_token or not user_id:
         return
-    try:
-        payload: dict = {
-            "channel": channel_id,
-            "user": user_id,
-            "text": text,
-        }
-        if blocks:
-            payload["blocks"] = blocks
-        httpx.post(
-            "https://slack.com/api/chat.postEphemeral",
-            headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
-            json=payload,
-            timeout=5.0,
-        )
-    except Exception as e:
-        logger.warning("Error posting ephemeral to user %s: %s", user_id, e)
+    # 1. Send permanent Bot DM so it never vanishes from user view
+    send_slack_dm(user_id, text, blocks=blocks)
+
+    # 2. Also send ephemeral in channel if user is actively in a public channel
+    if channel_id and not channel_id.startswith("D"):
+        try:
+            payload: dict = {
+                "channel": channel_id,
+                "user": user_id,
+                "text": text,
+            }
+            if blocks:
+                payload["blocks"] = blocks
+            httpx.post(
+                "https://slack.com/api/chat.postEphemeral",
+                headers={"Authorization": f"Bearer {settings.slack_bot_token}"},
+                json=payload,
+                timeout=5.0,
+            )
+        except Exception as e:
+            logger.warning("Error posting ephemeral to user %s: %s", user_id, e)
 
 
 def open_slack_modal(trigger_id: str, view: dict) -> bool:
