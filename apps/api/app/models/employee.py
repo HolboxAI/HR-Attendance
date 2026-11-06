@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Date, ForeignKey, Numeric, String, UniqueConstraint
 from app.db.types import GUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +39,11 @@ class Employee(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_wfh_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
     correction_limit: Mapped[int | None] = mapped_column(default=None)
+    # Cap on leave days bookable in any single calendar month. NULL = no cap.
+    # Edited only from Team balances (not policy). Enforced on submit/approve.
+    monthly_leave_max: Mapped[float | None] = mapped_column(
+        Numeric(6, 2), default=None, nullable=True,
+    )
 
 class User(Base, TimestampMixin):
     """Login identity. Not every employee gets one (factory staff often don't)."""

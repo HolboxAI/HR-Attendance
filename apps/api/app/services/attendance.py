@@ -271,9 +271,18 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
     ).all()
 
     punches = [
-        Punch(ts_utc=_aware(r.event_ts_utc), direction=r.direction.value, source=r.source.value)
+        Punch(
+            ts_utc=_aware(r.event_ts_utc),
+            direction=r.direction.value,
+            source=r.source.value,
+            kind=(r.raw_payload or {}).get("punch_type") or "",
+        )
         for r in rows
-        if shift_date_for(_aware(r.event_ts_utc), policy) == shift_date
+        if (
+            (r.raw_payload or {}).get("shift_date") == shift_date.isoformat()
+            if (r.raw_payload or {}).get("shift_date")
+            else shift_date_for(_aware(r.event_ts_utc), policy) == shift_date
+        )
     ]
 
     # The integration this milestone exists for. resolve_day has always
@@ -352,12 +361,40 @@ def recompute_day(db: Session, employee: Employee, shift_date: date) -> Attendan
     if is_wfh and status_val == AttendanceStatus.PRESENT:
         status_val = AttendanceStatus.WFH
 
+    from app.services.attendance_adjust import latest_for, adjustment_remark
+    adj = latest_for(db, [employee.id], shift_date, shift_date).get((employee.id, shift_date))
+    if adj is not None:
+        try:
+            status_val = AttendanceStatus(adj.status)
+        except ValueError:
+            pass
+        if adj.first_in is not None:
+            resolved.first_in = adj.first_in
+            day.first_in = adj.first_in
+        if adj.last_out is not None:
+            resolved.last_out = adj.last_out
+            day.last_out = adj.last_out
+        is_regularized = True
+        resolved.has_exception = False
+        resolved.exception_note = adjustment_remark(adj.previous_status, adj.changed_by_name, adj.reason)
+
+    if status_val in (AttendanceStatus.WEEKLY_OFF, AttendanceStatus.HOLIDAY) and (day.worked_minutes or 0) <= 0:
+        is_regularized = False
+        day.first_in = None
+        day.last_out = None
+        resolved.has_exception = False
+        resolved.exception_note = None
+        day.late_minutes = 0
+
     day.status = status_val
     day.punch_count = resolved.punch_count
     day.has_exception = resolved.has_exception
     day.exception_note = resolved.exception_note
     day.is_regularized = is_regularized
     day.computed_at = datetime.now(timezone.utc)
+    # Not a column. The mail reads it in this same call, before the session
+    # expires the row, to list each break instead of only the total.
+    day._mail_break_spans = list(resolved.break_spans)
 
     db.flush()
     return day
@@ -382,8 +419,14 @@ def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def next_direction(db: Session, employee: Employee, shift_date: date) -> PunchDirection:
-    """In or out? Whatever the last accepted punch wasn't."""
+def accepted_on_shift(db: Session, employee: Employee, shift_date: date) -> list[PunchEvent]:
+    """Accepted punches that belong to this shift-date, in time order.
+
+    The window is wider than the date on purpose. shift_date_for files a
+    12:54 AM checkout on the previous day, and drops it from the new day that
+    starts at 5:00 AM. Callers that take "the latest punch in a few days"
+    instead leave yesterday's check-in showing as Check Out all evening.
+    """
     policy, _ = policy_for(db, employee, shift_date)
     window_start = datetime.combine(
         shift_date - timedelta(days=1), time(0, 0), tzinfo=timezone.utc
@@ -403,7 +446,29 @@ def next_direction(db: Session, employee: Employee, shift_date: date) -> PunchDi
         )
         .order_by(PunchEvent.event_ts_utc)
     ).all()
-    today = [r for r in rows if shift_date_for(_aware(r.event_ts_utc), policy) == shift_date]
+    return [r for r in rows if shift_date_for(_aware(r.event_ts_utc), policy) == shift_date]
+
+
+def still_in(db: Session, employee: Employee, shift_date: date) -> bool:
+    """Checked in for this shift-date, including while they are on a break.
+
+    A break-out is direction OUT, so treating the last direction as "left"
+    shows a checkout at the moment the break started.
+    """
+    today = accepted_on_shift(db, employee, shift_date)
+    if not today:
+        return False
+    kind = (today[-1].raw_payload or {}).get("punch_type") or ""
+    if kind in ("check_in", "break_in", "break_end", "break_out", "break_start"):
+        return True
+    if kind == "check_out":
+        return False
+    return today[-1].direction == PunchDirection.IN
+
+
+def next_direction(db: Session, employee: Employee, shift_date: date) -> PunchDirection:
+    """In or out? Whatever the last accepted punch on this shift-date wasn't."""
+    today = accepted_on_shift(db, employee, shift_date)
     if not today:
         return PunchDirection.IN
     # The docstring's rule, implemented as written. This used to count parity

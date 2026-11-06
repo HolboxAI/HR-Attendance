@@ -14,6 +14,7 @@ import { SpotlightCursor } from '@/components/ui/spotlight-cursor';
 import { ParticleWave } from '@/components/ui/particle-wave';
 import { Avatar } from '@/components/Avatar';
 import { OnboardingGuide } from '@/components/OnboardingGuide';
+import { InactivityTimeout } from '@/components/InactivityTimeout';
 import type { Capabilities } from '@/lib/capabilities';
 import { roleLabel } from '@/lib/capabilities';
 
@@ -271,6 +272,7 @@ export function Shell({
           onCompleted={handleEnrolmentCompleted}
         />
       )}
+      <InactivityTimeout />
     </div>
   );
 }
@@ -285,6 +287,7 @@ function titleFor(pathname: string): string {
   if (pathname.startsWith('/leave/operations')) return 'Accrual & Year-End';
   if (pathname.startsWith('/leave/audit')) return 'Leave Audit Trail';
   if (pathname.startsWith('/leave')) return 'Leave Operations';
+  if (pathname.startsWith('/people/ex-employees')) return 'Ex Employees';
   if (pathname.startsWith('/people')) return 'People Directory';
   if (pathname.startsWith('/enrolment')) return 'Biometrics & Enrolment';
   if (pathname.startsWith('/devices')) return 'Device Handsets';

@@ -10,25 +10,33 @@ import { ACCESS_COOKIE, API, REFRESH_COOKIE } from '@/lib/session';
  * JavaScript. The password does not touch any storage on this side.
  */
 export async function POST(request: Request) {
-  const { email, password } = await request.json();
+  const payload = await request.json().catch(() => ({}));
+  const idToken = typeof payload?.id_token === 'string' ? payload.id_token : '';
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${API}/api/v1/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      // No install_id: a browser is not a phone and must not consume the
-      // employee's one device binding.
-      body: JSON.stringify({ email, password }),
-    });
+    upstream = idToken
+      ? await fetch(`${API}/api/v1/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id_token: idToken }),
+        })
+      : await fetch(`${API}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // No install_id: a browser is not a phone and must not consume the
+          // employee's one device binding.
+          body: JSON.stringify({ email: payload?.email, password: payload?.password }),
+        });
   } catch {
     return NextResponse.json({ detail: 'Could not reach the API' }, { status: 503 });
   }
 
   const body = await upstream.json().catch(() => ({}));
   if (!upstream.ok) {
+    const detail = typeof body?.detail === 'string' ? body.detail : 'Sign in failed';
     return NextResponse.json(
-      { detail: body?.detail ?? 'Sign in failed' },
+      { detail, code: body?.code ?? null, email: body?.email ?? null, name: body?.name ?? null },
       { status: upstream.status },
     );
   }

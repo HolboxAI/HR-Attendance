@@ -109,6 +109,8 @@ export default function CheckinPage() {
       shiftEnd: j.shift_end,
       direction: j.direction,
       isCurrentlyIn: j.is_currently_in ?? (j.direction === 'out'),
+      isOnBreak: j.is_on_break,
+      isCheckedOut: j.is_checked_out,
       lastPunchType: j.last_punch_type,
       checkedInAt: j.checked_in_at,
       checkedOutAt: j.checked_out_at,
@@ -179,7 +181,7 @@ export default function CheckinPage() {
   // - isCheckedOut: Employee has completed their shift for today
   const isCheckedIn = today?.isCheckedIn ?? Boolean(today?.checkedInAt);
   const isCurrentlyIn = today?.isCurrentlyIn ?? (today?.direction === 'out');
-  const isOnBreak = today?.isOnBreak ?? (!isCurrentlyIn && isCheckedIn && today?.lastPunchType === 'break_out');
+  const isOnBreak = today?.isOnBreak ?? (!isCurrentlyIn && isCheckedIn && (today?.lastPunchType === 'break_out' || today?.lastPunchType === 'break_start'));
   const isCheckedOut = today?.isCheckedOut ?? (!isCurrentlyIn && isCheckedIn && !isOnBreak);
   const liveWorkedMinutes = today?.workedMinutes ?? 0;
 
@@ -471,24 +473,9 @@ export default function CheckinPage() {
                 </div>
               </button>
             ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setPunchAction('check_out');
-                  prefetchLocation();
-                  setModalOpen(true);
-                }}
-                disabled={busy}
-                className="group relative inline-flex items-center gap-2.5 px-6 py-3 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold transition-all active:scale-95 cursor-pointer shadow-sm"
-              >
-                <LogOut className="size-5 text-rose-500 transition-transform group-hover:scale-110" />
-                <div className="text-left">
-                  <div className="font-display text-xs font-extrabold uppercase tracking-wider">
-                    End Shift
-                  </div>
-                  <div className="text-[10px] font-mono text-ink-3 uppercase">Check Out Directly</div>
-                </div>
-              </button>
+              <p className="text-xs text-ink-3 text-center max-w-xs">
+                To leave for the day, end the break first, then check out.
+              </p>
             )}
           </div>
         )}

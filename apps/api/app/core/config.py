@@ -22,6 +22,13 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "dev-only-change-before-anyone-real-uses-this"
 
+    # Firebase Auth, Google provider. The web app holds the public config.
+    # This process only needs the project id, which is the token audience.
+    # Empty leaves Continue with Google disabled and /auth/google answers 503.
+    # Do not put a service-account private key here.
+    firebase_project_id: str = ""
+    google_hosted_domain: str = "holbox.ai"
+
     # 30 minutes is short enough that a role change or a deactivation takes
     # effect quickly without revocation machinery, and long enough that the
     # phone is not refreshing constantly. The refresh token is what stops

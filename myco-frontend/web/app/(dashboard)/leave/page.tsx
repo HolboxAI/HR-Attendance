@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { HolidayCalendar } from '@/components/HolidayCalendar';
 import { MyLeave } from '@/components/MyLeave';
+import { PlannedAbsences } from '@/components/PlannedAbsences';
 import { PendingLeave } from '@/components/PendingLeave';
 import {
   getHolidays, getMyBalance, getMyLeaveTypes, getMyRequests, getPending,
@@ -83,6 +84,8 @@ export default async function LeavePage() {
           <PendingLeave rows={pending.data} />
         </section>
       )}
+
+      <PlannedAbsences isHr={isHr} />
 
       {balances && requests && types ? (
         <MyLeave balances={balances} requests={requests} types={types} />

@@ -322,17 +322,20 @@ box("accrual-idempotent", check("and reports it skipped", r2.json()["credited"],
 box("accrual-idempotent", check("skipped count is non-zero", r2.json()["skipped"] > 0, True))
 
 
-print("10. An employee cannot approve their own leave - not even an admin")
-r = apply_leave(ASHLEY, "EL", date(2026, 9, 21), date(2026, 9, 21))
+print("10. An admin can approve their own leave; a manager still cannot")
+r = apply_leave(ASHLEY, "LOP", date(2026, 9, 21), date(2026, 9, 21))
 own = r.json()["id"]
 box("no-self-approval", check("hr_admin can apply", r.status_code, 200))
-r = client.post(f"/api/v1/admin/leave/{own}/decide", headers=ASHLEY, json={"approve": True})
-box("no-self-approval", check("but cannot decide it", r.status_code, 409))
-box("no-self-approval", check("and is told why",
-                              "your own" in r.json()["detail"].lower(), True))
 q = client.get("/api/v1/admin/leave/pending", headers=ASHLEY).json()
-box("no-self-approval", check("own request is not in own queue",
-                              any(x["id"] == own for x in q), False))
+box("no-self-approval", check("own request is in the admin queue",
+                              any(x["id"] == own for x in q), True))
+r = client.post(f"/api/v1/admin/leave/{own}/decide", headers=ASHLEY, json={"approve": True})
+box("no-self-approval", check("and can approve it", r.status_code, 200))
+maya_own = apply_leave(MAYA, "LOP", date(2026, 9, 23), date(2026, 9, 23))
+box("no-self-approval", check("a manager can apply", maya_own.status_code, 200))
+r = client.post(f"/api/v1/admin/leave/{maya_own.json()['id']}/decide",
+                headers=MAYA, json={"approve": True})
+box("no-self-approval", check("but a manager cannot decide their own", r.status_code, 409))
 r = apply_leave(NIKUNJ, "EL", date(2026, 9, 22), date(2026, 9, 22))
 box("no-self-approval", check("an employee cannot decide at all",
                               client.post(f"/api/v1/admin/leave/{r.json()['id']}/decide",
@@ -507,6 +510,52 @@ box("holiday-recompute", check("duplicate date refused", client.post(
     "/api/v1/admin/holidays", headers=ASHLEY,
     json={"day": HOL.isoformat(), "name": "Again"}).status_code, 409))
 
+
+print("16. Monthly leave max is set on Team balances and blocks over-cap requests")
+# Fresh month with room: Sep 2026 (Mon 7 / Tue 8 / Wed 9) — outside earlier bookings.
+SEP_MON = date(2026, 9, 7)
+SEP_TUE = date(2026, 9, 8)
+SEP_WED = date(2026, 9, 9)
+assert SEP_MON.weekday() == 0
+
+r = client.put(
+    f"/api/v1/admin/leave/balances/{dhruv.emp_code}/monthly-max",
+    headers=ASHLEY, json={"monthly_leave_max": 1},
+)
+box("monthly-leave-max", check("HR can set monthly max", r.status_code, 200))
+box("monthly-leave-max", check("saved as 1", r.json().get("monthly_leave_max"), 1.0))
+
+balances = client.get("/api/v1/admin/leave/balances", headers=ASHLEY).json()
+dhruv_rows = [b for b in balances if b["employee_code"] == dhruv.emp_code]
+box("monthly-leave-max", check("balances expose monthly max",
+                               all(b.get("monthly_leave_max") == 1.0 for b in dhruv_rows), True))
+
+r = apply_leave(DHRUV, "CL", SEP_MON, SEP_MON, reason="one day ok")
+box("monthly-leave-max", check("1 day under the max is allowed", r.status_code, 200))
+first_id = r.json()["id"]
+client.post(f"/api/v1/admin/leave/{first_id}/decide", headers=ASHLEY, json={"approve": True})
+
+r = apply_leave(DHRUV, "CL", SEP_TUE, SEP_WED, reason="would exceed")
+box("monthly-leave-max", check("over the monthly max is refused", r.status_code, 409))
+detail = r.json().get("detail", "")
+box("monthly-leave-max", check("refusal names the monthly max", "Monthly leave max" in detail, True))
+
+r = client.put(
+    f"/api/v1/admin/leave/balances/{dhruv.emp_code}/monthly-max",
+    headers=ASHLEY, json={"monthly_leave_max": None},
+)
+box("monthly-leave-max", check("HR can clear the cap", r.status_code, 200))
+box("monthly-leave-max", check("cleared to null", r.json().get("monthly_leave_max"), None))
+r = apply_leave(DHRUV, "CL", SEP_TUE, SEP_TUE, reason="ok after clear")
+box("monthly-leave-max", check("after clear, further leave is allowed", r.status_code, 200))
+
+r = client.put(
+    "/api/v1/admin/leave/balances/monthly-max/all",
+    headers=ASHLEY, json={"monthly_leave_max": 2.5},
+)
+box("monthly-leave-max", check("HR can set monthly max for everyone", r.status_code, 200))
+box("monthly-leave-max", check("everyone payload returned", len(r.json()) >= 4, True))
+
 db.close()
 
 print("\n" + "=" * 64)
@@ -522,13 +571,14 @@ LABELS = {
     "punch-on-leave-flagged": "Punch on a leave day is flagged, not swallowed",
     "weekend-not-consumed":   "Leave across a weekend consumes only working days",
     "accrual-idempotent":     "Running accrual twice does not double balances",
-    "no-self-approval":       "Nobody approves their own leave, admin included",
+    "no-self-approval":       "An admin can approve their own leave; a manager cannot",
     "hr-can-edit-everything": "hr_admin changes every setting, no restart",
     "employee-locked-out":    "Employee cannot reach the policy endpoints",
     "quota-change-safe":      "Quota change does not alter accrued balances",
     "hr-can-edit-balances":   "HR can set remaining CL/EL/SL per person and for everyone",
     "policy-audited":         "Every policy change audited with old + new",
     "holiday-recompute":      "Adding a holiday recomputes those dates",
+    "monthly-leave-max":      "Monthly leave max editable on Team balances and enforced",
 }
 for key, label in LABELS.items():
     print(f"  [{'x' if _ticks.get(key) else ' '}] {label}")

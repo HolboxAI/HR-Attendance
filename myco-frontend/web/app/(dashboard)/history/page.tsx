@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
 import { format, startOfMonth } from 'date-fns';
-import { LayoutGrid } from 'lucide-react';
+import { Download, LayoutGrid, FileSpreadsheet } from 'lucide-react';
 
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity, apiGet } from '@/lib/session';
 import { HistoryCards, type HistoryOverviewData } from '@/components/HistoryCards';
+import { proxy } from '@/lib/format';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -31,6 +32,10 @@ export default async function HistoryOverviewPage({
   }
 
   const data = await apiGet<HistoryOverviewData>(url);
+  const pdfParams = new URLSearchParams({ start_date: start, end_date: end });
+  if (sp?.employee) pdfParams.set('employee_code', sp.employee);
+  const pdfDownloadUrl = proxy(`/api/v1/admin/history/attendance/export.pdf?${pdfParams.toString()}`);
+  const excelDownloadUrl = proxy(`/api/v1/admin/history/attendance/export.csv?${pdfParams.toString()}`);
 
   return (
     <div className="space-y-6">
@@ -82,6 +87,28 @@ export default async function HistoryOverviewPage({
               Filter
             </button>
           </form>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={excelDownloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:bg-emerald-500/20 whitespace-nowrap cursor-pointer transition-all active:scale-95"
+              title="Download attendance report in Excel format"
+            >
+              <FileSpreadsheet className="size-3.5 text-emerald-500" />
+              <span>Download Excel</span>
+            </a>
+            <a
+              href={pdfDownloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-ink text-ground px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:opacity-90 whitespace-nowrap cursor-pointer transition-all active:scale-95"
+              title="Download attendance report in PDF format"
+            >
+              <Download className="size-3.5" />
+              <span>Download PDF</span>
+            </a>
+          </div>
         </div>
       </header>
 

@@ -37,8 +37,29 @@ router = APIRouter(prefix="/slack", tags=["slack"])
 logger = logging.getLogger(__name__)
 
 
+# Fixed mapping from known Slack admin user IDs to HRMS admin emails
+SLACK_ADMIN_MAP: dict[str, str] = {
+    "U0B023SC0UB": "dhruv@holbox.ai",       # @dhruvm307 (Dhruv)
+    "U0BQ8EHQ6KC": "krish@holbox.ai",       # @krish (Krish Sharma)
+    "U0BQ8HZ3MKJ": "himesh.ctr@holbox.ai",  # @himesh (Himesh Mansukhani)
+    "U0B05B4GRDK": "ashly@holbox.ai",       # @ashly (Ashly David)
+}
+
+
 def _find_employee_by_slack(db: Session, slack_user_id: str, username: str | None = None) -> Employee | None:
-    """Find matching employee by slack member profile email or matching name."""
+    """Find matching employee by known admin mapping, slack member profile email, or matching name."""
+    # 1. Direct admin mapping check
+    known_email = SLACK_ADMIN_MAP.get(slack_user_id)
+    if known_email:
+        emp = db.scalar(
+            select(Employee).where(
+                Employee.email == known_email.strip().lower(),
+                Employee.is_active.is_(True),
+            )
+        )
+        if emp:
+            return emp
+
     members = _get_all_slack_members()
     slack_email = None
     for m in members:
@@ -57,6 +78,7 @@ def _find_employee_by_slack(db: Session, slack_user_id: str, username: str | Non
             return emp
 
     if username:
+        import re
         u = username.strip().lower()
         # Direct email prefix match (e.g. krish -> krish@holbox.ai)
         emp = db.scalar(
@@ -78,11 +100,36 @@ def _find_employee_by_slack(db: Session, slack_user_id: str, username: str | Non
         if emp:
             return emp
 
+        # Handle handles like dhruvm307 -> dhruvm or dhruv
+        clean_u = re.sub(r"\d+$", "", u)
+        if clean_u and clean_u != u:
+            emp = db.scalar(
+                select(Employee).where(
+                    Employee.full_name.ilike(f"%{clean_u}%"),
+                    Employee.is_active.is_(True),
+                )
+            )
+            if emp:
+                return emp
+
     return None
 
 
 def _slack_approver_user(db: Session, slack_user_id: str, username: str | None) -> User | None:
     """Map the Slack clicker to their Holbox User row (must be HR/super admin)."""
+    # 1. Direct admin mapping check
+    known_email = SLACK_ADMIN_MAP.get(slack_user_id)
+    if known_email:
+        user = db.scalar(
+            select(User).where(
+                User.email == known_email,
+                User.is_active.is_(True),
+                User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
+            )
+        )
+        if user:
+            return user
+
     emp = _find_employee_by_slack(db, slack_user_id, username)
     if emp is None:
         return None
@@ -93,7 +140,15 @@ def _slack_approver_user(db: Session, slack_user_id: str, username: str | None) 
             User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
         )
     )
-    return user
+    if user:
+        return user
+    return db.scalar(
+        select(User).where(
+            User.email == emp.email,
+            User.is_active.is_(True),
+            User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
+        )
+    )
 
 
 def _refuse_non_admin(response_url: str | None, slack_user_id: str | None, db: Session | None = None) -> dict | None:
@@ -156,6 +211,60 @@ def _open_approve_reason_modal(
     ok = open_slack_modal(trigger_id, view)
     if not ok:
         return {"message": "Could not open approval reason form"}
+    return {"message": "ok"}
+
+
+def _open_reject_reason_modal(
+    *,
+    trigger_id: str,
+    kind: str,
+    request_id: str,
+    channel_id: str | None,
+    message_ts: str | None,
+    response_url: str | None,
+) -> dict:
+    """Reject asks for confirmation and an optional rejection reason to prevent accidental mobile taps."""
+    view = {
+        "type": "modal",
+        "callback_id": "submit_admin_reject_reason",
+        "title": {"type": "plain_text", "text": "Confirm Rejection"},
+        "submit": {"type": "plain_text", "text": "Confirm Reject"},
+        "close": {"type": "plain_text", "text": "Cancel"},
+        "private_metadata": json.dumps({
+            "kind": kind,
+            "request_id": request_id,
+            "channel_id": channel_id,
+            "message_ts": message_ts,
+            "response_url": response_url,
+        }),
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "⚠️ *Are you sure you want to reject this request?*\nThis will notify the employee immediately.",
+                },
+            },
+            {
+                "type": "input",
+                "block_id": "reject_reason_block",
+                "optional": True,
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "reject_reason_input",
+                    "multiline": True,
+                    "placeholder": {
+                        "type": "plain_text",
+                        "text": "Reason for rejection (optional)",
+                    },
+                },
+                "label": {"type": "plain_text", "text": "Rejection reason"},
+            },
+        ],
+    }
+    ok = open_slack_modal(trigger_id, view)
+    if not ok:
+        return {"message": "Could not open rejection confirmation form"}
     return {"message": "ok"}
 
 
@@ -674,6 +783,38 @@ async def slack_interactions(
                 }
             return {"response_action": "clear"}
 
+        if callback_id == "submit_admin_reject_reason":
+            if not is_slack_admin(slack_user_id, db=db):
+                return {
+                    "response_action": "errors",
+                    "errors": {"reject_reason_block": "Only Holbox admins can reject requests."},
+                }
+            reason = values.get("reject_reason_block", {}).get("reject_reason_input", {}).get("value", "").strip()
+            kind = meta.get("kind") or ""
+            request_id = meta.get("request_id") or ""
+            channel_id = meta.get("channel_id") or settings.slack_channel_id
+            message_ts = meta.get("message_ts")
+            response_url = meta.get("response_url")
+            result = _apply_admin_decision(
+                db,
+                kind=kind,
+                request_id=request_id,
+                approve=False,
+                decision_reason=reason if reason else None,
+                slack_user_id=slack_user_id,
+                slack_user=slack_user_name,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                response_url=response_url,
+                partial_approve=False,
+            )
+            if result.get("error"):
+                return {
+                    "response_action": "errors",
+                    "errors": {"reject_reason_block": result["error"]},
+                }
+            return {"response_action": "clear"}
+
         emp = _find_employee_by_slack(db, slack_user_id, slack_user_name)
         if not emp:
             return {"response_action": "errors", "errors": {"late_reason_block": "Could not map your Slack user to an employee profile."}}
@@ -692,6 +833,17 @@ async def slack_interactions(
                 status=CorrectionStatus.PENDING,
             )
             db.add(late_req)
+            db.flush()
+
+            from app.services.notifications import notify_hr
+            notify_hr(
+                db,
+                org_id=emp.org_id,
+                category="correction.submitted",
+                title=f"Late Regularization: {emp.full_name}",
+                body=f"{today_date.strftime('%d %b %Y')} · {reason or 'Late arrival'}",
+                data={"late_request_id": str(late_req.id), "employee_code": emp.emp_code},
+            )
             db.commit()
 
             # Ephemeral approval card sent ONLY to admins in the channel
@@ -755,6 +907,17 @@ async def slack_interactions(
                 status=CorrectionStatus.PENDING,
             )
             db.add(wfh_req)
+            db.flush()
+
+            from app.services.notifications import notify_hr
+            notify_hr(
+                db,
+                org_id=emp.org_id,
+                category="wfh.pending",
+                title=f"WFH Request: {emp.full_name}",
+                body=f"{emp.full_name} ({emp.emp_code}) requested Work From Home on {target_date.strftime('%d %b %Y')}.\n\nReason: {reason or 'No reason provided'}",
+                data={"wfh_request_id": str(wfh_req.id)},
+            )
             db.commit()
 
             admin_blocks = [
@@ -818,6 +981,17 @@ async def slack_interactions(
                 status=CorrectionStatus.PENDING,
             )
             db.add(early_req)
+            db.flush()
+
+            from app.services.notifications import notify_hr
+            notify_hr(
+                db,
+                org_id=emp.org_id,
+                category="correction.submitted",
+                title=f"Early Checkout: {emp.full_name}",
+                body=f"{today_date.strftime('%d %b %Y')} · {reason or 'Early checkout'}",
+                data={"early_request_id": str(early_req.id), "employee_code": emp.emp_code},
+            )
             db.commit()
             admin_blocks = [
                 {
@@ -899,8 +1073,29 @@ async def slack_interactions(
                 }
 
             leave_req = outcome.request
-            db.commit()
+            db.flush()
             days_count = float(leave_req.days_consumed)
+
+            days_badge = f"{days_count:g} day{'s' if days_count != 1 else ''}"
+            date_display = f"{from_date.strftime('%d %b %Y')} to {to_date.strftime('%d %b %Y')}" if from_date != to_date else from_date.strftime('%d %b %Y')
+            clean_reason = reason or "Applied via Slack"
+            leave_body = (
+                f"{emp.full_name} ({emp.emp_code}) requested {days_badge} of {lt.name} for {date_display}.\n\n"
+                f"Reason: {clean_reason}"
+            )
+            from app.services.notifications import notify_hr
+            notify_hr(
+                db,
+                org_id=emp.org_id,
+                category="leave.pending",
+                title=f"Leave Request: {emp.full_name} ({days_badge})",
+                body=leave_body,
+                data={
+                    "leave_request_id": str(leave_req.id),
+                    "reason": clean_reason,
+                },
+            )
+            db.commit()
 
             admin_blocks = [
                 {
@@ -911,7 +1106,7 @@ async def slack_interactions(
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"*{emp.full_name}* requested *{days_count:g} days* of leave from *{from_date.strftime('%d %b %Y')}* to *{to_date.strftime('%d %b %Y')}*.\n📝 *Reason:* _{reason}_",
+                        "text": f"*{emp.full_name}* requested *{days_count:g} days* of leave from *{from_date.strftime('%d %b %Y')}* to *{to_date.strftime('%d %b %Y')}*.\n📝 *Reason:* _{clean_reason}_",
                     },
                 },
                 {
@@ -944,6 +1139,7 @@ async def slack_interactions(
                 text=APPLICANT_WAIT_TEXT,
             )
             return {"response_action": "clear"}
+
 
         if callback_id == "submit_correction_request":
             date_str = values.get("correction_date_block", {}).get("correction_date_input", {}).get("selected_date")
@@ -1083,7 +1279,18 @@ async def slack_interactions(
                 response_url=response_url,
             )
 
-        # Reject proceeds immediately — no mandatory reason.
+        # Reject confirmation modal to prevent accidental mobile taps
+        if trigger_id:
+            return _open_reject_reason_modal(
+                trigger_id=trigger_id,
+                kind=kind,
+                request_id=request_id,
+                channel_id=channel_id,
+                message_ts=message_ts,
+                response_url=response_url,
+            )
+
+        # Fallback if trigger_id is missing
         result = _apply_admin_decision(
             db,
             kind=kind,
@@ -1225,14 +1432,8 @@ def _apply_admin_decision(
 
     approver = _slack_approver_user(db, slack_user_id or "", slack_user)
     if approver is None:
-        approver = db.scalar(
-            select(User).where(
-                User.role.in_([UserRole.HR_ADMIN, UserRole.SUPER_ADMIN]),
-                User.is_active.is_(True),
-            ).limit(1)
-        )
-    if approver is None:
-        return {"error": "No valid admin user found to record the decision."}
+        logger.error("Could not map Slack admin %s (%s) to a database admin user", slack_user, slack_user_id)
+        return {"error": f"Could not map your Slack account (@{slack_user}) to an authorized HRMS admin. Please decide this request on the admin web dashboard."}
 
     note = (decision_reason or "").strip()
     if approve and partial_approve:
@@ -1265,6 +1466,39 @@ def _apply_admin_decision(
         late_req.decided_by_name = slack_user
         late_req.decided_at = datetime.now(timezone.utc)
         late_req.decided_note = note
+
+        # Mark in-app pending notifications as read
+        from app.models.notification import Notification
+        pending_notifs = db.scalars(
+            select(Notification).where(
+                Notification.org_id == late_req.org_id,
+                Notification.category == "correction.submitted",
+                Notification.read_at.is_(None),
+            )
+        ).all()
+        now_utc = datetime.now(timezone.utc)
+        req_id_str = str(late_req.id)
+        for n in pending_notifs:
+            if n.data and (
+                str(n.data.get("late_request_id")) == req_id_str
+                or str(n.data.get("early_request_id")) == req_id_str
+            ):
+                n.read_at = now_utc
+
+        # Notify employee in-app
+        from app.services.notifications import notify
+        user_emp = db.scalar(select(User).where(User.employee_id == late_req.employee_id))
+        if user_emp:
+            notify(
+                db,
+                org_id=late_req.org_id,
+                user=user_emp,
+                category="correction.decided",
+                title=f"{'Early checkout' if is_early else 'Late arrival'} Decided",
+                body=f"Your {'early checkout' if is_early else 'late arrival'} request for {late_req.shift_date.strftime('%d %b %Y')} was {late_req.status.value}",
+                data={"late_request_id": req_id_str, "status": late_req.status.value},
+            )
+
         db.commit()
         if req_emp and approve:
             from app.services.attendance import recompute_day
@@ -1305,8 +1539,38 @@ def _apply_admin_decision(
             return {"error": f"Already {wfh_req.status.value}"}
         req_emp = db.get(Employee, wfh_req.employee_id)
         wfh_req.status = CorrectionStatus.APPROVED if approve else CorrectionStatus.REJECTED
+        wfh_req.decided_by_id = approver.id
         wfh_req.decided_at = datetime.now(timezone.utc)
         wfh_req.decided_note = note
+
+        # Mark in-app pending notifications as read
+        from app.models.notification import Notification
+        pending_notifs = db.scalars(
+            select(Notification).where(
+                Notification.org_id == wfh_req.org_id,
+                Notification.category == "wfh.pending",
+                Notification.read_at.is_(None),
+            )
+        ).all()
+        now_utc = datetime.now(timezone.utc)
+        for n in pending_notifs:
+            if n.data and str(n.data.get("wfh_request_id")) == str(wfh_req.id):
+                n.read_at = now_utc
+
+        # Notify employee in-app
+        from app.services.notifications import notify
+        user_emp = db.scalar(select(User).where(User.employee_id == wfh_req.employee_id))
+        if user_emp:
+            notify(
+                db,
+                org_id=wfh_req.org_id,
+                user=user_emp,
+                category="wfh.decided",
+                title="WFH Request Decided",
+                body=f"Your WFH request for {wfh_req.shift_date.strftime('%d %b %Y')} was {wfh_req.status.value}",
+                data={"wfh_request_id": str(wfh_req.id)},
+            )
+
         db.commit()
         if req_emp and approve:
             from app.services.attendance import recompute_day

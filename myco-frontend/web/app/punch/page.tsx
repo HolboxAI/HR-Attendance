@@ -149,11 +149,21 @@ function PunchContent() {
     }
 
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
+    if (res.status === 401) {
       setFeedback({
         type: 'error',
-        message: body.detail || 'Punch rejected by system',
-        details: 'Biometric face match or GPS location verification failed.',
+        message: 'You need to sign in',
+        details: 'Sign in on the attendance site, then tap checkout in Slack again.',
+      });
+      return;
+    }
+    const detail = typeof body?.detail === 'string'
+      ? body.detail
+      : (typeof body?.message === 'string' ? body.message : 'Punch rejected');
+    if (!res.ok || body?.accepted === false) {
+      setFeedback({
+        type: 'error',
+        message: detail,
       });
       return;
     }

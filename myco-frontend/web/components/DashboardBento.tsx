@@ -22,7 +22,6 @@ import {
 import type { Board, Enrolments } from "@/lib/format";
 import { hhmm, formatLate } from "@/lib/format";
 import type { Capabilities } from "@/lib/capabilities";
-import { proxy } from "@/lib/format";
 import { GlowCard } from "@/components/ui/spotlight-card";
 import { Avatar } from "@/components/Avatar";
 
@@ -209,7 +208,7 @@ export function DashboardBento({
 
         {/* Tertiary Stat D: Quick CSV Export Shortcut (Spans 2 cols) */}
         <a
-          href={proxy(`/api/v1/admin/export/month.csv?year=${year}&month=${monthNum}`)}
+          href="/history/attendance"
           className="md:col-span-2 block group cursor-pointer"
         >
           <GlowCard
@@ -222,8 +221,8 @@ export function DashboardBento({
                 <Download className="size-4.5" />
               </span>
               <div>
-                <div className="text-sm font-bold text-ink">Export {monthLabel}</div>
-                <div className="text-[10px] font-mono text-ink-3">Live Register CSV</div>
+                <div className="text-sm font-bold text-ink">Attendance history</div>
+                <div className="text-[10px] font-mono text-ink-3">Download the summary PDF there</div>
               </div>
             </div>
             <ArrowUpRight className="size-4 text-ink-3 group-hover:text-ink transition-colors" />

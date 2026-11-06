@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AtSignIcon,
@@ -37,6 +37,24 @@ export function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [googleMode, setGoogleMode] = useState(false);
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem('holbox_google_signup');
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as { id_token?: string; email?: string; name?: string };
+      if (parsed.id_token && parsed.email) {
+        setGoogleMode(true);
+        setGoogleToken(parsed.id_token);
+        setEmail(parsed.email);
+        if (parsed.name) setFullName(parsed.name);
+      }
+    } catch {
+      sessionStorage.removeItem('holbox_google_signup');
+    }
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,7 +68,8 @@ export function SignupPage() {
         body: JSON.stringify({
           full_name: fullName.trim(),
           email: email.trim().toLowerCase(),
-          password,
+          password: googleMode ? null : password,
+          id_token: googleMode ? googleToken : null,
           phone: phone.trim() || null,
           desired_department: department.trim() || null,
           desired_designation: designation.trim() || null,
@@ -63,6 +82,7 @@ export function SignupPage() {
         return;
       }
 
+      sessionStorage.removeItem('holbox_google_signup');
       setSubmitted(true);
     } catch {
       setError('Could not reach the server. Please try again.');
@@ -176,7 +196,11 @@ export function SignupPage() {
                   </div>
                   <div className="flex items-start gap-2.5">
                     <CheckCircle2 className="size-4 text-emerald-400 shrink-0 mt-0.5" />
-                    <span>Once approved, sign in with your email and password to upload your face biometric photo.</span>
+                    <span>
+                      {googleMode
+                        ? "Once approved, we'll email you. Then come back and tap Continue with Google with this same account."
+                        : "Once approved, we'll email you. Then sign in with your email and password."}
+                    </span>
                   </div>
                 </div>
 
@@ -201,7 +225,9 @@ export function SignupPage() {
                 <div className="space-y-1">
                   <LiquidMetalText className="text-3xl sm:text-4xl">Request to Join</LiquidMetalText>
                   <p className="text-sm text-white/60 font-body">
-                    Create your profile. Admin will review and approve your account.
+                    {googleMode
+                      ? 'Your Google account is ready. Add your name and phone so an admin can approve you.'
+                      : 'Create your profile. Admin will review and approve your account.'}
                   </p>
                 </div>
 
@@ -240,11 +266,12 @@ export function SignupPage() {
                         name="email"
                         type="email"
                         required
+                        readOnly={googleMode}
                         autoComplete="email"
                         placeholder="name@holbox.ai"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full rounded-2xl bg-white/5 border border-white/10 py-2.5 ps-10 pe-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-body"
+                        onChange={(e) => { if (!googleMode) setEmail(e.target.value); }}
+                        className={`w-full rounded-2xl bg-white/5 border border-white/10 py-2.5 ps-10 pe-4 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/40 focus:ring-1 focus:ring-white/40 transition-all font-body ${googleMode ? 'opacity-70' : ''}`}
                       />
                       <div className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3 text-white/40">
                         <AtSignIcon className="size-4" aria-hidden="true" />
@@ -252,7 +279,14 @@ export function SignupPage() {
                     </div>
                   </div>
 
-                  {/* Password */}
+                  {googleMode && (
+                    <p className="text-[11px] text-white/40 font-mono -mt-2">
+                      This is the Google account you just used. It cannot be changed.
+                    </p>
+                  )}
+
+                  {/* Password — hidden on the Google path. That login is the Google account. */}
+                  {!googleMode && (
                   <div className="space-y-1.5">
                     <label htmlFor="password" className="text-xs font-mono font-medium text-white/70">
                       Desired Password * (min. 8 characters)
@@ -283,6 +317,7 @@ export function SignupPage() {
                       </button>
                     </div>
                   </div>
+                  )}
 
                   {/* Phone Number */}
                   <div className="space-y-1.5">

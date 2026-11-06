@@ -217,6 +217,11 @@ def approve_signup(
             department=dept_name,
             designation=desig_name,
         )
+        notifications.send_signup_approved_to_applicant(
+            full_name=created.full_name,
+            email=created.email or req.email,
+            emp_code=created.emp_code,
+        )
     except Exception:
         logger.exception("Signup approved, but Slack/email follow-up failed")
 

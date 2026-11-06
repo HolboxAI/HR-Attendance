@@ -10,6 +10,7 @@ Provides endpoints for:
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import date, datetime, time, timezone
 from typing import List, Optional
@@ -797,6 +798,12 @@ def update_shift_group(
         template.end_time = _parse_time(body.end_time)
     if body.working_days is not None:
         template.working_days = body.working_days
+
+    # Keep template name in sync with updated group name and timing
+    clean_grp_name = re.sub(r"\s*\(\d{1,2}:\d{2}-\d{1,2}:\d{2}\)", "", body.name.strip() if body.name else group.name).strip()
+    st_str = f"{template.start_time:%H:%M}"
+    et_str = f"{template.end_time:%H:%M}"
+    template.name = f"{clean_grp_name} ({st_str}-{et_str})"
     db.flush()
 
     group.name = body.name.strip()

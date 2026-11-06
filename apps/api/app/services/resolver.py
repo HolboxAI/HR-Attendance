@@ -21,6 +21,9 @@ class Punch:
     ts_utc: datetime
     direction: str = "unknown"   # "in" | "out" | "unknown"
     source: str = "gate_device"
+    # check_in, check_out, break_start, break_end. Empty on older punches,
+    # which still treat a plain "out" as leaving for the day.
+    kind: str = ""
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,9 @@ class ResolvedDay:
     has_exception: bool = False
     exception_note: str | None = None
     pairs: list[tuple[datetime, datetime | None]] = field(default_factory=list)
+    # Each gap between a punch-out and the next punch-in. The day stores only
+    # the total minutes; the mail lists these windows.
+    break_spans: list[tuple[datetime, datetime]] = field(default_factory=list)
     is_currently_in: bool = False
     current_session_minutes: int = 0
 
@@ -79,13 +85,32 @@ class ResolvedDay:
 def shift_date_for(ts_utc: datetime, policy: ShiftPolicy) -> date:
     """Which shift-date does this punch belong to?
 
-    A 01:30 punch on a 22:00-06:00 shift belongs to YESTERDAY. Calendar date
-    is the wrong key for anything but a plain day shift.
+    The work day runs until the cutover, 5:00 AM for a normal shift, not until
+    midnight. Someone who checks in at 8:54 PM and checks out at 12:54 AM is
+    still on yesterday, and the time past the scheduled end is overtime on
+    that day. 5:00 AM starts a new day, so the button goes back to Check In
+    even if they never punched out.
+
+    An overnight shift uses a later cutover, after the shift has actually
+    ended. Filing a 6:05 AM punch-out on the new morning is how a night shift
+    shows "never left".
     """
     local = ts_utc.astimezone(ZoneInfo(policy.tz))
-    if policy.is_overnight and local.hour < policy.effective_cutover_hour:
+    if local.hour < policy.effective_cutover_hour:
         return (local - timedelta(days=1)).date()
     return local.date()
+
+
+def _is_break_out(punch: Punch) -> bool:
+    return punch.kind in ("break_out", "break_start")
+
+
+def _is_checkout(punch: Punch, direction: str) -> bool:
+    if punch.kind in ("break_out", "break_start", "break_in", "break_end", "check_in"):
+        return False
+    if punch.kind == "check_out":
+        return True
+    return direction == "out"
 
 
 def _infer_directions(punches: list[Punch]) -> list[tuple[Punch, str]]:
@@ -169,7 +194,13 @@ def resolve_day(
 
     directed = _infer_directions(punches)
     day.first_in = next((p.ts_utc for p, d in directed if d == "in"), punches[0].ts_utc)
-    day.last_out = next((p.ts_utc for p, d in reversed(directed) if d == "out"), None)
+    # A break is a pause, not the end of the day. last_out is the last time
+    # they actually left. A break at 1:31 must not fill the checkout column.
+    day.last_out = next(
+        (p.ts_utc for p, d in reversed(directed) if _is_checkout(p, d)),
+        None,
+    )
+    on_break = _is_break_out(directed[-1][0])
 
     # Pair up in->out. An unmatched trailing "in" means someone never punched out.
     open_in: datetime | None = None
@@ -183,6 +214,7 @@ def resolve_day(
                 open_in = p.ts_utc
                 if last_out is not None:
                     gaps.append(p.ts_utc - last_out)
+                    day.break_spans.append((last_out, p.ts_utc))
         else:
             if open_in is not None:
                 worked += p.ts_utc - open_in
@@ -190,18 +222,20 @@ def resolve_day(
                 last_out = p.ts_utc
                 open_in = None
 
+    is_week_off = shift_date.weekday() not in policy.working_days
+
     if open_in is not None:
         day.pairs.append((open_in, None))
         day.is_currently_in = True
-        if shift_over:
+        if shift_over and not is_week_off and not is_holiday:
             day.has_exception = True
             day.exception_note = "Missing punch-out - needs regularization"
-        elif as_of is not None and as_of > open_in:
+        elif as_of is not None and as_of > open_in and not is_week_off and not is_holiday:
             session_seconds = (as_of - open_in).total_seconds()
             day.current_session_minutes = max(0, int(session_seconds // 60))
             worked += timedelta(seconds=session_seconds)
 
-    if len(punches) == 1 and shift_over:
+    if len(punches) == 1 and shift_over and not is_week_off and not is_holiday:
         day.has_exception = True
         day.exception_note = "Only one punch recorded"
 
@@ -211,11 +245,15 @@ def resolve_day(
     # Late / early, measured against the scheduled shift in local time.
     scheduled_start, scheduled_end = shift_bounds(policy, shift_date)
 
-    if day.first_in:
+    if day.first_in and not is_week_off and not is_holiday:
         late = (day.first_in.astimezone(tz) - scheduled_start).total_seconds() / 60
         day.late_minutes = max(0, int(late) - policy.grace_minutes)
+    else:
+        day.late_minutes = 0
 
-    if day.last_out and open_in is None:
+    if on_break:
+        day.is_currently_in = True
+    if day.last_out and open_in is None and not on_break:
         early = (scheduled_end - day.last_out.astimezone(tz)).total_seconds() / 60
         day.early_out_minutes = max(0, int(early))
         over = (day.last_out.astimezone(tz) - scheduled_end).total_seconds() / 60
@@ -233,16 +271,20 @@ def resolve_day(
         day.status = "present"
     elif on_leave:
         day.status = "half_day"
-    elif not is_regularized and day.late_minutes > 0:
-        # Arrived after grace period: strictly marked ABSENT unless regularized by HR
-        day.status = "absent"
-        day.has_exception = True
-        day.exception_note = (
-            f"Arrived late (+{day.late_minutes}m past {policy.grace_minutes}m grace) "
-            "- marked Absent (requires regularization)"
-        )
     elif day.worked_minutes > 0 or (day.first_in and day.last_out and day.punch_count >= 2):
+        # Option 2: Everyone who has come and worked is marked Present.
+        # Late arrival beyond grace is tracked in day.late_minutes without docking them absent.
         day.status = "present"
+    elif is_holiday:
+        day.status = "holiday"
+        day.has_exception = False
+        day.exception_note = None
+        day.late_minutes = 0
+    elif is_week_off:
+        day.status = "weekly_off"
+        day.has_exception = False
+        day.exception_note = None
+        day.late_minutes = 0
     elif day.has_exception or not shift_over:
         day.status = "not_marked"
     else:

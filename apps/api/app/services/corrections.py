@@ -25,7 +25,8 @@ from sqlalchemy.orm import Session
 from app.models.correction import CorrectionRequest
 from app.core.clock import org_today
 from app.models.employee import Employee, User
-from app.models.enums import CorrectionStatus, PunchDirection, PunchSource
+from app.api.deps import RANK
+from app.models.enums import CorrectionStatus, PunchDirection, PunchSource, UserRole
 from app.services import notifications
 from app.services.attendance import record_punch, recompute_day
 from app.services.leave import audit
@@ -103,9 +104,17 @@ def submit(
             reason=f"Correction limit reached ({limit} per month)"
         )
 
+    # Always normalize claimed_at to UTC
+    if claimed_at.tzinfo is not None:
+        claimed_at_utc = claimed_at.astimezone(timezone.utc)
+    else:
+        from zoneinfo import ZoneInfo
+        claimed_at_utc = claimed_at.replace(tzinfo=ZoneInfo("Asia/Kolkata")).astimezone(timezone.utc)
+
+    # In SQLite, DateTime strips tzinfo; keep naive UTC timestamp in the column
     row = CorrectionRequest(
         id=uuid.uuid4(), org_id=employee.org_id, employee_id=employee.id,
-        shift_date=shift_date, direction=direction, claimed_at=claimed_at,
+        shift_date=shift_date, direction=direction, claimed_at=claimed_at_utc.replace(tzinfo=None),
         reason=reason.strip(), category=category, status=CorrectionStatus.PENDING,
     )
     db.add(row)
@@ -129,9 +138,14 @@ def decide(
     if request.status != CorrectionStatus.PENDING:
         return CorrectionOutcome(False, reason=f"That request is already {request.status.value}")
 
-    # Same rule as leave, for the same reason: an hr_admin who could approve
-    # their own correction is not a review, it is a formality.
-    if actor.employee_id is not None and actor.employee_id == request.employee_id:
+    # An employee still cannot sign off their own day. HR and super admins
+    # can: there is nobody above them, and a refused self-approval just
+    # leaves their own day stuck.
+    if (
+        actor.employee_id is not None
+        and actor.employee_id == request.employee_id
+        and RANK.get(actor.role, -1) < RANK[UserRole.HR_ADMIN]
+    ):
         return CorrectionOutcome(False, reason="You cannot decide your own correction")
 
     employee = db.get(Employee, request.employee_id)
@@ -143,13 +157,18 @@ def decide(
         # the same trade POST /admin/correct has always made with body.at.
         # Stamping it "now" would file the punch against today and leave the
         # day being corrected exactly as broken as it was.
+        claimed_utc = request.claimed_at
+        if claimed_utc.tzinfo is None:
+            claimed_utc = claimed_utc.replace(tzinfo=timezone.utc)
+        else:
+            claimed_utc = claimed_utc.astimezone(timezone.utc)
         event, _created = record_punch(
             db, org_id=request.org_id, employee=employee,
-            event_ts=request.claimed_at, source=PunchSource.MANUAL,
+            event_ts=claimed_utc, source=PunchSource.MANUAL,
             direction=request.direction,
             raw={
                 "correction_request_id": str(request.id),
-                "claimed_at": request.claimed_at.isoformat(),
+                "claimed_at": claimed_utc.isoformat(),
                 "reason": request.reason,
                 "actor": actor.email,
             },

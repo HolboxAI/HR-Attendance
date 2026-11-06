@@ -322,187 +322,67 @@ def employee_to_pdf(
     end_date: date,
     org_name: str,
 ) -> bytes:
-    """Generate a clean, printable PDF attendance report for a single employee over any date range."""
-    from fpdf import FPDF
-
-    safe_org_name = _clean_pdf_text(org_name)
-    safe_emp_name = _clean_pdf_text(employee.full_name)
-    safe_dept_name = _clean_pdf_text(department or "General")
-
-    class EmployeePDF(FPDF):
-        def header(self):
-            self.set_font("helvetica", "B", 8)
-            self.set_text_color(120, 120, 130)
-            self.cell(0, 4, f"{safe_org_name.upper()} - EMPLOYEE ATTENDANCE REPORT", align="L")
-            self.ln(2)
-
-        def footer(self):
-            self.set_y(-12)
-            self.set_font("helvetica", "", 8)
-            self.set_text_color(150, 150, 155)
-            self.cell(0, 6, f"Page {self.page_no()} of {{nb}} - Confidential", align="C")
-
-    pdf = EmployeePDF(orientation="portrait", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_margins(10, 12, 10)
-    pdf.add_page()
-
-    # Employee Name & Details
-    pdf.set_font("helvetica", "B", 18)
-    pdf.set_text_color(20, 24, 33)
-    pdf.cell(0, 8, safe_emp_name, new_x="LMARGIN", new_y="NEXT")
-
-    pdf.set_font("helvetica", "", 9)
-    pdf.set_text_color(100, 105, 115)
-    date_str = f"{start_date:%d %b %Y} to {end_date:%d %b %Y}"
-    meta_line = f"Employee Code: {employee.emp_code}   |   Department: {safe_dept_name}   |   Period: {date_str}"
-    pdf.cell(0, 5, meta_line, new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(3)
-
-    # Summary KPI Cards Box
-    pdf.set_fill_color(248, 249, 251)
-    pdf.set_draw_color(226, 228, 233)
-    pdf.rect(10, pdf.get_y(), 190, 18, style="FD")
-
-    worked_hrs = totals.get("worked_minutes", 0)
-    hrs_str = f"{worked_hrs // 60}h {worked_hrs % 60:02d}m"
-    late_mins = totals.get("late_minutes", 0)
-    late_str = f"{late_mins}m" if late_mins > 0 else "-"
-    
-    leaves_by_type = totals.get("leaves_by_type", {})
-    type_details = ", ".join(f"{k}: {v:g}" for k, v in leaves_by_type.items()) if leaves_by_type else ""
-    leave_count = totals.get("on_leave", 0)
-    leave_str = f"{leave_count} ({type_details})" if type_details else str(leave_count)
-
-    kpis = [
-        ("PRESENT", str(totals.get("present", 0))),
-        ("ABSENT", str(totals.get("absent", 0))),
-        ("LEAVES", leave_str),
-        ("HALF DAY", str(totals.get("half_day", 0))),
-        ("WFH", str(totals.get("wfh", 0))),
-        ("HOURS", hrs_str),
-        ("LATE", late_str),
-    ]
-
-    box_w = 190 / len(kpis)
-    start_y = pdf.get_y()
-    for i, (label, val) in enumerate(kpis):
-        x = 10 + i * box_w
-        pdf.set_xy(x, start_y + 2)
-        pdf.set_font("helvetica", "B", 7)
-        pdf.set_text_color(120, 125, 135)
-        pdf.cell(box_w, 4, label, align="C")
-        pdf.set_xy(x, start_y + 7)
-        pdf.set_font("helvetica", "B", 9.5)
-        pdf.set_text_color(20, 24, 33)
-        pdf.cell(box_w, 6, val, align="C")
-
-    pdf.set_y(start_y + 22)
-
-    # Table Header
-    cols = [
-        ("Date", 26),
-        ("Day", 12),
-        ("Status", 34),
-        ("In", 18),
-        ("Out", 18),
-        ("Hours", 18),
-        ("Late", 16),
-        ("Notes / Regularization", 48),
-    ]
-
-    def render_table_header():
-        pdf.set_fill_color(238, 240, 244)
-        pdf.set_draw_color(218, 220, 226)
-        pdf.set_font("helvetica", "B", 8)
-        pdf.set_text_color(60, 64, 75)
-        for title, w in cols:
-            pdf.cell(w, 7, title, border=1, fill=True, align="C")
-        pdf.ln()
-
-    render_table_header()
-
-    # Table Rows
-    pdf.set_font("helvetica", "", 8)
+    """One employee's days, in the same columns as the history PDF and the mail."""
+    rows = []
     for d in days:
-        if pdf.get_y() > 270:
-            pdf.add_page()
-            render_table_header()
-            pdf.set_font("helvetica", "", 8)
+        rows.append({
+            "shift_date": d.get("date"),
+            "employee_code": d.get("employee_code") or employee.emp_code,
+            "full_name": d.get("full_name") or employee.full_name,
+            "department": d.get("department") or department,
+            "status": d.get("status"),
+            "first_in": d.get("first_in"),
+            "last_out": d.get("last_out"),
+            "worked_minutes": d.get("worked_minutes"),
+            "break_minutes": d.get("break_minutes"),
+            "late_minutes": d.get("late_minutes"),
+            "shift_allotted": d.get("shift_allotted") or "-",
+            "break_windows": d.get("break_windows") or "-",
+            "extra_str": d.get("extra_str") or "-",
+            "punctuality": d.get("punctuality") or "-",
+            "regularised_by": d.get("regularised_by") or "N/A",
+            "leave_status": d.get("leave_status") or "N/A",
+            "leave_approved_by": d.get("leave_approved_by") or "N/A",
+            "remarks": d.get("remarks") or d.get("exception_note") or "-",
+        })
+    who = f"Employee: {employee.full_name} ({employee.emp_code})"
+    return attendance_history_to_pdf(rows, start_date, end_date, org_name, filters_desc=who)
 
-        st_val = d.get("status", "")
-        # Format status display
-        if st_val == "present":
-            st_label = "Present"
-        elif st_val == "absent":
-            st_label = "Absent"
-        elif st_val in ("on_leave", "half_day"):
-            code = d.get("leave_code")
-            base = "Half Day" if st_val == "half_day" else "On Leave"
-            st_label = f"{base} ({code})" if code else base
-        elif st_val == "wfh":
-            st_label = "Work From Home"
-        elif st_val == "weekly_off":
-            st_label = "Weekly Off"
-        elif st_val == "holiday":
-            st_label = "Holiday"
-        else:
-            st_label = st_val.replace("_", " ").title()
 
-        if d.get("is_wfh") and st_val != "wfh":
-            st_label += " (WFH)"
-
-        # Set row colors
-        if st_val == "absent":
-            pdf.set_fill_color(254, 242, 242)
-            pdf.set_text_color(185, 28, 28)
-        elif st_val in ("on_leave", "half_day"):
-            pdf.set_fill_color(254, 243, 199)
-            pdf.set_text_color(180, 83, 9)
-        elif st_val == "wfh" or d.get("is_wfh"):
-            pdf.set_fill_color(236, 254, 255)
-            pdf.set_text_color(14, 116, 144)
-        elif st_val in ("weekly_off", "holiday"):
-            pdf.set_fill_color(248, 249, 250)
-            pdf.set_text_color(140, 140, 145)
-        else:
-            pdf.set_fill_color(255, 255, 255)
-            pdf.set_text_color(30, 35, 45)
-
-        pdf.cell(26, 6, d.get("date", ""), border=1, fill=True, align="C")
-        pdf.cell(12, 6, d.get("weekday", ""), border=1, fill=True, align="C")
-        pdf.cell(34, 6, _clean_pdf_text(st_label), border=1, fill=True, align="L")
-        
-        pdf.set_text_color(30, 35, 45)
-        in_str = _format_time_ist(d.get("first_in"))
-        out_str = _format_time_ist(d.get("last_out"))
-        pdf.cell(18, 6, in_str, border=1, fill=True, align="C")
-        pdf.cell(18, 6, out_str, border=1, fill=True, align="C")
-
-        w_min = d.get("worked_minutes", 0)
-        h_str = f"{w_min // 60}h {w_min % 60:02d}m" if w_min > 0 else "-"
-        pdf.cell(18, 6, h_str, border=1, fill=True, align="C")
-
-        l_min = d.get("late_minutes", 0)
-        l_str = f"{l_min}m" if l_min > 0 else "-"
-        pdf.cell(16, 6, l_str, border=1, fill=True, align="C")
-
-        notes = []
-        if d.get("is_regularized"):
-            notes.append("[Corrected]")
-        if d.get("exception_note"):
-            notes.append(d["exception_note"])
-        if d.get("leave_name") and st_val in ("on_leave", "half_day"):
-            notes.append(d["leave_name"])
-
-        full_note = " ".join(notes)
-        note_str = full_note if len(full_note) <= 30 else full_note[:28] + "..."
-        pdf.set_font("helvetica", "", 7)
-        pdf.cell(48, 6, _clean_pdf_text(note_str), border=1, fill=True, align="L")
-        pdf.set_font("helvetica", "", 8)
-        pdf.ln()
-
-    return bytes(pdf.output())
+def employee_to_csv(
+    employee: Employee,
+    department: str | None,
+    days: list[dict],
+    totals: dict,
+    start_date: date,
+    end_date: date,
+    org_name: str,
+) -> str:
+    """One employee's days, in the same columns as the history CSV and the mail."""
+    rows = []
+    for d in days:
+        rows.append({
+            "shift_date": d.get("date"),
+            "employee_code": d.get("employee_code") or employee.emp_code,
+            "full_name": d.get("full_name") or employee.full_name,
+            "department": d.get("department") or department,
+            "status": d.get("status"),
+            "first_in": d.get("first_in"),
+            "last_out": d.get("last_out"),
+            "worked_minutes": d.get("worked_minutes"),
+            "break_minutes": d.get("break_minutes"),
+            "late_minutes": d.get("late_minutes"),
+            "shift_allotted": d.get("shift_allotted") or "-",
+            "break_windows": d.get("break_windows") or "-",
+            "extra_str": d.get("extra_str") or "-",
+            "punctuality": d.get("punctuality") or "-",
+            "regularised_by": d.get("regularised_by") or "N/A",
+            "leave_status": d.get("leave_status") or "N/A",
+            "leave_approved_by": d.get("leave_approved_by") or "N/A",
+            "remarks": d.get("remarks") or d.get("exception_note") or "-",
+        })
+    who = f"Employee: {employee.full_name} ({employee.emp_code})"
+    return attendance_history_to_csv(rows, start_date=start_date, end_date=end_date, org_name=org_name, filters_desc=who)
 
 
 def attendance_history_to_pdf(
@@ -531,9 +411,9 @@ def attendance_history_to_pdf(
             now_str = datetime.now().strftime("%d %b %Y %H:%M")
             self.cell(0, 6, f"Page {self.page_no()} of {{nb}}  |  Generated {now_str}  |  Confidential Attendance Record", align="C")
 
-    pdf = HistoryPDF(orientation="landscape", format="A4")
+    pdf = HistoryPDF(orientation="landscape", format="A3")
     pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_margins(10, 12, 10)
+    pdf.set_margins(8, 12, 8)
     pdf.add_page()
 
     # Report Title & Summary Metadata
@@ -575,16 +455,16 @@ def attendance_history_to_pdf(
         ("TOTAL HOURS", hrs_str),
     ]
 
-    # Render KPI Summary Box
-    total_w = 277.0
+    # Render KPI Summary Box. A3 landscape fits the same columns as the mail.
+    total_w = 404.0
     box_w = total_w / len(kpis)
     start_y = pdf.get_y()
     pdf.set_fill_color(248, 249, 251)
     pdf.set_draw_color(226, 228, 233)
-    pdf.rect(10, start_y, total_w, 14, style="FD")
+    pdf.rect(8, start_y, total_w, 14, style="FD")
 
     for i, (label, val) in enumerate(kpis):
-        bx = 10 + i * box_w
+        bx = 8 + i * box_w
         pdf.set_xy(bx, start_y + 1.5)
         pdf.set_font("helvetica", "B", 6.5)
         pdf.set_text_color(120, 125, 135)
@@ -596,25 +476,32 @@ def attendance_history_to_pdf(
 
     pdf.set_y(start_y + 17)
 
-    # Columns Plan (Total Width = 277mm)
+    # Same columns as the 11:59 mail. Widths sum to the A3 content width.
     cols = [
-        ("Date", 22, "C"),
-        ("Code", 17, "C"),
-        ("Employee Name", 42, "L"),
-        ("Department", 30, "L"),
-        ("Status", 24, "C"),
-        ("First In", 18, "C"),
-        ("Last Out", 18, "C"),
-        ("Worked", 18, "C"),
-        ("Break", 15, "C"),
-        ("Late", 15, "C"),
-        ("Remarks / Details", 58, "L"),
+        ("Date", 20, "C"),
+        ("Employee ID", 18, "C"),
+        ("Name", 28, "L"),
+        ("Department", 22, "L"),
+        ("Shift", 26, "L"),
+        ("Status", 16, "C"),
+        ("In", 16, "C"),
+        ("Out", 16, "C"),
+        ("Late", 12, "C"),
+        ("Break times", 28, "L"),
+        ("Break total", 14, "C"),
+        ("Worked", 14, "C"),
+        ("Extra", 12, "C"),
+        ("Punctuality", 20, "C"),
+        ("Regularised by", 24, "L"),
+        ("Leave", 14, "C"),
+        ("Approved by", 22, "L"),
+        ("Remarks", 82, "L"),
     ]
 
     def render_table_header():
         pdf.set_fill_color(238, 240, 244)
         pdf.set_draw_color(218, 220, 226)
-        pdf.set_font("helvetica", "B", 7.5)
+        pdf.set_font("helvetica", "B", 6)
         pdf.set_text_color(50, 55, 65)
         for title, w, align in cols:
             pdf.cell(w, 6.5, title, border=1, fill=True, align=align)
@@ -629,12 +516,12 @@ def attendance_history_to_pdf(
         pdf.ln()
         return bytes(pdf.output())
 
-    pdf.set_font("helvetica", "", 7.5)
+    pdf.set_font("helvetica", "", 6)
     for r in rows:
-        if pdf.get_y() > 185:
+        if pdf.get_y() > 270:
             pdf.add_page()
             render_table_header()
-            pdf.set_font("helvetica", "", 7.5)
+            pdf.set_font("helvetica", "", 6)
 
         # Date formatting
         s_date = r.get("shift_date")
@@ -682,54 +569,178 @@ def attendance_history_to_pdf(
             pdf.set_fill_color(255, 255, 255)
             pdf.set_text_color(30, 35, 45)
 
-        # In & Out times (converted to local IST)
-        in_str = _format_time_ist(r.get("first_in"))
-        out_str = _format_time_ist(r.get("last_out"))
+        def clip(value, limit: int) -> str:
+            text = _clean_pdf_text(str(value if value not in (None, "") else "-"))
+            return text if len(text) <= limit else text[: limit - 1] + "."
 
-        # Worked hours, Breaks & Late
         w_min = r.get("worked_minutes") or 0
+        in_str = "-" if st_val in ("weekly_off", "holiday") and w_min <= 0 else _format_time_ist(r.get("first_in"))
+        out_str = "-" if st_val in ("weekly_off", "holiday") and w_min <= 0 else _format_time_ist(r.get("last_out"))
         h_str = f"{w_min // 60}h {w_min % 60:02d}m" if w_min > 0 else "-"
         b_min = r.get("break_minutes") or 0
         b_str = f"{b_min}m" if b_min > 0 else "-"
-        l_min = r.get("late_minutes") or 0
+        l_min = 0 if st_val in ("weekly_off", "holiday") and w_min <= 0 else (r.get("late_minutes") or 0)
         l_str = f"{l_min}m" if l_min > 0 else "-"
+        remarks = r.get("remarks") or "-"
 
-        # Remarks / Details
-        notes = []
-        if r.get("is_regularized"):
-            notes.append("[Regularized]")
-        if r.get("has_exception"):
-            exc = r.get("exception_note") or "Exception"
-            notes.append(f"[{exc}]")
-        if (r.get("punch_count") or 0) > 0:
-            notes.append(f"({r['punch_count']} punches)")
-        rem_str = " ".join(notes) if notes else "-"
-        if len(rem_str) > 38:
-            rem_str = rem_str[:36] + "..."
-
-        # Output Row Cells
-        pdf.cell(22, 6, date_str, border=1, fill=True, align="C")
-        pdf.cell(17, 6, code_str, border=1, fill=True, align="C")
-        pdf.cell(42, 6, _clean_pdf_text(safe_name), border=1, fill=True, align="L")
-        pdf.cell(30, 6, _clean_pdf_text(safe_dept), border=1, fill=True, align="L")
-        pdf.cell(24, 6, _clean_pdf_text(st_label), border=1, fill=True, align="C")
-
-        # Neutral color for time and numerical columns
-        pdf.set_text_color(30, 35, 45)
-        pdf.cell(18, 6, in_str, border=1, fill=True, align="C")
-        pdf.cell(18, 6, out_str, border=1, fill=True, align="C")
-        pdf.cell(18, 6, h_str, border=1, fill=True, align="C")
-        pdf.cell(15, 6, b_str, border=1, fill=True, align="C")
-        
-        # Highlight late minutes with amber if late
-        if l_min > 0:
-            pdf.set_text_color(180, 83, 9)
-        pdf.cell(15, 6, l_str, border=1, fill=True, align="C")
-        pdf.set_text_color(30, 35, 45)
-
-        pdf.set_font("helvetica", "", 6.5)
-        pdf.cell(58, 6, _clean_pdf_text(rem_str), border=1, fill=True, align="L")
-        pdf.set_font("helvetica", "", 7.5)
+        values = [
+            date_str,
+            clip(code_str, 10),
+            clip(safe_name, 18),
+            clip(safe_dept, 14),
+            clip(r.get("shift_allotted") or "-", 16),
+            clip(st_label, 10),
+            in_str,
+            out_str,
+            l_str,
+            clip(r.get("break_windows") or "-", 18),
+            b_str,
+            h_str,
+            clip(r.get("extra_str") or "-", 8),
+            clip(r.get("punctuality") or "-", 12),
+            clip(r.get("regularised_by") or "N/A", 22),
+            clip(r.get("leave_status") or "N/A", 8),
+            clip(r.get("leave_approved_by") or "N/A", 22),
+            clip(remarks, 75),
+        ]
+        pdf.set_font("helvetica", "", 6)
+        for (title, width, align), value in zip(cols, values):
+            if title == "Status":
+                pdf.cell(width, 5.5, value, border=1, fill=True, align=align)
+                pdf.set_text_color(30, 35, 45)
+            elif title == "Late" and l_min > 0:
+                pdf.set_text_color(180, 83, 9)
+                pdf.cell(width, 5.5, value, border=1, fill=True, align=align)
+                pdf.set_text_color(30, 35, 45)
+            else:
+                pdf.cell(width, 5.5, value, border=1, fill=True, align=align)
         pdf.ln()
 
     return bytes(pdf.output())
+
+
+def attendance_history_to_csv(
+    rows: list[dict],
+    *,
+    start_date: date,
+    end_date: date,
+    org_name: str,
+    filters_desc: str | None = None,
+) -> str:
+    """Generate Excel-ready CSV attendance register report for filtered history records."""
+    buf = io.StringIO()
+    # UTF-8 BOM so Microsoft Excel automatically opens with proper encoding
+    buf.write("\ufeff")
+    w = csv.writer(buf)
+
+    # Clean org name
+    safe_org_name = org_name or "Holbox AI"
+    period_str = f"{start_date:%d %b %Y}" if start_date == end_date else f"{start_date:%d %b %Y} to {end_date:%d %b %Y}"
+    filter_info = filters_desc if filters_desc else "All Records"
+
+    # Header section
+    w.writerow(["Attendance Register & History Report"])
+    w.writerow(["Organization", safe_org_name])
+    w.writerow(["Period", period_str])
+    w.writerow(["Filters Applied", filter_info])
+    w.writerow(["Generated At", datetime.now().strftime("%Y-%m-%d %I:%M %p")])
+    w.writerow([])
+
+    # KPI summary
+    total_count = len(rows)
+    present_count = sum(1 for r in rows if str(r.get("status") or "").lower() == "present")
+    absent_count = sum(1 for r in rows if str(r.get("status") or "").lower() == "absent")
+    leave_count = sum(1 for r in rows if str(r.get("status") or "").lower() in ("on_leave", "half_day", "leave"))
+    wfh_count = sum(1 for r in rows if str(r.get("status") or "").lower() == "wfh")
+    late_count = sum(1 for r in rows if (r.get("late_minutes") or 0) > 0)
+    corrections_count = sum(1 for r in rows if r.get("is_regularized") or r.get("punctuality") == "Regularised")
+    total_mins = sum((r.get("worked_minutes") or 0) for r in rows)
+    hrs_str = f"{total_mins // 60}h {total_mins % 60:02d}m"
+
+    w.writerow(["TOTAL RECORDS", "PRESENT", "ABSENT", "ON LEAVE / HALF DAY", "WFH", "LATE", "CORRECTIONS", "TOTAL WORKED HOURS"])
+    w.writerow([total_count, present_count, absent_count, leave_count, wfh_count, late_count, corrections_count, hrs_str])
+    w.writerow([])
+
+    # Table columns
+    cols = [
+        "#",
+        "Date",
+        "Employee ID",
+        "Employee Name",
+        "Department",
+        "Shift",
+        "Status",
+        "Punch-in Time",
+        "Punch-out Time",
+        "Late",
+        "Break Times",
+        "Break Total",
+        "Worked Hours",
+        "Extra Hours",
+        "Punctuality",
+        "Regularised By",
+        "Leave Status",
+        "Leave Approved By",
+        "Remarks",
+    ]
+    w.writerow(cols)
+
+    for idx, r in enumerate(rows, 1):
+        s_date = r.get("shift_date")
+        if hasattr(s_date, "strftime"):
+            date_str = s_date.strftime("%d %b %Y")
+        elif isinstance(s_date, str) and len(s_date) >= 10:
+            try:
+                date_str = datetime.strptime(s_date[:10], "%Y-%m-%d").strftime("%d %b %Y")
+            except Exception:
+                date_str = s_date[:10]
+        else:
+            date_str = str(s_date or "-")
+
+        st_val = str(r.get("status") or "").lower()
+        if st_val == "present":
+            st_label = "Present"
+        elif st_val == "absent":
+            st_label = "Absent"
+        elif st_val in ("on_leave", "half_day"):
+            st_label = "Half Day" if st_val == "half_day" else "On Leave"
+        elif st_val == "wfh":
+            st_label = "WFH"
+        elif st_val in ("weekly_off", "holiday"):
+            st_label = "Weekly Off" if st_val == "weekly_off" else "Holiday"
+        else:
+            st_label = st_val.replace("_", " ").title()
+
+        w_min = r.get("worked_minutes") or 0
+        in_str = "-" if st_val in ("weekly_off", "holiday") and w_min <= 0 else _format_time_ist(r.get("first_in"))
+        out_str = "-" if st_val in ("weekly_off", "holiday") and w_min <= 0 else _format_time_ist(r.get("last_out"))
+        h_str = f"{w_min // 60}h {w_min % 60:02d}m" if w_min > 0 else "-"
+        b_min = r.get("break_minutes") or 0
+        b_str = f"{b_min}m" if b_min > 0 else "-"
+        l_min = 0 if st_val in ("weekly_off", "holiday") and w_min <= 0 else (r.get("late_minutes") or 0)
+        l_str = f"{l_min}m" if l_min > 0 else "-"
+        remarks = str(r.get("remarks") or "-")
+
+        w.writerow([
+            idx,
+            date_str,
+            str(r.get("employee_code") or ""),
+            str(r.get("full_name") or ""),
+            str(r.get("department") or "-"),
+            str(r.get("shift_allotted") or "-"),
+            st_label,
+            in_str,
+            out_str,
+            l_str,
+            str(r.get("break_windows") or "-"),
+            b_str,
+            h_str,
+            str(r.get("extra_str") or "-"),
+            str(r.get("punctuality") or "-"),
+            str(r.get("regularised_by") or "N/A"),
+            str(r.get("leave_status") or "N/A"),
+            str(r.get("leave_approved_by") or "N/A"),
+            remarks,
+        ])
+
+    return buf.getvalue()

@@ -256,16 +256,15 @@ box("employee-told", check("cannot read someone else's", client.post(
     f"/api/v1/notifications/{nid}/read", headers=NIKUNJ).status_code, 404))
 
 
-print("9. Nobody decides their own correction, HR included")
+print("9. An admin can approve their own correction")
 own = client.post("/api/v1/corrections", headers=ASHLEY, json={
     "shift_date": DAY.isoformat(), "direction": "out",
     "claimed_at": claimed.isoformat(), "reason": "my own day"})
 box("no-self-approval", check("hr_admin can submit one", own.status_code, 200))
 r = client.post(f"/api/v1/admin/corrections/{own.json()['id']}/decide",
                 headers=ASHLEY, json={"approve": True})
-box("no-self-approval", check("but cannot decide it", r.status_code, 409))
-box("no-self-approval", check("and is told why",
-                              "your own" in r.json()["detail"].lower(), True))
+box("no-self-approval", check("and can approve it", r.status_code, 200))
+box("no-self-approval", check("it is approved", r.json()["status"], "approved"))
 
 
 print("10. Rejecting changes nothing about the day")
@@ -361,7 +360,7 @@ LABELS = {
     "approve-fixes": "Approving creates a punch and recomputes the day",
     "original-intact": "Original punch untouched; new one is attributable",
     "employee-told": "The employee is told the outcome",
-    "no-self-approval": "Nobody decides their own, HR included",
+    "no-self-approval": "An admin can approve their own correction",
     "reject-clean": "Rejecting changes nothing about the day",
     "cancel": "Cancelling is a status, and the owner's alone",
     "inbox-clears": "A decided request stops nagging the admins",

@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { Check, Copy, KeyRound, RefreshCw, Send, Shield, UserPlus, X } from 'lucide-react';
+import { Check, Copy, Hash, KeyRound, RefreshCw, Send, Shield, UserCheck, UserPlus, X } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { proxy } from '@/lib/format';
@@ -538,6 +538,126 @@ export function ChangeRoleButton({
   );
 }
 
+/* ---------------------------------------------------- change employee code */
+
+export function ChangeEmployeeCodeButton({ code, name }: { code: string; name: string }) {
+  const router = useRouter();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [nextCode, setNextCode] = useState(code);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function openModal() {
+    setNextCode(code);
+    setError(null);
+    dialogRef.current?.showModal();
+  }
+
+  function closeModal() {
+    if (busy) return;
+    dialogRef.current?.close();
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    const cleaned = nextCode.trim().toUpperCase();
+    if (!cleaned) {
+      setError('Enter a code.');
+      return;
+    }
+    if (cleaned === code) {
+      closeModal();
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    const res = await fetch(proxy(`/api/v1/admin/employees/${encodeURIComponent(code)}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ emp_code: cleaned }),
+    }).catch(() => null);
+    setBusy(false);
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => null) : null;
+      const detail = body?.detail;
+      setError(typeof detail === 'string' ? detail : 'Could not change that code');
+      return;
+    }
+    dialogRef.current?.close();
+    router.push(`/people/${encodeURIComponent(cleaned)}`);
+    router.refresh();
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openModal}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-line px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2 transition-all active:scale-95 cursor-pointer"
+      >
+        <Hash className="size-3.5 text-accent" aria-hidden />
+        <span>Change employee code</span>
+      </button>
+      <dialog
+        ref={dialogRef}
+        onCancel={closeModal}
+        className="bx-pop m-auto w-full max-w-md rounded-2xl border border-line glass-panel p-0 text-ink shadow-2xl backdrop:bg-black/75 backdrop:backdrop-blur-md overflow-hidden bg-surface"
+      >
+        <form onSubmit={save} className="p-6 space-y-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <h3 className="font-display font-bold text-ink text-base">Change employee code</h3>
+              <p className="text-xs text-ink-3">{name} is {code}</p>
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={closeModal}
+              className="rounded-lg p-1.5 text-ink-3 hover:bg-surface-2 hover:text-ink"
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+          <p className="text-xs text-ink-2 leading-relaxed">
+            Their attendance stays with them. The directory and this profile will use the new code.
+          </p>
+          <label className="block text-xs font-mono text-ink-3">
+            New code
+            <input
+              value={nextCode}
+              onChange={(ev) => setNextCode(ev.target.value.toUpperCase())}
+              required
+              maxLength={32}
+              className="mt-1 w-full rounded-xl border border-line bg-surface-2 px-3 py-2.5 font-mono text-sm text-ink focus:outline-none focus:ring-1 focus:ring-accent/40"
+            />
+          </label>
+          {error && (
+            <p role="alert" className="text-sm text-st-absent">{error}</p>
+          )}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={closeModal}
+              className="rounded-xl border border-line px-4 py-2.5 text-xs font-semibold text-ink hover:bg-surface-2"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded-xl bg-ink px-4 py-2.5 text-xs font-black uppercase tracking-wider text-ground hover:opacity-90 disabled:opacity-50"
+            >
+              {busy ? 'Saving…' : 'Save code'}
+            </button>
+          </div>
+        </form>
+      </dialog>
+    </>
+  );
+}
+
 /* --------------------------------------------------------- reset password */
 
 export function ResetPasswordButton({ code, name }: { code: string; name: string }) {
@@ -820,6 +940,59 @@ export function EditCorrectionLimitButton({
           </div>
         </div>
       )}
+    </>
+  );
+}
+
+export function ReactivateEmployeeButton({ code, name }: { code: string; name: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleReactivate() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/gateway/api/v1/admin/employees/${encodeURIComponent(code)}/reactivate`, {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.detail ?? data.reason ?? 'Failed to reactivate employee.');
+        setBusy(false);
+        return;
+      }
+      setOpen(false);
+      router.refresh();
+    } catch (err: any) {
+      setError(err.message ?? 'An unexpected network error occurred.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-600 hover:bg-emerald-500/20 active:scale-95 transition-all cursor-pointer dark:text-emerald-400"
+      >
+        <UserCheck className="size-3.5" aria-hidden />
+        Reactivate Employee
+      </button>
+
+      <ConfirmDialog
+        open={open}
+        onClose={() => { if (!busy) setOpen(false); }}
+        onConfirm={handleReactivate}
+        title={`Reactivate ${name}?`}
+        consequence={`This will restore ${name} (${code}) to active employee status. They will reappear in the active directory, daily roster, and will be able to log in and record attendance.`}
+        confirmLabel={busy ? 'Reactivating…' : 'Reactivate'}
+        busy={busy}
+      >
+        {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
+      </ConfirmDialog>
     </>
   );
 }

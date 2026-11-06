@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import {
   AlertTriangle, BellOff, CalendarClock, CalendarDays, CalendarRange,
-  CircleUserRound, ClipboardList, Download, MonitorPlay, ScanFace, Smartphone, UserCheck,
+  CircleUserRound, ClipboardList, MonitorPlay, ScanFace, Smartphone, UserCheck,
 } from 'lucide-react';
 
 import { AttendancePulse } from '@/components/AttendancePulse';
@@ -16,7 +16,7 @@ import {
   getHolidays, getMyMonth, getPending, getRejected, hhmm,
 } from '@/lib/api';
 import { capabilitiesFor } from '@/lib/capabilities';
-import { istYearMonth, proxy, timeOfDay, firstName } from '@/lib/format';
+import { istYearMonth, timeOfDay, firstName } from '@/lib/format';
 import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -94,8 +94,6 @@ export default async function DashboardPage({
   const exceptions = board.rows.filter((r) => r.has_exception);
   const wfhEmployees = board.rows.filter((r) => r.is_wfh_enabled || r.status === 'wfh');
   const unconfirmedHolidays = (holidays ?? []).filter((h) => !h.is_confirmed);
-  const monthNum = new Date().getUTCMonth() + 1;
-  const monthLabel = new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
 
   return (
     <div className="space-y-8 fade-in-up">
@@ -368,34 +366,6 @@ export default async function DashboardPage({
               index={2} label="Leave Policy" icon="calendar" href="/leave/policy"
               value="→" sub="rules, quotas, holidays" tone="neutral"
             />
-            {/* Two formats, one register: CSV feeds payroll, PDF is the
-                copy that gets printed and signed. A div, not an <a> - the
-                format links inside would be invalid nested anchors. */}
-            <div className="glass-panel glass-panel-hover block rounded-2xl p-5 relative overflow-hidden group">
-              <div className="flex items-start justify-between">
-                <span className="flex size-9 items-center justify-center rounded-xl bg-surface-2 text-ink-2 border border-line shadow-xs">
-                  <Download className="size-4 text-ink-2" aria-hidden />
-                </span>
-              </div>
-              <div className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-ink-3 font-mono">
-                Export {monthLabel}
-              </div>
-              <div className="mt-1 text-sm font-bold text-ink">Attendance Register</div>
-              <div className="mt-2 flex gap-2">
-                <a
-                  href={proxy(`/api/v1/admin/export/month.csv?year=${year}&month=${monthNum}`)}
-                  className="rounded-lg bg-ink px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-ground hover:opacity-90 transition-all active:scale-95"
-                >
-                  CSV
-                </a>
-                <a
-                  href={proxy(`/api/v1/admin/export/month.pdf?year=${year}&month=${monthNum}`)}
-                  className="rounded-lg border border-line px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-ink hover:bg-surface-2 transition-all active:scale-95"
-                >
-                  PDF
-                </a>
-              </div>
-            </div>
           </div>
         </section>
       )}

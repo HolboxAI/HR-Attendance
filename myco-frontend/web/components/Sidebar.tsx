@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   ArrowUpRight,
   Bell, CalendarClock, CalendarRange, Camera, ChevronLeft, ClipboardList, Clock, History, Laptop, LayoutGrid,
-  ScanFace, Scale, SlidersHorizontal, Users, PieChart, MonitorPlay, Settings
+  ScanFace, Scale, SlidersHorizontal, Users, UserX, PieChart, MonitorPlay, Settings
 } from 'lucide-react';
 
 import type { Capabilities } from '@/lib/capabilities';
@@ -60,7 +60,8 @@ export const SECTIONS: Section[] = [
   {
     title: 'People',
     items: [
-      { href: '/people', label: 'Directory', icon: Users, show: (c) => c.canViewBoard },
+      { href: '/people', label: 'Directory', icon: Users, show: (c) => c.canViewBoard, exact: true },
+      { href: '/people/ex-employees', label: 'Ex Employees', icon: UserX, show: (c) => c.canViewBoard },
       { href: '/enrolment', label: 'Enrolment', icon: ScanFace, show: (c) => c.canManageEnrolment },
       { href: '/people/wfh', label: 'WFH Config', icon: MonitorPlay, show: (c) => c.canManageEnrolment },
       { href: '/people/shifts', label: 'Shifts', icon: Clock, show: (c) => c.canManageLeavePolicy },

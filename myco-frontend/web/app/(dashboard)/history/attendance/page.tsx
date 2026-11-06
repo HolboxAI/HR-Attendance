@@ -1,11 +1,11 @@
 import { redirect } from 'next/navigation';
 import { format, startOfMonth, subDays, parseISO } from 'date-fns';
-import { History, Download } from 'lucide-react';
+import { History, Download, FileSpreadsheet } from 'lucide-react';
 import Link from 'next/link';
 
 import { capabilitiesFor } from '@/lib/capabilities';
 import { currentIdentity, apiGet } from '@/lib/session';
-import { dayMonth, hhmm, proxy } from '@/lib/format';
+import { hhmm, hours, proxy } from '@/lib/format';
 import { HoverProfile } from '@/components/HoverProfile';
 import { Status } from '@/components/Status';
 
@@ -67,6 +67,9 @@ export default async function AttendanceHistoryPage({
 
   const pdfDownloadUrl = proxy(
     `/api/v1/admin/history/attendance/export.pdf?${pdfParams.toString()}`
+  );
+  const excelDownloadUrl = proxy(
+    `/api/v1/admin/history/attendance/export.csv?${pdfParams.toString()}`
   );
 
   // Helper to preserve filters when switching ranges
@@ -202,17 +205,29 @@ export default async function AttendanceHistoryPage({
             </button>
           </form>
 
-          {/* Download PDF Button */}
-          <a
-            href={pdfDownloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-ink text-ground px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer"
-            title="Download attendance report PDF matching currently applied filters"
-          >
-            <Download className="size-3.5" />
-            <span>Download PDF</span>
-          </a>
+          {/* Download Buttons (Excel & PDF) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={excelDownloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:bg-emerald-500/20 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+              title="Download attendance report in Excel format matching currently applied filters"
+            >
+              <FileSpreadsheet className="size-3.5 text-emerald-500" />
+              <span>Download Excel</span>
+            </a>
+            <a
+              href={pdfDownloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-ink text-ground px-3.5 py-1.5 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+              title="Download attendance report PDF matching currently applied filters"
+            >
+              <Download className="size-3.5" />
+              <span>Download PDF</span>
+            </a>
+          </div>
         </div>
       </header>
 
@@ -300,21 +315,33 @@ export default async function AttendanceHistoryPage({
 
       {/* Attendance Table */}
       <div className="overflow-x-auto rounded-2xl glass-panel border border-line">
-        <table className="w-full min-w-[800px] text-left text-xs">
+        <table className="w-full min-w-[1800px] text-left text-xs">
           <thead>
             <tr className="border-b border-line bg-surface-2 text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Employee</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">First In</th>
-              <th className="px-4 py-3">Last Out</th>
-              <th className="px-4 py-3">Details</th>
+              <th className="px-3 py-3">Date</th>
+              <th className="px-3 py-3">Employee ID</th>
+              <th className="px-3 py-3">Name</th>
+              <th className="px-3 py-3">Department</th>
+              <th className="px-3 py-3">Shift</th>
+              <th className="px-3 py-3">Status</th>
+              <th className="px-3 py-3">In</th>
+              <th className="px-3 py-3">Out</th>
+              <th className="px-3 py-3">Late</th>
+              <th className="px-3 py-3">Break times</th>
+              <th className="px-3 py-3">Break total</th>
+              <th className="px-3 py-3">Worked</th>
+              <th className="px-3 py-3">Extra</th>
+              <th className="px-3 py-3">Punctuality</th>
+              <th className="px-3 py-3">Regularised by</th>
+              <th className="px-3 py-3">Leave</th>
+              <th className="px-3 py-3">Approved by</th>
+              <th className="px-3 py-3">Remarks</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-ink-3 font-mono">
+                <td colSpan={18} className="px-4 py-8 text-center text-ink-3 font-mono">
                   No records found for the selected period and filters.
                 </td>
               </tr>
@@ -326,59 +353,37 @@ export default async function AttendanceHistoryPage({
                     key={`${r.employee_code}-${r.shift_date}-${i}`}
                     className="border-b border-line/60 last:border-0 hover:bg-surface-2/30 transition-colors"
                   >
-                    <td className="px-4 py-3 font-mono text-ink-2 whitespace-nowrap">
+                    <td className="px-3 py-3 font-mono text-ink-2 whitespace-nowrap">
                       {format(shiftDate, 'MMM d, yyyy')}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.employee_code}</td>
+                    <td className="px-3 py-3">
                       <HoverProfile data={{ name: r.full_name, code: r.employee_code }}>
                         <Link
                           href={`/month/${r.employee_code}?start=${start}&end=${end}`}
-                          className="font-semibold text-ink hover:underline hover:text-accent cursor-pointer transition-colors"
+                          className="font-semibold text-ink hover:underline hover:text-accent"
                         >
                           {r.full_name}
                         </Link>
                       </HoverProfile>
-                      <div className="text-[10px] font-mono text-ink-3 mt-0.5">
-                        <Link
-                          href={`/month/${r.employee_code}?start=${start}&end=${end}`}
-                          className="hover:underline hover:text-accent transition-colors"
-                        >
-                          {r.employee_code}
-                        </Link>
-                      </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.department || '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2 whitespace-nowrap">{r.shift_allotted || '—'}</td>
+                    <td className="px-3 py-3">
                       <Status value={r.status} isRegularized={r.is_regularized} />
-                      {r.late_minutes > 0 && (
-                        <span className="text-[10px] text-yellow-600 font-semibold ml-2">
-                          Late: {r.late_minutes}m
-                        </span>
-                      )}
-                      {r.has_exception && (
-                        <span
-                          className="text-[10px] text-purple-600 ml-2"
-                          title={r.exception_note || ''}
-                        >
-                          ⚠️ Exception
-                        </span>
-                      )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-ink-2">
-                      {r.first_in ? hhmm(r.first_in) : '—'}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-ink-2">
-                      {r.last_out ? hhmm(r.last_out) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-[10px] font-mono text-ink-3 max-w-[200px] truncate">
-                      {r.worked_minutes > 0 && (
-                        <span>
-                          {Math.floor(r.worked_minutes / 60)}h {r.worked_minutes % 60}m{' '}
-                        </span>
-                      )}
-                      {r.punch_count > 0 && (
-                        <span className="opacity-60 ml-2">({r.punch_count} punches)</span>
-                      )}
-                    </td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.first_in ? hhmm(r.first_in) : '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.last_out ? hhmm(r.last_out) : '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.late_minutes ? `${r.late_minutes}m` : '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.break_windows || '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.break_minutes ? `${r.break_minutes}m` : '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{hours(r.worked_minutes || 0)}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.extra_str || '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.punctuality || '—'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.regularised_by || 'N/A'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.leave_status || 'N/A'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2">{r.leave_approved_by || 'N/A'}</td>
+                    <td className="px-3 py-3 font-mono text-ink-2 max-w-[240px]">{r.remarks || '—'}</td>
                   </tr>
                 );
               })

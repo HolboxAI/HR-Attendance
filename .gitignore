@@ -15,3 +15,4 @@ sessions/
 *.sqlite3
 CLAUDE*.md
 *.pem
+AttendanceReport_*.csv

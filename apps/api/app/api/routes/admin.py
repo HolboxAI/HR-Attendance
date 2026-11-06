@@ -28,7 +28,7 @@ from app.models.leave import LeaveRequest, LeaveType
 from app.models.wfh_request import WFHRequest
 from app.models.org import Department, Organization
 from app.services.attendance import (
-    counts_for_board, next_direction, policy_for, recompute_day, record_punch,
+    counts_for_board, policy_for, recompute_day, record_punch, still_in,
 )
 from app.services import devices, export
 from app.services.enrolment import active_enrolment
@@ -45,16 +45,17 @@ router = APIRouter(
 hr_only = Depends(require_role(UserRole.HR_ADMIN))
 
 
-def visible_employees(db: Session, user: User) -> list[Employee]:
+def visible_employees(db: Session, user: User, include_inactive: bool = False) -> list[Employee]:
     """Who this account is allowed to see.
 
     A manager sees the people who report to them, and themselves. Anyone from
     hr_admin up sees everyone. Doing this in one place is the point: scattering
     the rule across each endpoint is how one of them ends up missing it.
     """
-    everyone = db.scalars(
-        select(Employee).where(Employee.is_active.is_(True)).order_by(Employee.emp_code)
-    ).all()
+    stmt = select(Employee)
+    if not include_inactive:
+        stmt = stmt.where(Employee.is_active.is_(True))
+    everyone = db.scalars(stmt.order_by(Employee.emp_code)).all()
     if RANK.get(user.role, -1) >= RANK[UserRole.HR_ADMIN]:
         return list(everyone)
     return [
@@ -137,11 +138,13 @@ def board(
 
     employees = visible_employees(db, user)
     departments = {d.id: d.name for d in db.scalars(select(Department)).all()}
+    from app.services.attendance_adjust import adjustment_remark, latest_for, shown_status_times
+    adjustments = latest_for(db, [e.id for e in employees], day, day)
 
     for emp in employees:
         policy, _ = policy_for(db, emp, day)
         record = recompute_day(db, emp, day)
-        in_now = next_direction(db, emp, day) == PunchDirection.OUT
+        in_now = still_in(db, emp, day)
         dept_name = departments.get(emp.department_id) if emp.department_id else None
 
         is_wfh = emp.is_wfh_enabled
@@ -160,41 +163,46 @@ def board(
                 is_wfh = True
 
         enrol = active_enrolment(db, emp)
+        edited = adjustments.get((emp.id, day))
+        status, first_in, last_out = shown_status_times(record, edited)
+        note = record.exception_note
+        if edited is not None:
+            note = adjustment_remark(edited.previous_status, edited.changed_by_name, edited.reason)
         rows.append(BoardRow(
             employee_code=emp.emp_code,
             full_name=emp.full_name,
             department=dept_name,
             is_wfh_enabled=is_wfh,
             shift_label=f"{policy.start_time:%H:%M}-{policy.end_time:%H:%M}",
-            status=record.status.value,
+            status=status,
             currently_in=in_now,
-            first_in=record.first_in,
-            last_out=record.last_out,
+            first_in=first_in,
+            last_out=last_out,
             worked_minutes=record.worked_minutes,
             late_minutes=record.late_minutes,
             overtime_minutes=record.overtime_minutes,
             punch_count=record.punch_count,
-            has_exception=record.has_exception,
-            exception_note=record.exception_note,
-            is_regularized=record.is_regularized,
+            has_exception=record.has_exception or edited is not None,
+            exception_note=note,
+            is_regularized=record.is_regularized or edited is not None,
             avatar_url=f"/api/gateway/api/v1/employees/{emp.emp_code}/photo" if enrol else None,
         ))
 
-        if record.status.value in counts:
-            counts[record.status.value] += 1
-        is_wfh_active = is_wfh and (record.punch_count > 0 or in_now or record.status.value in ("wfh", "present", "half_day"))
-        if is_wfh_active and record.status.value != "wfh":
+        if status in counts:
+            counts[status] += 1
+        is_wfh_active = is_wfh and (record.punch_count > 0 or in_now or status in ("wfh", "present", "half_day"))
+        if is_wfh_active and status != "wfh":
             counts["wfh"] += 1
         if record.late_minutes > 0:
             counts["late"] += 1
-        if record.has_exception:
+        if record.has_exception or edited is not None:
             counts["exceptions"] += 1
         in_office, also_present = counts_for_board(
-            record.status.value, in_now=in_now, is_wfh=is_wfh,
+            status, in_now=in_now, is_wfh=is_wfh,
         )
         # status "present" was already counted above. A wfh label is that
         # same day renamed, so it belongs in Present as well as on the WFH list.
-        if also_present and record.status.value != "present":
+        if also_present and status != "present":
             counts["present"] += 1
         if in_office:
             counts["currently_in"] += 1
@@ -327,6 +335,10 @@ def _employee_attendance_days(
         ).all()
     )
 
+    from app.services.attendance import policy_for
+    from app.services.attendance_adjust import display_columns, latest_for
+
+    adjustments = latest_for(db, [emp.id], start_date, end_date)
     curr = start_date
     days = []
     totals = {
@@ -353,10 +365,15 @@ def _employee_attendance_days(
         leave_name = lt.name if lt else None
 
         is_wfh = (curr in wfh_dates) or bool(emp.is_wfh_enabled)
-        st = rec.status.value
+        policy, _ = policy_for(db, emp, curr)
+        timing = f"{policy.start_time:%H:%M} - {policy.end_time:%H:%M}"
+        shown = display_columns(
+            db, emp, rec, adjustments.get((emp.id, curr)), timing,
+        )
+        st = shown["status"]
 
-        note = rec.exception_note or ""
-        if rec.is_regularized:
+        note = shown["remarks"] or (rec.exception_note or "")
+        if shown["is_regularized"]:
             totals["regularized"] += 1
             if not note:
                 note = "Regularized"
@@ -365,22 +382,37 @@ def _employee_attendance_days(
             "date": curr.isoformat(),
             "weekday": curr.strftime("%a"),
             "status": st,
-            "first_in": rec.first_in.isoformat() if rec.first_in else None,
-            "last_out": rec.last_out.isoformat() if rec.last_out else None,
-            "worked_minutes": rec.worked_minutes,
-            "late_minutes": rec.late_minutes,
-            "overtime_minutes": rec.overtime_minutes,
-            "has_exception": rec.has_exception,
+            "first_in": shown["first_in"].isoformat() if shown["first_in"] else None,
+            "last_out": shown["last_out"].isoformat() if shown["last_out"] else None,
+            "worked_minutes": shown["worked_minutes"],
+            "break_minutes": shown["break_minutes"],
+            "late_minutes": shown["late_minutes"],
+            "overtime_minutes": shown["overtime_minutes"],
+            "extra_str": shown["extra_str"],
+            "has_exception": shown["has_exception"],
             "exception_note": note if note else None,
-            "is_regularized": rec.is_regularized,
+            "is_regularized": shown["is_regularized"],
             "is_wfh": is_wfh,
             "leave_code": leave_code,
             "leave_name": leave_name,
+            "shift_allotted": shown["shift_allotted"],
+            "break_windows": shown["break_windows"],
+            "punctuality": shown["punctuality"],
+            "regularised_by": shown["regularised_by"],
+            "leave_status": shown["leave_status"],
+            "leave_approved_by": shown["leave_approved_by"],
+            "remarks": shown["remarks"],
+            "changed_by": shown["changed_by"],
+            "previous_status": shown["previous_status"],
+            "adjustment_reason": shown["adjustment_reason"],
+            "employee_code": emp.emp_code,
+            "full_name": emp.full_name,
+            "department": shown["department"] if shown["department"] != "—" else None,
         })
 
-        totals["worked_minutes"] += rec.worked_minutes
-        totals["late_minutes"] += rec.late_minutes
-        totals["overtime_minutes"] += rec.overtime_minutes
+        totals["worked_minutes"] += shown["worked_minutes"]
+        totals["late_minutes"] += shown["late_minutes"]
+        totals["overtime_minutes"] += shown["overtime_minutes"]
 
         if st in totals:
             totals[st] += 1
@@ -408,7 +440,7 @@ def month(
     emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
     if emp is None:
         raise HTTPException(404, f"No employee with code {employee_code}")
-    if emp.id not in {e.id for e in visible_employees(db, user)}:
+    if emp.id not in {e.id for e in visible_employees(db, user, include_inactive=True)}:
         raise HTTPException(404, f"No employee with code {employee_code}")
 
     if start_date and end_date:
@@ -453,7 +485,7 @@ def export_employee_pdf(
     emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
     if emp is None:
         raise HTTPException(404, f"No employee with code {employee_code}")
-    if emp.id not in {e.id for e in visible_employees(db, user)}:
+    if emp.id not in {e.id for e in visible_employees(db, user, include_inactive=True)}:
         raise HTTPException(404, f"No employee with code {employee_code}")
 
     if start_date and end_date:
@@ -493,6 +525,59 @@ def export_employee_pdf(
     )
 
 
+@router.get("/export/employee.csv")
+def export_employee_csv(
+    employee_code: str,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    year: int | None = None,
+    month: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_role(UserRole.MANAGER)),
+) -> Response:
+    emp = db.scalar(select(Employee).where(Employee.emp_code == employee_code))
+    if emp is None:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+    if emp.id not in {e.id for e in visible_employees(db, user, include_inactive=True)}:
+        raise HTTPException(404, f"No employee with code {employee_code}")
+
+    if start_date and end_date:
+        s_date = min(start_date, end_date)
+        e_date = max(start_date, end_date)
+    else:
+        now = datetime.now()
+        y = year or now.year
+        m = month or now.month
+        _, last = calendar.monthrange(y, m)
+        s_date = date(y, m, 1)
+        e_date = date(y, m, last)
+
+    days, totals = _employee_attendance_days(db, emp, s_date, e_date)
+    dept = db.get(Department, emp.department_id) if emp.department_id else None
+    org = db.get(Organization, user.org_id)
+
+    body = export.employee_to_csv(
+        employee=emp,
+        department=dept.name if dept else None,
+        days=days,
+        totals=totals,
+        start_date=s_date,
+        end_date=e_date,
+        org_name=org.name if org else "Boxcode",
+    )
+    db.commit()
+
+    name = f"{emp.emp_code}_attendance_{s_date.isoformat()}_{e_date.isoformat()}.csv"
+    return Response(
+        content=body.encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.post("/correct")
 def correct(
     body: CorrectionRequest, db: Session = Depends(get_db), _: User = hr_only,
@@ -511,14 +596,57 @@ def correct(
     if not body.reason.strip():
         raise HTTPException(400, "A correction needs a reason")
 
+    import uuid
+    from app.models.leave import AuditLog
+
+    actor_name = _.email
+    if _.employee_id:
+        person = db.get(Employee, _.employee_id)
+        if person and person.full_name:
+            actor_name = person.full_name
+    elif _.email:
+        actor_name = _.email.split("@")[0].replace(".", " ").title()
+
     _, created = record_punch(
         db, org_id=emp.org_id, employee=emp, event_ts=body.at,
         source=PunchSource.MANUAL, direction=body.direction,
         geofence_ok=None, face_ok=None,
-        raw={"correction": True, "reason": body.reason,
-             "actor": _.email, "actor_user_id": str(_.id)},
+        raw={
+            "correction": True,
+            "reason": body.reason,
+            "actor": actor_name,
+            "actor_name": actor_name,
+            "actor_email": _.email,
+            "actor_user_id": str(_.id),
+            "shift_date": body.shift_date.isoformat(),
+        },
     )
+
+    audit_entry = AuditLog(
+        id=uuid.uuid4(),
+        org_id=emp.org_id,
+        actor_id=_.id,
+        action="admin_correction_punch",
+        entity_type="punch_events",
+        entity_id=_.id,
+        details={
+            "employee_id": str(emp.id),
+            "employee_code": emp.emp_code,
+            "employee_name": emp.full_name,
+            "shift_date": body.shift_date.isoformat(),
+            "direction": body.direction.value if hasattr(body.direction, "value") else str(body.direction),
+            "at": body.at.isoformat(),
+            "reason": body.reason,
+            "actor_name": actor_name,
+            "actor_email": _.email,
+        },
+    )
+    db.add(audit_entry)
+
     day = recompute_day(db, emp, body.shift_date)
+    # Also recompute yesterday and tomorrow to ensure boundary punches don't orphan adjacent days
+    for delta in (-1, 1):
+        recompute_day(db, emp, body.shift_date + timedelta(days=delta))
     db.commit()
 
     return {

@@ -8,7 +8,7 @@ applies just as well to "who is asking to fix a day".
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -49,9 +49,15 @@ class RequestOut(BaseModel):
 
 def to_out(db: Session, r: CorrectionRequest, emp: Employee | None = None) -> RequestOut:
     emp = emp or db.get(Employee, r.employee_id)
+    claimed_dt = r.claimed_at
+    if claimed_dt is not None:
+        if claimed_dt.tzinfo is None:
+            claimed_dt = claimed_dt.replace(tzinfo=timezone.utc)
+        else:
+            claimed_dt = claimed_dt.astimezone(timezone.utc)
     return RequestOut(
         id=r.id, shift_date=r.shift_date, direction=r.direction.value,
-        claimed_at=r.claimed_at, reason=r.reason, category=r.category, status=r.status.value,
+        claimed_at=claimed_dt, reason=r.reason, category=r.category, status=r.status.value,
         decided_note=r.decided_note, decided_at=r.decided_at,
         employee_code=emp.emp_code if emp else None,
         employee_name=emp.full_name if emp else None,

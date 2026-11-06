@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -85,10 +86,17 @@ class SetPasswordRequest(BaseModel):
 class SignupRequestIn(BaseModel):
     full_name: str = Field(min_length=1, max_length=160)
     email: str = Field(min_length=3, max_length=200)
-    password: str = Field(min_length=8, max_length=128)
+    # Required on the password form. Absent when the person arrived from
+    # Continue with Google — that path proves the email with id_token instead.
+    password: str | None = Field(default=None, max_length=128)
+    id_token: str | None = None
     phone: str | None = None
     desired_department: str | None = None
     desired_designation: str | None = None
+
+
+class GoogleLoginRequest(BaseModel):
+    id_token: str
 
 
 class SignupResponse(BaseModel):
@@ -176,6 +184,92 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     response = _issue(db, user, body.install_id)
     db.commit()
     return response
+
+
+def _emails_for(email: str) -> list[str]:
+    """The address, plus the old boxcode.ai twin we still have on some rows."""
+    emails = [email]
+    if email.endswith("@holbox.ai"):
+        emails.append(email.replace("@holbox.ai", "@boxcode.ai"))
+    elif email.endswith("@boxcode.ai"):
+        emails.append(email.replace("@boxcode.ai", "@holbox.ai"))
+    return emails
+
+
+@router.post("/google")
+def google_login(body: GoogleLoginRequest, db: Session = Depends(get_db)):
+    """Continue with Google.
+
+    The token is checked here. A known active account gets the same session
+    as a password login. A pending request is told to wait. A new holbox.ai
+    address is sent to the join form and is not created.
+    """
+    from app.core.config import settings
+    from app.models.enums import SignupStatus
+    from app.models.signup_request import SignupRequest
+    from app.services.google_auth import (
+        GoogleAuthError, classify_google_account, verify_firebase_id_token,
+    )
+
+    if not (settings.firebase_project_id or "").strip():
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "Google sign-in is not configured", "code": "unconfigured"},
+        )
+    try:
+        identity = verify_firebase_id_token(body.id_token.strip())
+    except GoogleAuthError as exc:
+        code = status.HTTP_503_SERVICE_UNAVAILABLE if "not configured" in exc.message else status.HTTP_401_UNAUTHORIZED
+        return JSONResponse(status_code=code, content={"detail": exc.message, "code": "invalid"})
+
+    email = identity.email
+    user = None
+    for candidate in _emails_for(email):
+        user = db.scalar(select(User).where(User.email == candidate))
+        if user is not None:
+            break
+    pending = db.scalar(
+        select(SignupRequest).where(
+            SignupRequest.email.in_(_emails_for(email)),
+            SignupRequest.status == SignupStatus.PENDING,
+        )
+    ) is not None
+    outcome = classify_google_account(
+        email,
+        domain=settings.google_hosted_domain,
+        has_active_user=user is not None and user.is_active,
+        has_inactive_user=user is not None and not user.is_active,
+        has_pending=pending,
+    )
+    if outcome == "login":
+        assert user is not None
+        response = _issue(db, user, None)
+        db.commit()
+        return JSONResponse(content=response.model_dump(mode="json"))
+
+    messages = {
+        "wrong_domain": (
+            status.HTTP_403_FORBIDDEN,
+            "Use your holbox.ai Google account. Other Gmail addresses are not accepted.",
+        ),
+        "inactive": (
+            status.HTTP_403_FORBIDDEN,
+            "This account has been deactivated",
+        ),
+        "pending": (
+            status.HTTP_409_CONFLICT,
+            "Your request is waiting for an admin to approve it. We'll email you, then sign in with Google again.",
+        ),
+        "needs_profile": (
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Tell us your name and phone so an admin can approve you.",
+        ),
+    }
+    http_status, message = messages[outcome]
+    return JSONResponse(
+        status_code=http_status,
+        content={"detail": message, "code": outcome, "email": email, "name": identity.name},
+    )
 
 
 @router.post("/refresh", response_model=LoginResponse)
@@ -275,14 +369,48 @@ def signup(body: SignupRequestIn, db: Session = Depends(get_db)) -> SignupRespon
     from app.models.enums import SignupStatus
     from app.services import notifications, slack
 
-    email = body.email.strip().lower()
-    full_name = body.full_name.strip()
+    import secrets
 
-    if not full_name or not email or not body.password:
+    from app.core.config import settings
+    from app.services.google_auth import GoogleAuthError, verify_firebase_id_token
+
+    full_name = body.full_name.strip()
+    id_token = (body.id_token or "").strip()
+    password = (body.password or "").strip()
+    via_google = False
+
+    if id_token:
+        # The form can display any email it likes. The token decides.
+        try:
+            identity = verify_firebase_id_token(id_token)
+        except GoogleAuthError as exc:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, exc.message) from exc
+        domain = (settings.google_hosted_domain or "holbox.ai").strip().lower().lstrip("@")
+        if not identity.email.endswith("@" + domain):
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Use your holbox.ai Google account. Other Gmail addresses are not accepted.",
+            )
+        email = identity.email
+        via_google = True
+        # The column is required. This person never sees the secret; they
+        # come back through Continue with Google.
+        password_hash = hash_password(secrets.token_urlsafe(32))
+    else:
+        email = body.email.strip().lower()
+        if len(password) < 8:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name, email and password are required")
+        password_hash = hash_password(password)
+
+    if not full_name or not email:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Name, email and password are required")
 
-    # Verify if user already exists
-    existing_user = db.scalar(select(User).where(User.email == email))
+    # Verify if user already exists, including the old boxcode.ai address.
+    existing_user = None
+    for candidate in _emails_for(email):
+        existing_user = db.scalar(select(User).where(User.email == candidate))
+        if existing_user is not None:
+            break
     if existing_user is not None:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -292,7 +420,7 @@ def signup(body: SignupRequestIn, db: Session = Depends(get_db)) -> SignupRespon
     # Verify if pending signup request already exists
     existing_req = db.scalar(
         select(SignupRequest).where(
-            SignupRequest.email == email,
+            SignupRequest.email.in_(_emails_for(email)),
             SignupRequest.status == SignupStatus.PENDING,
         )
     )
@@ -313,7 +441,7 @@ def signup(body: SignupRequestIn, db: Session = Depends(get_db)) -> SignupRespon
         full_name=full_name,
         email=email,
         phone=body.phone.strip() if body.phone else None,
-        password_hash=hash_password(body.password),
+        password_hash=password_hash,
         desired_department=body.desired_department.strip() if body.desired_department else None,
         desired_designation=body.desired_designation.strip() if body.desired_designation else None,
         status=SignupStatus.PENDING,
@@ -360,7 +488,12 @@ def signup(body: SignupRequestIn, db: Session = Depends(get_db)) -> SignupRespon
         req.slack_message_ts, req.slack_channel_id = posted
 
     db.commit()
-    return SignupResponse(
-        ok=True,
-        message="Your registration request has been submitted to Admin. You will be able to sign in once approved.",
-    )
+    if via_google:
+        message = (
+            "Your request is with the admins. We'll email you when you can sign in with Google."
+        )
+    else:
+        message = (
+            "Your registration request has been submitted to Admin. You will be able to sign in once approved."
+        )
+    return SignupResponse(ok=True, message=message)

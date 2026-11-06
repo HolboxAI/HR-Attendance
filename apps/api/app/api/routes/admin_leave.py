@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps import require_role
+from app.api.deps import RANK, require_role
 from app.api.routes.admin import visible_employees
 from app.api.routes.leave import RequestOut, to_request_out
 from app.core.clock import org_today
@@ -95,6 +95,12 @@ class BalanceRow(BaseModel):
     accrued: float
     used: float
     available: float
+    # Cap on leave days in any calendar month. null = no monthly max.
+    monthly_leave_max: float | None = None
+    # Present when balances are fetched with ?year=&month= (month-edit mode).
+    month: int | None = None
+    month_credit: float | None = None
+    month_credit_cap: float | None = None
 
 
 class AuditRow(BaseModel):
@@ -119,12 +125,13 @@ def pending(db: Session = Depends(get_db), user: User = approver):
                LeaveRequest.deleted_at.is_(None))
         .order_by(LeaveRequest.from_date)
     ).all()
-    # Your own request never appears in your own queue - you cannot decide it,
-    # so showing it would only invite the attempt.
+    # Managers still do not see their own request: they cannot decide it.
+    # HR and super admins do, because they are allowed to approve their own.
+    is_admin = RANK.get(user.role, -1) >= RANK[UserRole.HR_ADMIN]
     return [
         to_request_out(db, r, scope[r.employee_id])
         for r in rows
-        if r.employee_id in scope and r.employee_id != user.employee_id
+        if r.employee_id in scope and (is_admin or r.employee_id != user.employee_id)
     ]
 
 
@@ -174,9 +181,18 @@ def decide(
 
 
 @router.get("/leave/balances", response_model=list[BalanceRow])
-def balances(db: Session = Depends(get_db), user: User = approver):
+def balances(
+    year: int | None = Query(default=None),
+    month: int | None = Query(default=None, ge=1, le=12),
+    db: Session = Depends(get_db), user: User = approver,
+):
+    """Year remaining always. Pass year+month to also include that month's credit."""
     pol = leave_service.policy(db, user.org_id)
-    period = leave_service.period_for(pol, org_today())
+    today = org_today()
+    period = leave_service.period_for(pol, today)
+    month_mode = year is not None and month is not None
+    if month_mode:
+        period = leave_service.period_for(pol, date(year, month, 1))
     types = db.scalars(
         select(LeaveType).where(
             LeaveType.org_id == user.org_id, LeaveType.is_active.is_(True),
@@ -190,11 +206,20 @@ def balances(db: Session = Depends(get_db), user: User = approver):
             if t.accrual_rule == AccrualRule.NONE:
                 continue
             bal = leave_service.balance(db, emp, t, period)
-            out.append(BalanceRow(
+            max_m = (
+                None if emp.monthly_leave_max is None
+                else float(emp.monthly_leave_max)
+            )
+            row = BalanceRow(
                 employee_code=emp.emp_code, full_name=emp.full_name, code=t.code,
                 period=period, accrued=float(bal.accrued), used=float(bal.used),
-                available=bal.available,
-            ))
+                available=bal.available, monthly_leave_max=max_m,
+            )
+            if month_mode:
+                row.month = month
+                row.month_credit = leave_service.month_credit(db, emp, t, period, month)
+                row.month_credit_cap = leave_service.monthly_credit_cap(t)
+            out.append(row)
     db.commit()
     return out
 
@@ -217,6 +242,19 @@ class BalanceEditOut(BaseModel):
     accrued: float
     used: float
     available: float
+    changed: bool
+
+
+class MonthlyMaxIn(BaseModel):
+    """null clears the cap (unlimited). 0 blocks leave that month entirely."""
+    monthly_leave_max: float | None = Field(default=None, ge=0, le=31)
+    note: str | None = None
+
+
+class MonthlyMaxOut(BaseModel):
+    employee_code: str
+    full_name: str
+    monthly_leave_max: float | None
     changed: bool
 
 
@@ -269,6 +307,128 @@ def set_balances_for_everyone(
         out.extend(_apply_items(db, emp=emp, items=body.items, actor=user, period=period))
     db.commit()
     return out
+
+
+class MonthCreditIn(BaseModel):
+    code: str = Field(min_length=1, max_length=16)
+    year: int
+    month: int = Field(ge=1, le=12)
+    amount: float = Field(ge=0, le=31)
+    note: str | None = None
+
+
+class MonthCreditOut(BaseModel):
+    employee_code: str
+    full_name: str
+    code: str
+    year: int
+    month: int
+    amount: float
+    cap: float
+    available: float
+    changed: bool
+
+
+@router.put("/leave/balances/month-credit/all", response_model=list[MonthCreditOut])
+def set_month_credit_for_everyone(
+    body: MonthCreditIn, db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Set the same month credit for every active employee (still capped per type)."""
+    lt = _leave_type_for(db, user.org_id, body.code)
+    pol = leave_service.policy(db, user.org_id)
+    period = leave_service.period_for(pol, date(body.year, body.month, 1))
+    out: list[MonthCreditOut] = []
+    for emp in visible_employees(db, user):
+        try:
+            amount, cap, changed = leave_service.set_month_credit(
+                db, employee=emp, leave_type=lt, period=period,
+                year=body.year, month=body.month, amount=body.amount,
+                actor=user, note=body.note,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        bal = leave_service.balance(db, emp, lt, period)
+        out.append(MonthCreditOut(
+            employee_code=emp.emp_code, full_name=emp.full_name, code=lt.code,
+            year=body.year, month=body.month, amount=amount, cap=cap,
+            available=bal.available, changed=changed,
+        ))
+    db.commit()
+    return out
+
+
+@router.put("/leave/balances/{emp_code}/month-credit", response_model=MonthCreditOut)
+def set_month_credit_for_employee(
+    emp_code: str, body: MonthCreditIn,
+    db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Set one person's accrual credit for one calendar month (capped at quota/12)."""
+    emp = next((e for e in visible_employees(db, user) if e.emp_code == emp_code), None)
+    if emp is None:
+        raise HTTPException(404, f"No employee {emp_code} in your scope")
+    lt = _leave_type_for(db, emp.org_id, body.code)
+    pol = leave_service.policy(db, user.org_id)
+    period = leave_service.period_for(pol, date(body.year, body.month, 1))
+    try:
+        amount, cap, changed = leave_service.set_month_credit(
+            db, employee=emp, leave_type=lt, period=period,
+            year=body.year, month=body.month, amount=body.amount,
+            actor=user, note=body.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    bal = leave_service.balance(db, emp, lt, period)
+    db.commit()
+    return MonthCreditOut(
+        employee_code=emp.emp_code, full_name=emp.full_name, code=lt.code,
+        year=body.year, month=body.month, amount=amount, cap=cap,
+        available=bal.available, changed=changed,
+    )
+
+
+@router.put("/leave/balances/monthly-max/all", response_model=list[MonthlyMaxOut])
+def set_monthly_leave_max_for_everyone(
+    body: MonthlyMaxIn, db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Set the same monthly leave max for every active employee in scope."""
+    out: list[MonthlyMaxOut] = []
+    for emp in visible_employees(db, user):
+        try:
+            value, changed = leave_service.set_monthly_leave_max(
+                db, employee=emp, monthly_leave_max=body.monthly_leave_max,
+                actor=user, note=body.note,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        out.append(MonthlyMaxOut(
+            employee_code=emp.emp_code, full_name=emp.full_name,
+            monthly_leave_max=value, changed=changed,
+        ))
+    db.commit()
+    return out
+
+
+@router.put("/leave/balances/{emp_code}/monthly-max", response_model=MonthlyMaxOut)
+def set_monthly_leave_max_for_employee(
+    emp_code: str, body: MonthlyMaxIn,
+    db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Set this person's max leave days in any calendar month (Team balances)."""
+    emp = next((e for e in visible_employees(db, user) if e.emp_code == emp_code), None)
+    if emp is None:
+        raise HTTPException(404, f"No employee {emp_code} in your scope")
+    try:
+        value, changed = leave_service.set_monthly_leave_max(
+            db, employee=emp, monthly_leave_max=body.monthly_leave_max,
+            actor=user, note=body.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    db.commit()
+    return MonthlyMaxOut(
+        employee_code=emp.emp_code, full_name=emp.full_name,
+        monthly_leave_max=value, changed=changed,
+    )
 
 
 @router.put("/leave/balances/{emp_code}", response_model=list[BalanceEditOut])
@@ -511,6 +671,62 @@ def add_holiday(body: HolidayIn, db: Session = Depends(get_db), user: User = hr_
                       note=row.note)
 
 
+@router.put("/holidays/{holiday_id}", response_model=HolidayOut)
+def update_holiday(
+    holiday_id: uuid.UUID, body: HolidayIn,
+    db: Session = Depends(get_db), user: User = hr_only,
+):
+    """Edit a holiday (date, name, office-closed vs optional, confirmed).
+
+    Recomputes any date that changed or flipped between leave-day and open.
+    """
+    row = db.get(Holiday, holiday_id)
+    if row is None or row.org_id != user.org_id or row.deleted_at is not None:
+        raise HTTPException(404, "No such holiday")
+
+    clash = db.scalar(select(Holiday).where(
+        Holiday.org_id == user.org_id, Holiday.day == body.day,
+        Holiday.deleted_at.is_(None), Holiday.id != row.id,
+    ))
+    if clash is not None:
+        raise HTTPException(409, f"{body.day} is already {clash.name}")
+
+    old_day, old_optional = row.day, row.is_optional
+    changes = {}
+    if row.day != body.day:
+        changes["day"] = {"old": old_day.isoformat(), "new": body.day.isoformat()}
+        row.day = body.day
+    if row.name != body.name:
+        changes["name"] = {"old": row.name, "new": body.name}
+        row.name = body.name
+    if row.is_optional != body.is_optional:
+        changes["is_optional"] = {"old": row.is_optional, "new": body.is_optional}
+        row.is_optional = body.is_optional
+    if row.is_confirmed != body.is_confirmed:
+        changes["is_confirmed"] = {"old": row.is_confirmed, "new": body.is_confirmed}
+        row.is_confirmed = body.is_confirmed
+    if (row.note or None) != (body.note or None):
+        changes["note"] = {"old": row.note, "new": body.note}
+        row.note = body.note
+
+    if changes:
+        db.flush()
+        leave_service.audit(
+            db, org_id=user.org_id, actor=user, entity="holiday", entity_id=row.id,
+            action="edit", changes=changes,
+        )
+        days = {old_day, row.day}
+        # Recompute when the day moved or office-closed status changed.
+        if "day" in changes or "is_optional" in changes:
+            leave_service.recompute_org_dates(db, user.org_id, sorted(days))
+        db.commit()
+
+    return HolidayOut(
+        id=row.id, day=row.day, name=row.name,
+        is_optional=row.is_optional, is_confirmed=row.is_confirmed, note=row.note,
+    )
+
+
 @router.delete("/holidays/{holiday_id}")
 def remove_holiday(
     holiday_id: uuid.UUID, db: Session = Depends(get_db), user: User = hr_only,
@@ -530,3 +746,23 @@ def remove_holiday(
     leave_service.recompute_org_dates(db, user.org_id, [day])
     db.commit()
     return {"removed": True, "day": day.isoformat(), "recomputed": True}
+
+
+class PlannedNoticeRow(BaseModel):
+    name: str
+    code: str
+    dates: list[str]
+
+
+@router.get("/leave/planned-absences", response_model=list[PlannedNoticeRow])
+def planned_absence_roster(
+    db: Session = Depends(get_db),
+    user: User = hr_only,
+) -> list[PlannedNoticeRow]:
+    """People with leave or an advance notice from today forward."""
+    from app.services.planned_absence import notice_roster
+
+    return [
+        PlannedNoticeRow(**row)
+        for row in notice_roster(db, user.org_id, org_today())
+    ]

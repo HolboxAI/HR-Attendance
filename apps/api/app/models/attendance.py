@@ -11,7 +11,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
-from app.db.types import GUID, JSONType
+from app.db.types import GUID, JSONType, StoredEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
@@ -90,9 +90,9 @@ class PunchEvent(Base, TimestampMixin):
         GUID(), ForeignKey("devices.id")
     )
 
-    source: Mapped[PunchSource] = mapped_column(nullable=False)
+    source: Mapped[PunchSource] = mapped_column(StoredEnum(PunchSource), nullable=False)
     direction: Mapped[PunchDirection] = mapped_column(
-        default=PunchDirection.UNKNOWN, nullable=False
+        StoredEnum(PunchDirection), default=PunchDirection.UNKNOWN, nullable=False
     )
 
     # Two clocks: what the device said, and when we actually got it.
@@ -221,3 +221,34 @@ class AttendanceDay(Base, TimestampMixin):
     exception_note: Mapped[str | None] = mapped_column(String(300))
     is_regularized: Mapped[bool] = mapped_column(default=False, nullable=False)
     computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AttendanceAdjustment(Base, TimestampMixin):
+    """An admin's edit of one displayed day. Punches are not rewritten.
+
+    Several rows can exist for the same employee and date. The latest one is
+    what history, the PDF, and the 11:59 mail show. Older rows stay, so a
+    second edit does not erase who changed the day the first time. Worked
+    minutes are never stored here. They stay the number the punches computed.
+    """
+
+    __tablename__ = "attendance_adjustments"
+    __table_args__ = (
+        Index("ix_attendance_adjustment_employee_date", "employee_id", "shift_date"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID(), primary_key=True, default=uuid.uuid4)
+    org_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("organizations.id"), index=True, nullable=False
+    )
+    employee_id: Mapped[uuid.UUID] = mapped_column(
+        GUID(), ForeignKey("employees.id"), nullable=False
+    )
+    shift_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    first_in: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_out: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    previous_status: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason: Mapped[str] = mapped_column(String(400), nullable=False)
+    changed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(GUID(), ForeignKey("users.id"))
+    changed_by_name: Mapped[str] = mapped_column(String(200), nullable=False)
