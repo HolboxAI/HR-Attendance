@@ -8,8 +8,8 @@ import { dateRange, proxy, type LeaveRequestRow } from '@/lib/format';
 /**
  * The approver's queue.
  *
- * Your own request never appears here — the API refuses to let anyone decide
- * their own leave, admin included, so listing it would only invite the attempt.
+ * HR and super admins see their own request here and can approve it.
+ * A manager's own request stays off this list.
  */
 export function PendingLeave({ rows }: { rows: LeaveRequestRow[] }) {
   const router = useRouter();

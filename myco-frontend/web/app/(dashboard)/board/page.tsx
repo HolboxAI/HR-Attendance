@@ -8,7 +8,7 @@ import { Tiles } from '@/components/Tiles';
 import { EmployeeBoardHistory } from '@/components/EmployeeBoardHistory';
 import { KineticTicker } from '@/components/ui/kinetic-ticker';
 import { getBoard, getMyMonth, getRejected, hhmm } from '@/lib/api';
-import { istYearMonth, proxy } from '@/lib/format';
+import { istYearMonth } from '@/lib/format';
 import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
@@ -71,17 +71,6 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
   const board = result.data;
   const rejected = await getRejected();
 
-  // Export the month the viewed date falls in, not always the current one -
-  // looking back at July and downloading August would be a trap.
-  const viewed = new Date(`${board.shift_date}T00:00:00Z`);
-  const monthOf = {
-    year: viewed.getUTCFullYear(),
-    month: viewed.getUTCMonth() + 1,
-    label: viewed.toLocaleDateString('en-IN', {
-      month: 'long', year: 'numeric', timeZone: 'UTC',
-    }),
-  };
-
   const exceptions = board.rows.filter((r) => r.has_exception);
   const day = new Date(`${board.shift_date}T00:00:00Z`);
 
@@ -128,30 +117,6 @@ cd apps/api && .venv/bin/uvicorn app.main:app --reload</pre>
           "100% LIVE SYNCHRONIZATION",
         ]}
       />
-
-      {/* Month-end export */}
-      <div className="flex flex-wrap items-center justify-between gap-4 glass-panel rounded-2xl px-6 py-4 border border-line">
-        <p className="max-w-prose text-sm text-ink-2">
-          <strong className="text-ink font-semibold">Month-end register.</strong>{' '}
-          Every employee, every day, recomputed live from punches at download time.
-        </p>
-        {/* Same build() rows behind both formats: CSV for payroll, PDF for
-            the printed, signed copy. They cannot disagree about a day. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <a
-            href={proxy(`/api/v1/admin/export/month.csv?year=${monthOf.year}&month=${monthOf.month}`)}
-            className="whitespace-nowrap rounded-xl bg-ink text-ground px-5 py-2.5 text-xs font-black uppercase tracking-wider shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer"
-          >
-            Download {monthOf.label} CSV
-          </a>
-          <a
-            href={proxy(`/api/v1/admin/export/month.pdf?year=${monthOf.year}&month=${monthOf.month}`)}
-            className="whitespace-nowrap rounded-xl glass-panel border border-line px-5 py-2.5 text-xs font-black uppercase tracking-wider text-ink shadow-xs hover:bg-surface-2 transition-all active:scale-95 cursor-pointer"
-          >
-            PDF
-          </a>
-        </div>
-      </div>
 
       <Tiles summary={board.summary} />
 

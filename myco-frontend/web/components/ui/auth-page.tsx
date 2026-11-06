@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AtSignIcon, LockIcon, EyeIcon, EyeOffIcon, ArrowRightIcon } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { AtSignIcon, LockIcon, EyeIcon, EyeOffIcon, ArrowRightIcon, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { BoxcodeLogo, HolboxMark } from './boxcode-logo';
@@ -14,13 +15,61 @@ import { SparklesCore } from './sparkles';
 import { LiquidMetalButton } from './liquid-metal-button';
 import { LiquidMetalText } from './liquid-metal-text';
 import Link from 'next/link';
+import { signInWithPopup } from 'firebase/auth';
+
+import { firebaseReady, googleAuth } from '@/lib/firebase';
 
 export function AuthPage() {
+  const searchParams = useSearchParams();
+  const isTimeout = searchParams.get('reason') === 'timeout';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const googleOn = firebaseReady();
+
+  async function continueWithGoogle() {
+    if (!googleOn) return;
+    setError(null);
+    setGoogleBusy(true);
+    try {
+      const { auth, provider } = googleAuth();
+      const cred = await signInWithPopup(auth, provider);
+      const idToken = await cred.user.getIdToken();
+      const res = await fetch('/api/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_token: idToken }),
+      });
+      const body = await res.json().catch(() => null);
+      if (res.status === 422 && body?.code === 'needs_profile') {
+        sessionStorage.setItem('holbox_google_signup', JSON.stringify({
+          id_token: idToken,
+          email: body.email,
+          name: body.name || cred.user.displayName || '',
+        }));
+        window.location.href = '/signup';
+        return;
+      }
+      if (!res.ok) {
+        setError(typeof body?.detail === 'string' ? body.detail : 'Google sign-in failed');
+        return;
+      }
+      window.location.href = '/';
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return;
+      }
+      setError(code === 'auth/popup-blocked'
+        ? 'Allow the Google popup, then try again.'
+        : 'Google sign-in failed. Try again.');
+    } finally {
+      setGoogleBusy(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -148,17 +197,43 @@ export function AuthPage() {
             </p>
           </div>
 
+          {isTimeout && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              role="status"
+              className="flex items-center gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200 font-body shadow-lg shadow-amber-500/5"
+            >
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400">
+                <ShieldAlert className="size-4" />
+              </div>
+              <div className="space-y-0.5">
+                <p className="font-semibold text-amber-300">Security Auto-Logout</p>
+                <p className="text-[11px] text-amber-200/80">
+                  You were automatically signed out after 15 minutes of inactivity to protect confidential records.
+                </p>
+              </div>
+            </motion.div>
+          )}
+
           <div className="space-y-2">
             <button
               type="button"
-              disabled
-              className="w-full flex items-center justify-center gap-3 bg-white/5 border border-white/10 rounded-full py-3 px-4 text-xs font-medium text-white/50 cursor-not-allowed opacity-60 backdrop-blur-sm"
+              disabled={!googleOn || busy || googleBusy}
+              onClick={continueWithGoogle}
+              className={
+                googleOn
+                  ? 'w-full flex items-center justify-center gap-3 bg-white text-black rounded-full py-3 px-4 text-xs font-semibold hover:bg-white/90 disabled:opacity-60'
+                  : 'w-full flex items-center justify-center gap-3 bg-white/5 border border-white/10 rounded-full py-3 px-4 text-xs font-medium text-white/50 cursor-not-allowed opacity-60 backdrop-blur-sm'
+              }
             >
               <GoogleIcon className="size-4" />
-              <span>Continue with Google</span>
+              <span>{googleBusy ? 'Opening Google…' : 'Continue with Google'}</span>
             </button>
             <p className="text-center text-[11px] text-white/40 font-mono">
-              Google sign-in is not enabled yet — use your email and password.
+              {googleOn
+                ? 'Holbox Google accounts only.'
+                : 'Google sign-in is not enabled yet — use your email and password.'}
             </p>
           </div>
 

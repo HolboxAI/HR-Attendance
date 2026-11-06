@@ -60,8 +60,13 @@ export const getLeaveAudit = (limit = 80) =>
   apiGet<AuditRow[]>(`/api/v1/admin/leave/audit?limit=${limit}`);
 export const getPending = () => apiFetch<LeaveRequestRow[]>('/api/v1/admin/leave/pending');
 export const getAllStatus = () => apiFetch<LeaveRequestRow[]>('/api/v1/admin/leave/status');
-export const getTeamBalances = () =>
-  apiFetch<TeamBalanceRow[]>('/api/v1/admin/leave/balances');
+export const getTeamBalances = (opts?: { year?: number; month?: number }) => {
+  const qs =
+    opts?.year != null && opts?.month != null
+      ? `?year=${opts.year}&month=${opts.month}`
+      : '';
+  return apiFetch<TeamBalanceRow[]>(`/api/v1/admin/leave/balances${qs}`);
+};
 export const getHolidays = (year: number) =>
   apiGet<HolidayRow[]>(`/api/v1/admin/holidays?year=${year}`);
 
@@ -140,5 +145,13 @@ export type EmployeeAdminRow = {
 export const getEmployeeAdmin = (code: string) =>
   apiFetch<EmployeeAdminRow>(`/api/v1/admin/employees/${encodeURIComponent(code)}`);
 
-export const getEmployeesAdmin = () =>
-  apiFetch<EmployeeAdminRow[]>('/api/v1/admin/employees');
+export const getEmployeesAdmin = (params?: { include_inactive?: boolean; inactive_only?: boolean }) => {
+  const query = new URLSearchParams();
+  if (params?.include_inactive) query.set('include_inactive', 'true');
+  if (params?.inactive_only) query.set('inactive_only', 'true');
+  const qs = query.toString();
+  return apiFetch<EmployeeAdminRow[]>(`/api/v1/admin/employees${qs ? `?${qs}` : ''}`);
+};
+
+export const getExEmployeesAdmin = () =>
+  apiFetch<EmployeeAdminRow[]>('/api/v1/admin/employees?inactive_only=true');

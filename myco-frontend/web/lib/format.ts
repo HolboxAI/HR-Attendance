@@ -57,6 +57,15 @@ export type MonthDay = {
   is_wfh?: boolean;
   leave_code?: string | null;
   leave_name?: string | null;
+  break_minutes?: number;
+  break_windows?: string;
+  extra_str?: string;
+  shift_allotted?: string;
+  punctuality?: string;
+  regularised_by?: string;
+  leave_status?: string;
+  leave_approved_by?: string;
+  remarks?: string;
 };
 
 export type EnrolmentRow = {
@@ -273,6 +282,12 @@ export type TeamBalanceRow = {
   accrued: number;
   used: number;
   available: number;
+  /** Max leave days in any calendar month. null = no cap. */
+  monthly_leave_max?: number | null;
+  /** Present in month-edit mode (?year=&month=). */
+  month?: number | null;
+  month_credit?: number | null;
+  month_credit_cap?: number | null;
 };
 
 export type MonthResponse = {

@@ -32,7 +32,7 @@ from app.models.enums import PunchDirection, PunchSource
 from app.models.attendance import PunchEvent
 from app.models.org import Location
 from app.services.attendance import (
-    next_direction, recompute_day, record_punch,
+    accepted_on_shift, next_direction, recompute_day, record_punch,
 )
 from app.services import devices
 from app.services.enrolment import reference_bytes
@@ -95,27 +95,12 @@ def me(
     next_dir = next_direction(db, emp, today)
     is_in = (next_dir == PunchDirection.OUT)
 
-    # Determine the latest punch type for accurate UI state
-    from app.services.attendance import _aware
-    window_start = datetime.combine(
-        today - timedelta(days=1), time(0, 0), tzinfo=timezone.utc
-    )
-    window_end = datetime.combine(
-        today + timedelta(days=2), time(0, 0), tzinfo=timezone.utc
-    )
-    last_event = db.scalars(
-        select(PunchEvent)
-        .where(
-            and_(
-                PunchEvent.employee_id == emp.id,
-                PunchEvent.rejection_reason.is_(None),
-                PunchEvent.event_ts_utc >= window_start,
-                PunchEvent.event_ts_utc < window_end,
-            )
-        )
-        .order_by(PunchEvent.event_ts_utc.desc())
-    ).first()
-    
+    # Latest punch of THIS shift-date only. A check-in from yesterday evening
+    # is a different day once 5:00 AM has passed, and must not keep the
+    # button on Check Out.
+    today_events = accepted_on_shift(db, emp, today)
+    last_event = today_events[-1] if today_events else None
+
     last_punch_type = None
     if last_event and last_event.raw_payload:
         last_punch_type = last_event.raw_payload.get("punch_type")
@@ -230,25 +215,10 @@ async def punch(
     curr_next_dir = next_direction(db, emp, shift_date)
     is_in_now = (curr_next_dir == PunchDirection.OUT)
 
-    # Find the last accepted punch type today
-    window_start = datetime.combine(
-        shift_date - timedelta(days=1), time(0, 0), tzinfo=timezone.utc
-    )
-    window_end = datetime.combine(
-        shift_date + timedelta(days=2), time(0, 0), tzinfo=timezone.utc
-    )
-    last_event_today = db.scalars(
-        select(PunchEvent)
-        .where(
-            and_(
-                PunchEvent.employee_id == emp.id,
-                PunchEvent.rejection_reason.is_(None),
-                PunchEvent.event_ts_utc >= window_start,
-                PunchEvent.event_ts_utc < window_end,
-            )
-        )
-        .order_by(PunchEvent.event_ts_utc.desc())
-    ).first()
+    # Last punch of this shift-date. Yesterday's open check-in does not
+    # count after 5:00 AM, so it cannot authorise a checkout.
+    today_events = accepted_on_shift(db, emp, shift_date)
+    last_event_today = today_events[-1] if today_events else None
 
     last_type_today = (last_event_today.raw_payload or {}).get("punch_type") if last_event_today else None
     has_checked_in_today = last_event_today is not None
@@ -270,8 +240,18 @@ async def punch(
 
     # 3. Check Out validation
     elif punch_type == "check_out":
-        if not has_checked_in_today:
-            raise HTTPException(400, "You have not checked in today.")
+        if is_on_break_now:
+            raise HTTPException(
+                400,
+                "You are on a break. End the break to come back. "
+                "Check-out is for leaving, and only after you are back.",
+            )
+        if not is_in_now:
+            raise HTTPException(
+                400,
+                "You are not checked in. A new day starts at 5:00 AM, "
+                "so check in to begin today.",
+            )
         direction = PunchDirection.OUT
 
     # 4. Check In validation
@@ -282,6 +262,24 @@ async def punch(
 
     if direction is None:
         direction = curr_next_dir
+    if is_on_break_now and direction == PunchDirection.OUT and punch_type not in ("break_out", "break_start"):
+        raise HTTPException(
+            400,
+            "You are on a break. End the break to come back. "
+            "Check-out is for leaving, and only after you are back.",
+        )
+    # The phone sends a direction and no punch type. An OUT from a session
+    # that ended at 5:00 AM must not be stored as today's checkout.
+    if (
+        not is_in_now
+        and direction == PunchDirection.OUT
+        and punch_type not in ("break_out", "break_start")
+    ):
+        raise HTTPException(
+            400,
+            "You are not checked in. A new day starts at 5:00 AM, "
+            "so check in to begin today.",
+        )
 
     # Every presence input comes from the location row, with app/core/office.py
     # only as the fallback for a database that predates it. That constant used
@@ -436,8 +434,30 @@ async def punch(
     local = event_ts.astimezone(local_tz)
     punch_time_str = local.strftime('%I:%M %p').replace(" 0", " ")
 
-    # Dispatch Slack & in-app alerts based on explicit punch_type and direction
-    if punch_type in ("break_out", "break_start"):
+    prev_for_alert = db.scalar(
+        select(PunchEvent)
+        .where(
+            and_(
+                PunchEvent.employee_id == emp.id,
+                PunchEvent.rejection_reason.is_(None),
+                PunchEvent.event_ts_utc < event.event_ts_utc,
+            )
+        )
+        .order_by(PunchEvent.event_ts_utc.desc())
+    )
+
+    # Dispatch Slack & in-app alerts based on explicit punch_type and direction.
+    # A second check-in on the same day is still a check-in. Break completed
+    # is only the punch that closes a break, and its length starts at that
+    # break, not at whatever out happened to be last.
+    from app.services.slack import classify_punch_alert
+    previous_type = (prev_for_alert.raw_payload or {}).get("punch_type") if prev_for_alert else None
+    kind = classify_punch_alert(
+        punch_type,
+        direction.value if hasattr(direction, "value") else str(direction),
+        previous_type,
+    )
+    if kind == "break_start":
         from app.services.slack import post_break_started_alert
         _slack_now(
             post_break_started_alert,
@@ -449,24 +469,12 @@ async def punch(
         )
         msg = f"Break started at {punch_time_str}"
 
-    elif punch_type in ("break_in", "break_end"):
+    elif kind == "break_end":
         from app.services.slack import post_break_ended_alert
 
-        prev_out = db.scalar(
-            select(PunchEvent)
-            .where(
-                and_(
-                    PunchEvent.employee_id == emp.id,
-                    PunchEvent.direction == PunchDirection.OUT,
-                    PunchEvent.rejection_reason.is_(None),
-                    PunchEvent.event_ts_utc < event.event_ts_utc,
-                )
-            )
-            .order_by(PunchEvent.event_ts_utc.desc())
-        )
         break_mins = 0
-        if prev_out and prev_out.event_ts_utc:
-            prev_ts = prev_out.event_ts_utc
+        if prev_for_alert and prev_for_alert.event_ts_utc and previous_type in ("break_out", "break_start"):
+            prev_ts = prev_for_alert.event_ts_utc
             if prev_ts.tzinfo is None:
                 prev_ts = prev_ts.replace(tzinfo=timezone.utc)
             curr_ts = event.event_ts_utc
@@ -485,7 +493,7 @@ async def punch(
         )
         msg = f"Resumed work from break at {punch_time_str}"
 
-    elif punch_type == "check_out" or (punch_type is None and direction == PunchDirection.OUT):
+    elif kind == "check_out":
         from app.services.slack import post_checkout_alert
         _slack_now(
             post_checkout_alert,
@@ -500,66 +508,30 @@ async def punch(
         msg = f"Checked out at {punch_time_str}"
 
     else:
-        # Default Check-in / In direction
-        if day.punch_count == 1:
-            if day.late_minutes > 0:
-                from app.services.notifications import notify_hr
-                from app.services.slack import format_duration_human
-                dur_str = format_duration_human(day.late_minutes)
-                notify_hr(
-                    db,
-                    org_id=emp.org_id,
-                    category="attendance.late_arrival",
-                    title=f"Late Arrival: {emp.full_name}",
-                    body=f"{emp.full_name} arrived late at {punch_time_str} ({dur_str} late) for their shift on {shift_date.isoformat()}.",
-                    data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
-                )
-                db.commit()
-
-            from app.services.slack import post_checkin_alert
-            _slack_now(
-                post_checkin_alert,
-                emp.full_name,
-                emp.emp_code,
-                punch_time_str,
-                shift_date.isoformat(),
-                day.late_minutes,
-                emp.email,
+        if day.punch_count == 1 and day.late_minutes > 0:
+            from app.services.notifications import notify_hr
+            from app.services.slack import format_duration_human
+            dur_str = format_duration_human(day.late_minutes)
+            notify_hr(
+                db,
+                org_id=emp.org_id,
+                category="attendance.late_arrival",
+                title=f"Late Arrival: {emp.full_name}",
+                body=f"{emp.full_name} arrived late at {punch_time_str} ({dur_str} late) for their shift on {shift_date.isoformat()}.",
+                data={"employee_code": emp.emp_code, "shift_date": shift_date.isoformat()}
             )
-        else:
-            from app.services.slack import post_break_ended_alert
+            db.commit()
 
-            prev_out = db.scalar(
-                select(PunchEvent)
-                .where(
-                    and_(
-                        PunchEvent.employee_id == emp.id,
-                        PunchEvent.direction == PunchDirection.OUT,
-                        PunchEvent.rejection_reason.is_(None),
-                        PunchEvent.event_ts_utc < event.event_ts_utc,
-                    )
-                )
-                .order_by(PunchEvent.event_ts_utc.desc())
-            )
-            break_mins = 0
-            if prev_out and prev_out.event_ts_utc:
-                prev_ts = prev_out.event_ts_utc
-                if prev_ts.tzinfo is None:
-                    prev_ts = prev_ts.replace(tzinfo=timezone.utc)
-                curr_ts = event.event_ts_utc
-                if curr_ts.tzinfo is None:
-                    curr_ts = curr_ts.replace(tzinfo=timezone.utc)
-                break_mins = max(1, int(round((curr_ts - prev_ts).total_seconds() / 60)))
-
-            _slack_now(
-                post_break_ended_alert,
-                emp.full_name,
-                emp.emp_code,
-                punch_time_str,
-                break_mins,
-                shift_date.isoformat(),
-                emp.email,
-            )
+        from app.services.slack import post_checkin_alert
+        _slack_now(
+            post_checkin_alert,
+            emp.full_name,
+            emp.emp_code,
+            punch_time_str,
+            shift_date.isoformat(),
+            day.late_minutes if day.punch_count == 1 else 0,
+            emp.email,
+        )
         msg = f"Checked in at {punch_time_str}"
 
     return PunchResponse(

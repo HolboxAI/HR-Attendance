@@ -9,6 +9,8 @@ import {
   SendMessageButton,
   EditCorrectionLimitButton,
   ChangeRoleButton,
+  ChangeEmployeeCodeButton,
+  ReactivateEmployeeButton,
 } from '@/components/PeopleAdmin';
 import { EmployeeLeaveEditor } from '@/components/EditLeaveBalances';
 import { Status } from '@/components/Status';
@@ -93,6 +95,10 @@ export default async function EmployeeDetailPage({
   const notFuture = year < now.getUTCFullYear()
     || (year === now.getUTCFullYear() && month <= now.getUTCMonth() + 1);
 
+  const empDept = todayRow?.department ?? (adminEmp?.ok ? adminEmp.data.department : null);
+  const empDesig = adminEmp?.ok ? adminEmp.data.designation : null;
+  const empEmail = adminEmp?.ok ? adminEmp.data.email : null;
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -126,12 +132,19 @@ export default async function EmployeeDetailPage({
                 No Login Account
               </span>
             )}
+            {adminEmp?.ok && !adminEmp.data.is_active && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-600 border border-rose-500/25 dark:text-rose-400">
+                <span className="size-1.5 rounded-full bg-rose-500" />
+                Ex-Employee {adminEmp.data.date_of_exit ? `· Left ${adminEmp.data.date_of_exit}` : ''}
+              </span>
+            )}
           </div>
           <p className="text-sm text-ink-3">
             {code}
-            {todayRow?.department ? ` · ${todayRow.department}` : ''}
+            {empDept ? ` · ${empDept}` : ''}
+            {empDesig ? ` · ${empDesig}` : ''}
             {todayRow ? ` · shift ${todayRow.shift_label}` : ''}
-            {adminEmp?.ok && adminEmp.data.email ? ` · ${adminEmp.data.email}` : ''}
+            {empEmail ? ` · ${empEmail}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
@@ -160,15 +173,23 @@ export default async function EmployeeDetailPage({
             same way the board is, so anyone who can see this person can
             nudge them. Reset password stays HR-only. */}
         <div className="flex w-full flex-wrap items-start gap-3 border-t border-line/60 pt-3">
-          <SendMessageButton code={code} name={monthData.full_name} />
+          {adminEmp?.ok && !adminEmp.data.is_active && caps.canManagePeople && (
+            <ReactivateEmployeeButton code={code} name={monthData.full_name} />
+          )}
+          {(!adminEmp?.ok || adminEmp.data.is_active) && (
+            <SendMessageButton code={code} name={monthData.full_name} />
+          )}
           {caps.canManagePeople && (
             <>
-              <ChangeRoleButton
-                code={code}
-                name={monthData.full_name}
-                currentRole={adminEmp?.ok ? adminEmp.data.role : null}
-                isSelf={me?.employee_code === code}
-              />
+              <ChangeEmployeeCodeButton code={code} name={monthData.full_name} />
+              {(!adminEmp?.ok || adminEmp.data.is_active) && (
+                <ChangeRoleButton
+                  code={code}
+                  name={monthData.full_name}
+                  currentRole={adminEmp?.ok ? adminEmp.data.role : null}
+                  isSelf={me?.employee_code === code}
+                />
+              )}
               <ResetPasswordButton code={code} name={monthData.full_name} />
               <EditCorrectionLimitButton code={code} currentLimit={monthData.correction_limit} />
             </>

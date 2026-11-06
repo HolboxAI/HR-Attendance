@@ -75,6 +75,22 @@ def wrap(inner: str, *, title: str, width: int = 640) -> str:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{_e(title)}</title>
+  <style>
+    /* Phones only. A laptop and an iPad keep the wide table. */
+    @media only screen and (max-width: 600px) {{
+      .hb-nav, .hb-tagline {{ display: none !important; }}
+      .hb-pad {{ padding-left: 16px !important; padding-right: 16px !important; }}
+      .hb-foot-right {{ display: block !important; text-align: left !important; padding-top: 12px !important; }}
+      .hb-desk {{ display: none !important; max-height: 0 !important; overflow: hidden !important; }}
+      .hb-phone {{ display: block !important; max-height: none !important; overflow: visible !important; }}
+      .hb-metric {{
+        display: block !important;
+        width: 100% !important;
+        border-right: 0 !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+      }}
+    }}
+  </style>
 </head>
 <body style="margin:0;padding:0;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;-webkit-font-smoothing:antialiased;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;padding:28px 12px;">
@@ -99,10 +115,10 @@ def wrap(inner: str, *, title: str, width: int = 640) -> str:
                       </tr>
                     </table>
                   </td>
-                  <td valign="middle" align="center" style="font-size:12px;color:#94a3b8;">
+                  <td class="hb-nav" valign="middle" align="center" style="font-size:12px;color:#94a3b8;">
                     People &nbsp;&bull;&nbsp; Attendance &nbsp;&bull;&nbsp; Leave
                   </td>
-                  <td valign="middle" align="right" width="32%" style="font-size:11px;color:#94a3b8;font-style:italic;">
+                  <td class="hb-tagline" valign="middle" align="right" width="32%" style="font-size:11px;color:#94a3b8;font-style:italic;">
                     Building better workplaces together.
                   </td>
                 </tr>
@@ -111,7 +127,7 @@ def wrap(inner: str, *, title: str, width: int = 640) -> str:
           </tr>
 
           <tr>
-            <td style="padding:28px 28px 8px 28px;">
+            <td class="hb-pad" style="padding:28px 28px 8px 28px;">
               {inner}
             </td>
           </tr>
@@ -125,7 +141,7 @@ def wrap(inner: str, *, title: str, width: int = 640) -> str:
                     Automated notification from the Holbox Attendance System.<br>
                     Manage your team from the <a href="{PORTAL}" style="color:#2563eb;text-decoration:none;font-weight:600;">Admin Dashboard</a>.
                   </td>
-                  <td valign="top" align="right" style="font-size:12px;color:#94a3b8;line-height:1.55;">
+                  <td class="hb-foot-right" valign="top" align="right" style="font-size:12px;color:#94a3b8;line-height:1.55;">
                     This is an automated email. Please do not reply.<br>
                     &copy; 2026 Holbox AI. All rights reserved.
                   </td>
@@ -277,6 +293,28 @@ def signup_approved_html(
     return wrap(inner, title=f"Approved by {admin_name} — {full_name}")
 
 
+def signup_you_can_sign_in_html(*, full_name: str, email: str, emp_code: str) -> str:
+    """The note the applicant gets. Admins already have their own mail."""
+    inner = f"""
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#16a34a;">
+        You have been approved
+      </div>
+      <h1 style="margin:10px 0 8px 0;font-size:26px;font-weight:800;letter-spacing:-0.4px;color:#0f172a;">
+        Welcome to Holbox, {_e(full_name)}
+      </h1>
+      <p style="margin:0 0 12px 0;font-size:14px;color:#334155;line-height:1.55;">
+        An admin approved your request. Your employee code is <strong>{_e(emp_code)}</strong>.
+      </p>
+      <p style="margin:0 0 18px 0;font-size:14px;color:#334155;line-height:1.55;">
+        Sign in at the attendance portal with <strong>Continue with Google</strong>,
+        using {_e(email)}. If you set a password when you applied, that works too.
+      </p>
+      <div>{_btn(f"{PORTAL}/login", "Sign in", bg="#059669")}</div>
+      <div style="height:8px;"></div>
+    """
+    return wrap(inner, title="You can sign in to Holbox")
+
+
 def leave_request_html(
     *,
     applicant_name: str,
@@ -374,6 +412,7 @@ def leave_request_html(
 _STATUS_STYLE = {
     "present": ("#16a34a", "#f0fdf4", "PRESENT"),
     "early": ("#16a34a", "#f0fdf4", "PRESENT"),
+    "wfh": ("#0284c7", "#f0f9ff", "WFH"),
     "late": ("#d97706", "#fffbeb", "LATE"),
     "half_day": ("#d97706", "#fffbeb", "HALF DAY"),
     "absent": ("#dc2626", "#fef2f2", "ABSENT"),
@@ -394,6 +433,62 @@ def _status_badge(status: str, first_in: str) -> str:
     )
 
 
+def day_close_html(*, date_label: str, sections_html: str) -> str:
+    """One mail for the whole day. Each group keeps its own table inside it."""
+    inner = f"""
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#64748b;">
+        Holbox HRMS &nbsp;&bull;&nbsp; End of day
+      </div>
+      <h1 style="margin:10px 0 8px 0;font-size:26px;font-weight:800;letter-spacing:-0.4px;color:#0f172a;">
+        Attendance for {_e(date_label)}
+      </h1>
+      <p style="margin:0 0 18px 0;font-size:14px;color:#64748b;line-height:1.5;">
+        Every group, through 11:59 PM. Extra is time worked past that group's shift end.
+      </p>
+      {sections_html}
+      <div style="text-align:center;padding:8px 0 12px 0;">
+        {_btn(PORTAL, "View Full Dashboard &rarr;", bg="#2563eb")}
+      </div>
+    """
+    return wrap(inner, title=f"Attendance — {date_label}", width=1400)
+
+
+def planned_absence_html(*, date_label: str, rows_html: str, anyone_marked: bool = True) -> str:
+    if not anyone_marked:
+        body = """
+      <p style="margin:0 0 16px 0;font-size:14px;font-weight:700;color:#0f172a;line-height:1.5;">
+        No scheduled leave or advance notices recorded for this window.
+      </p>
+        """
+    else:
+        body = f"""
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+        <tr style="background:#f8fafc;">
+          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Employee</th>
+          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Scheduled dates</th>
+        </tr>
+        {rows_html}
+      </table>
+        """
+    inner = f"""
+      <div style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#64748b;">
+        Holbox HRMS &nbsp;&bull;&nbsp; Attendance
+      </div>
+      <h1 style="margin:10px 0 8px 0;font-size:26px;font-weight:800;letter-spacing:-0.4px;color:#0f172a;">
+        Team availability outlook
+      </h1>
+      <p style="margin:0 0 10px 0;font-size:14px;color:#64748b;line-height:1.55;">
+        As of {_e(date_label)}. Only employees with a leave application or advance notice through the end of next month.
+      </p>
+      <p style="margin:0 0 18px 0;font-size:14px;color:#64748b;line-height:1.55;">
+        Leave rows reflect applications (decision may still be pending). Advance notices do not deduct leave balance.
+        A punch on a listed day still counts toward attendance.
+      </p>
+      {body}
+    """
+    return wrap(inner, title=f"Team availability outlook — {date_label}", width=640)
+
+
 def shift_summary_html(
     *,
     shift_name: str,
@@ -401,16 +496,32 @@ def shift_summary_html(
     shift_date_label: str,
     stats: dict,
     roster: list[dict],
+    embedded: bool = False,
 ) -> str:
-    def metric(label: str, value: object, color: str) -> str:
+    has_wfh = stats.get("wfh", 0) > 0
+    col_width = "16.6%" if has_wfh else "20%"
+
+    def metric(label: str, value: object, color: str, last: bool = False) -> str:
+        border = "" if last else "border-right:1px solid #f1f5f9;"
         return f"""
-          <td width="20%" align="center" style="padding:14px 6px;border-right:1px solid #f1f5f9;">
+          <td class="hb-metric" width="{col_width}" align="center" style="padding:14px 6px;{border}">
             <div style="font-size:10px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;color:#94a3b8;">{_e(label)}</div>
             <div style="font-size:26px;font-weight:800;color:{color};margin-top:4px;">{_e(value)}</div>
           </td>
         """
 
+    def phone_line(label: str, value: object) -> str:
+        return (
+            f'<tr>'
+            f'<td style="padding:4px 10px 4px 0;font-size:12px;color:#94a3b8;width:38%;">{_e(label)}</td>'
+            f'<td style="padding:4px 0;font-size:13px;font-weight:600;color:#0f172a;">{_e(value or "—")}</td>'
+            f'</tr>'
+        )
+
+    cell = "padding:8px 8px;border-bottom:1px solid #f1f5f9;font-size:11px;color:#334155;white-space:nowrap;"
+    head = "padding:8px 8px;font-size:9px;letter-spacing:0.4px;text-transform:uppercase;color:#94a3b8;"
     rows_html = ""
+    phone_html = ""
     for r in roster:
         late_html = (
             f'<span style="color:#d97706;font-weight:700;">{_e(r.get("late_str") or "")}</span>'
@@ -419,16 +530,56 @@ def shift_summary_html(
         )
         rows_html += f"""
           <tr>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-weight:700;color:#0f172a;font-size:13px;">
-              {_e(r.get("name"))} <span style="font-size:11px;font-family:ui-monospace,monospace;color:#94a3b8;font-weight:600;">({_e(r.get("code"))})</span>
-            </td>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;">{_status_badge(str(r.get("status") or ""), str(r.get("first_in") or "—"))}</td>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">{_e(r.get("first_in") or "—")}</td>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#334155;">{_e(r.get("last_out") or "—")}</td>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;">{late_html}</td>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#64748b;">{_e(r.get("break_str") or "0m")}</td>
-            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#0f172a;font-weight:700;">{_e(r.get("hours_str") or "—")}</td>
+            <td style="{cell}">{_e(r.get("date_label") or shift_date_label)}</td>
+            <td style="{cell}font-family:ui-monospace,monospace;font-weight:700;color:#0f172a;">{_e(r.get("code") or "—")}</td>
+            <td style="{cell}font-weight:700;color:#0f172a;white-space:normal;">{_e(r.get("name") or "—")}</td>
+            <td style="{cell}">{_e(r.get("department") or "—")}</td>
+            <td style="{cell}">{_e(r.get("shift_allotted") or shift_timing)}</td>
+            <td style="{cell}">{_status_badge(str(r.get("status") or ""), str(r.get("first_in") or "—"))}</td>
+            <td style="{cell}">{_e(r.get("first_in") or "—")}</td>
+            <td style="{cell}">{_e(r.get("last_out") or "—")}</td>
+            <td style="{cell}">{late_html}</td>
+            <td style="{cell}white-space:normal;">{_e(r.get("break_windows") or "—")}</td>
+            <td style="{cell}">{_e(r.get("break_str") or "0m")}</td>
+            <td style="{cell}font-weight:700;color:#0f172a;">{_e(r.get("hours_str") or "—")}</td>
+            <td style="{cell}font-weight:700;color:#0f172a;">{_e(r.get("extra_str") or "—")}</td>
+            <td style="{cell}">{_e(r.get("punctuality") or "—")}</td>
+            <td style="{cell}white-space:normal;">{_e(r.get("regularised_by") or "N/A")}</td>
+            <td style="{cell}">{_e(r.get("leave_status") or "N/A")}</td>
+            <td style="{cell}white-space:normal;">{_e(r.get("leave_approved_by") or "N/A")}</td>
+            <td style="{cell}white-space:normal;color:#64748b;">{_e(r.get("remarks") or "—")}</td>
           </tr>
+        """
+        late_text = r.get("late_str") or "On time"
+        if (r.get("late_minutes") or 0) <= 0:
+            late_text = "On time"
+        phone_html += f"""
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e8f0;border-radius:12px;margin:0 0 12px 0;">
+            <tr>
+              <td style="padding:14px 14px 12px 14px;">
+                <div style="font-size:15px;font-weight:800;color:#0f172a;">{_e(r.get("name") or "—")}</div>
+                <div style="font-size:12px;color:#64748b;margin:3px 0 8px 0;">
+                  {_e(r.get("code") or "—")} &nbsp;&bull;&nbsp; {_e(r.get("department") or "—")}
+                </div>
+                <div style="margin-bottom:8px;">{_status_badge(str(r.get("status") or ""), str(r.get("first_in") or "—"))}</div>
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  {phone_line("Shift", r.get("shift_allotted") or shift_timing)}
+                  {phone_line("In", r.get("first_in") or "—")}
+                  {phone_line("Out", r.get("last_out") or "—")}
+                  {phone_line("Late", late_text)}
+                  {phone_line("Break times", r.get("break_windows") or "—")}
+                  {phone_line("Break total", r.get("break_str") or "0m")}
+                  {phone_line("Worked", r.get("hours_str") or "—")}
+                  {phone_line("Extra", r.get("extra_str") or "—")}
+                  {phone_line("Punctuality", r.get("punctuality") or "—")}
+                  {phone_line("Regularised by", r.get("regularised_by") or "N/A")}
+                  {phone_line("Leave", r.get("leave_status") or "N/A")}
+                  {phone_line("Approved by", r.get("leave_approved_by") or "N/A")}
+                  {phone_line("Remarks", r.get("remarks") or "—")}
+                </table>
+              </td>
+            </tr>
+          </table>
         """
 
     inner = f"""
@@ -443,33 +594,58 @@ def shift_summary_html(
       </div>
       <p style="margin:0 0 18px 0;font-size:14px;color:#64748b;">
         Here's the attendance summary for today's shift.
+        {"<br><span style='display:inline-block;margin-top:6px;padding:3px 8px;border-radius:6px;background:#f0f9ff;color:#0284c7;font-weight:700;font-size:12px;'>All employees worked remotely (WFH) today.</span>" if has_wfh and stats.get("present", 0) == 0 else ("<br><span style='display:inline-block;margin-top:6px;padding:3px 8px;border-radius:6px;background:#f0f9ff;color:#0284c7;font-weight:700;font-size:12px;'>" + str(stats.get("wfh", 0)) + " employee(s) worked remotely (WFH) today.</span>" if has_wfh else "")}
       </p>
 
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e8f0;border-radius:12px;margin-bottom:18px;">
         <tr>
           {metric("Scheduled", stats.get("total", 0), "#0f172a")}
           {metric("Present", stats.get("present", 0), "#16a34a")}
+          {metric("WFH", stats.get("wfh", 0), "#0284c7") if has_wfh else ""}
           {metric("Late", stats.get("late", 0), "#d97706")}
           {metric("Absent", stats.get("absent", 0), "#dc2626")}
-          {metric("On leave", stats.get("leave", 0), "#2563eb").replace("border-right:1px solid #f1f5f9;", "")}
+          {metric("On leave", stats.get("leave", 0), "#2563eb", last=True)}
         </tr>
       </table>
 
+      <div class="hb-desk">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
         <tr style="background:#f8fafc;">
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Employee</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Status</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">In</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Out</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Late</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Breaks</th>
-          <th align="left" style="padding:10px 12px;font-size:10px;letter-spacing:0.7px;text-transform:uppercase;color:#94a3b8;">Worked</th>
+          <th align="left" style="{head}">Date</th>
+          <th align="left" style="{head}">Employee ID</th>
+          <th align="left" style="{head}">Name</th>
+          <th align="left" style="{head}">Department</th>
+          <th align="left" style="{head}">Shift</th>
+          <th align="left" style="{head}">Status</th>
+          <th align="left" style="{head}">In</th>
+          <th align="left" style="{head}">Out</th>
+          <th align="left" style="{head}">Late</th>
+          <th align="left" style="{head}">Break times</th>
+          <th align="left" style="{head}">Break total</th>
+          <th align="left" style="{head}">Worked</th>
+          <th align="left" style="{head}">Extra</th>
+          <th align="left" style="{head}">Punctuality</th>
+          <th align="left" style="{head}">Regularised by</th>
+          <th align="left" style="{head}">Leave</th>
+          <th align="left" style="{head}">Approved by</th>
+          <th align="left" style="{head}">Remarks</th>
         </tr>
         {rows_html}
       </table>
+      </div>
+      <!--[if !mso]><!-->
+      <div class="hb-phone" style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
+        {phone_html}
+      </div>
+      <!--<![endif]-->
 
-      <div style="text-align:center;padding:22px 0 12px 0;">
+      <div style="height:8px;"></div>
+    """
+    if embedded:
+        return inner
+    inner += f"""
+      <div style="text-align:center;padding:14px 0 12px 0;">
         {_btn(PORTAL, "View Full Dashboard &rarr;", bg="#2563eb")}
       </div>
     """
-    return wrap(inner, title=f"Attendance Summary — {shift_name}", width=720)
+    return wrap(inner, title=f"Attendance Summary — {shift_name}", width=1400)

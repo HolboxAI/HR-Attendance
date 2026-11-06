@@ -36,16 +36,12 @@ ok &= check("late_minutes (5m late, 10m grace)", r.late_minutes, 0)
 ok &= check("overtime_minutes", r.overtime_minutes, 10)
 ok &= check("has_exception", r.has_exception, False)
 
-print("2. Late arrival beyond grace -> marked absent without regularization, present with regularization")
+print("2. Late arrival beyond grace marked PRESENT with late_minutes recorded (Option 2)")
 r = resolve_day([Punch(ist(2026, 8, 24, 9, 47)), Punch(ist(2026, 8, 24, 18, 0))],
-                DAY, date(2026, 8, 24))
+                DAY, date(2026, 8, 24), is_regularized=False)
 ok &= check("late_minutes", r.late_minutes, 37)
-ok &= check("status (unregularized)", r.status, "absent")
-ok &= check("has_exception", r.has_exception, True)
-
-r_reg = resolve_day([Punch(ist(2026, 8, 24, 9, 47)), Punch(ist(2026, 8, 24, 18, 0))],
-                    DAY, date(2026, 8, 24), is_regularized=True)
-ok &= check("status (regularized)", r_reg.status, "present")
+ok &= check("status", r.status, "present")
+ok &= check("has_exception", r.has_exception, False)
 
 print("3. Night shift 22:00-06:00 crosses midnight -> ONE shift date")
 ok &= check("22:10 Aug10 belongs to", shift_date_for(ist(2026, 8, 10, 22, 10), NIGHT), date(2026, 8, 10))
@@ -124,6 +120,57 @@ ok &= check("live break_minutes (5m)", r10.break_minutes, 5)
 ok &= check("is_currently_in", r10.is_currently_in, True)
 ok &= check("current_session_minutes (11:05 to 14:00 = 175m)", r10.current_session_minutes, 175)
 
+print("11. A day shift runs until 5:00 AM, not midnight")
+IIM = ShiftPolicy(start_time=time(18, 0), end_time=time(22, 0), cutover_hour=5)
+ok &= check("20:54 on the 6th belongs to the 6th",
+            shift_date_for(ist(2026, 10, 6, 20, 54), IIM), date(2026, 10, 6))
+ok &= check("00:54 checkout still belongs to the 6th",
+            shift_date_for(ist(2026, 10, 7, 0, 54), IIM), date(2026, 10, 6))
+ok &= check("04:59 still belongs to the 6th",
+            shift_date_for(ist(2026, 10, 7, 4, 59), IIM), date(2026, 10, 6))
+ok &= check("05:00 is a new day",
+            shift_date_for(ist(2026, 10, 7, 5, 0), IIM), date(2026, 10, 7))
+r11 = resolve_day([
+    Punch(ist(2026, 10, 6, 20, 54), direction="in"),
+    Punch(ist(2026, 10, 7, 0, 54), direction="out"),
+], IIM, date(2026, 10, 6), as_of=ist(2026, 10, 7, 1, 0))
+ok &= check("worked 4h on the 6th", r11.worked_minutes, 240)
+ok &= check("overtime after 22:00 is 2h 54m", r11.overtime_minutes, 174)
+
+print("12. A break is not a checkout")
+r12 = resolve_day([
+    Punch(ist(2026, 10, 8, 13, 17), direction="in", kind="check_in"),
+    Punch(ist(2026, 10, 8, 13, 31), direction="out", kind="break_out"),
+], DAY, date(2026, 10, 8), as_of=ist(2026, 10, 8, 14, 0))
+ok &= check("break leaves checkout empty", r12.last_out, None)
+ok &= check("still in while on a break", r12.is_currently_in, True)
+r12b = resolve_day([
+    Punch(ist(2026, 8, 24, 9, 0), direction="in", kind="check_in"),
+    Punch(ist(2026, 8, 24, 13, 0), direction="out", kind="break_out"),
+    Punch(ist(2026, 8, 24, 13, 20), direction="in", kind="break_in"),
+    Punch(ist(2026, 8, 24, 18, 0), direction="out", kind="check_out"),
+], DAY, date(2026, 8, 24), as_of=ist(2026, 8, 24, 19, 0))
+ok &= check("checkout is the real leaving time", r12b.last_out, ist(2026, 8, 24, 18, 0))
+ok &= check("break does not count as worked", r12b.break_minutes, 20)
+
+print("13. Stray unclosed punch on Weekly Off / Holiday stays Weekly Off / Holiday")
+# Sunday Oct 18 with 1 isolated punch at midnight (no out)
+r13 = resolve_day([
+    Punch(ist(2026, 10, 18, 0, 0), direction="in"),
+], DAY, date(2026, 10, 18), as_of=ist(2026, 10, 18, 23, 59))
+ok &= check("unworked Sunday with stray punch is weekly_off", r13.status, "weekly_off")
+ok &= check("no exception flagged for weekly_off", r13.has_exception, False)
+ok &= check("late_minutes is zero on weekly_off", r13.late_minutes, 0)
+
+# Holiday with stray punch
+r13b = resolve_day([
+    Punch(ist(2026, 10, 2, 10, 0), direction="in"),
+], DAY, date(2026, 10, 2), is_holiday=True, as_of=ist(2026, 10, 2, 23, 59))
+ok &= check("unworked holiday with stray punch is holiday", r13b.status, "holiday")
+ok &= check("no exception flagged for holiday", r13b.has_exception, False)
+ok &= check("late_minutes is zero on holiday", r13b.late_minutes, 0)
+
 print()
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)
+

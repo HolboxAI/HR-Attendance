@@ -350,8 +350,14 @@ def cancel(
 
 @router.get("/email-decide", response_class=HTMLResponse)
 def email_decide(token: str, db: Session = Depends(get_db)):
-    """Process a leave decision via an email link."""
+    """Process a leave decision via an email link.
+    
+    If approving, applies the approval immediately.
+    If rejecting, renders a mandatory reason prompt so an accidental click
+    never turns down an employee's leave without confirmation and feedback.
+    """
     from app.core.security import decode_action_token
+
     def _glassy_html(title: str, message: str, status_code: int = 200, is_success: bool = True) -> HTMLResponse:
         accent_color = "#10b981" if is_success else "#ef4444"
         icon_svg = (
@@ -414,6 +420,94 @@ def email_decide(token: str, db: Session = Depends(get_db)):
         """
         return HTMLResponse(content=content, status_code=status_code)
 
+    def _glassy_reject_form_html(
+        *,
+        token: str,
+        applicant_name: str,
+        applicant_code: str,
+        leave_type_name: str,
+        from_date: date,
+        to_date: date,
+        days: float,
+        reason: str | None,
+    ) -> HTMLResponse:
+        days_badge = "1 Day" if days == 1.0 else (f"{int(days)} Days" if days.is_integer() else f"{days:g} Days")
+        if from_date == to_date:
+            date_display = from_date.strftime("%B %d, %Y")
+        else:
+            date_display = f"{from_date.strftime('%B %d, %Y')} – {to_date.strftime('%B %d, %Y')}"
+        reason_html = (
+            f'<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.75);font-size:12px;">'
+            f'<span style="color:rgba(255,255,255,0.4);font-weight:600;">Reason stated:</span> &ldquo;{reason}&rdquo;'
+            f'</div>'
+        ) if reason else ""
+
+        content = f"""<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Reject Leave Request · Holbox HRMS</title>
+            <style>
+                * {{ box-sizing: border-box; }}
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #000000; color: #ffffff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; }}
+                .card {{ background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 36px 32px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); text-align: center; max-width: 460px; width: 100%; }}
+                .icon-wrap {{ width: 68px; height: 68px; margin: 0 auto 20px; border-radius: 50%; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); display: flex; align-items: center; justify-content: center; }}
+                h1 {{ color: #ffffff; font-weight: 800; margin: 0 0 8px; font-size: 22px; letter-spacing: -0.02em; }}
+                p.lead {{ font-size: 13px; margin: 0 0 20px; color: rgba(255, 255, 255, 0.6); line-height: 1.5; }}
+                .info-box {{ background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 14px 16px; margin-bottom: 20px; text-align: left; font-size: 13px; }}
+                .info-row {{ display: flex; justify-content: space-between; margin-bottom: 6px; }}
+                .info-label {{ color: rgba(255, 255, 255, 0.45); }}
+                .info-val {{ color: #ffffff; font-weight: 600; }}
+                textarea {{ width: 100%; border-radius: 12px; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.18); color: #ffffff; padding: 12px 14px; font-size: 13px; font-family: inherit; outline: none; resize: vertical; box-sizing: border-box; transition: border-color 0.2s; }}
+                textarea:focus {{ border-color: #ef4444; }}
+                .btn-group {{ display: flex; gap: 10px; justify-content: center; margin-top: 20px; }}
+                .btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 11px 22px; border-radius: 9999px; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; transition: all 0.2s; }}
+                .btn-danger {{ background: #ef4444; color: #ffffff; border: none; }}
+                .btn-danger:hover {{ background: #dc2626; }}
+                .btn-secondary {{ background: rgba(255, 255, 255, 0.08); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.15); }}
+                .btn-secondary:hover {{ background: rgba(255, 255, 255, 0.15); }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="icon-wrap">
+                    <svg viewBox="0 0 24 24" width="34" height="34" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </div>
+                <h1>Reject Leave Request</h1>
+                <p class="lead">Please provide a reason. The employee will see this note in their notifications.</p>
+                <div class="info-box">
+                    <div class="info-row">
+                        <span class="info-label">Applicant:</span>
+                        <span class="info-val">{applicant_name} ({applicant_code})</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Leave Type:</span>
+                        <span class="info-val">{leave_type_name}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Duration:</span>
+                        <span class="info-val">{date_display} ({days_badge})</span>
+                    </div>
+                    {reason_html}
+                </div>
+                <form method="POST" action="/api/v1/leave/email-decide">
+                    <input type="hidden" name="token" value="{token}">
+                    <textarea name="reason" rows="3" required placeholder="Reason for rejection (mandatory)..." autofocus></textarea>
+                    <div class="btn-group">
+                        <button type="submit" class="btn btn-danger">Confirm Rejection</button>
+                        <button type="button" class="btn btn-secondary" onclick="window.close()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=content, status_code=200)
+
     try:
         claims = decode_action_token(token, "leave_decide")
     except Exception:
@@ -430,27 +524,161 @@ def email_decide(token: str, db: Session = Depends(get_db)):
     approver = db.get(User, approver_id)
     if not approver:
         return _glassy_html("Not Found", "Approver account not found.", 404, is_success=False)
+
+    if row.status != LeaveStatus.PENDING:
+        return _glassy_html("Already Decided", f"This leave request has already been {row.status.value.lower()}.", 409, is_success=False)
         
-    # Process decision
     actor_label = approver.email.split('@')[0] if approver.email else "Admin"
+
+    # If the user clicked Reject in their email, DO NOT immediately reject!
+    # Instead, render the confirmation page that demands a rejection reason.
+    if not approve:
+        emp = db.get(Employee, row.employee_id) if row.employee_id else None
+        lt = db.get(LeaveType, row.leave_type_id) if row.leave_type_id else None
+        return _glassy_reject_form_html(
+            token=token,
+            applicant_name=emp.full_name if emp else "Employee",
+            applicant_code=emp.emp_code if emp else "",
+            leave_type_name=lt.name if lt else "Leave",
+            from_date=row.from_date,
+            to_date=row.to_date,
+            days=float(row.days_consumed) if row.days_consumed else 1.0,
+            reason=row.reason,
+        )
+
+    # Approve path remains immediate with audit record
     result = leave_service.decide(
         db,
         request=row,
         approver=approver,
-        approve=approve,
-        note=f"Decided via Email by @{actor_label}",
+        approve=True,
+        note=f"Approved via Email by @{actor_label}",
     )
     if not result.ok:
         db.rollback()
         return _glassy_html("Already Decided", f"{result.reason}", 409, is_success=False)
         
     db.commit()
-    action = "Approved" if approve else "Rejected"
     return _glassy_html(
-        f"Leave Request {action}",
-        f"You have successfully {action.lower()} this request. Slack and all platform records have been synced automatically.",
+        "Leave Request Approved",
+        "You have successfully approved this request. Slack and all platform records have been synced automatically.",
         200,
         is_success=True,
+    )
+
+
+@router.post("/email-decide", response_class=HTMLResponse)
+def email_decide_post(
+    token: str = Form(...),
+    reason: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Process a leave rejection submitted via the rejection form with mandatory reason."""
+    from app.core.security import decode_action_token
+
+    def _glassy_html(title: str, message: str, status_code: int = 200, is_success: bool = True) -> HTMLResponse:
+        accent_color = "#10b981" if is_success else "#ef4444"
+        icon_svg = (
+            '<svg viewBox="0 0 24 24" width="36" height="36" stroke="#10b981" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'
+            if is_success else
+            '<svg viewBox="0 0 24 24" width="36" height="36" stroke="#ef4444" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
+        )
+        auto_close_script = """
+        <p id="countdown-text" style="font-size: 12px; color: rgba(255, 255, 255, 0.4); margin-top: 24px; font-family: ui-monospace, monospace;">
+          Closing window in <span id="sec" style="color: #ffffff; font-weight: bold;">3</span>s...
+        </p>
+        <script>
+          var sec = 3;
+          var t = setInterval(function() {
+            sec--;
+            var el = document.getElementById('sec');
+            if (el) el.innerText = sec;
+            if (sec <= 0) {
+              clearInterval(t);
+              window.close();
+            }
+          }, 1000);
+        </script>
+        """ if is_success else ""
+
+        content = f"""<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>{title} · Holbox HRMS</title>
+            <style>
+                * {{ box-sizing: border-box; }}
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #000000; color: #ffffff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; }}
+                .card {{ background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 36px 32px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); text-align: center; max-width: 440px; width: 100%; }}
+                .icon-wrap {{ width: 68px; height: 68px; margin: 0 auto 20px; border-radius: 50%; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); display: flex; align-items: center; justify-content: center; }}
+                h1 {{ color: #ffffff; font-weight: 800; margin: 0 0 12px; font-size: 22px; letter-spacing: -0.02em; }}
+                p.lead {{ font-size: 14px; margin: 0 0 24px; color: rgba(255, 255, 255, 0.7); line-height: 1.5; }}
+                .btn-group {{ display: flex; gap: 10px; justify-content: center; margin-top: 20px; }}
+                .btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 10px 20px; border-radius: 9999px; font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; transition: all 0.2s; }}
+                .btn-primary {{ background: #ffffff; color: #000000; border: none; }}
+                .btn-primary:hover {{ background: rgba(255, 255, 255, 0.85); }}
+                .btn-secondary {{ background: rgba(255, 255, 255, 0.08); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.15); }}
+                .btn-secondary:hover {{ background: rgba(255, 255, 255, 0.15); }}
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <div class="icon-wrap">{icon_svg}</div>
+                <h1>{title}</h1>
+                <p class="lead">{message}</p>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="window.close()">Close Tab</button>
+                    <a class="btn btn-secondary" href="https://attendance.holbox.ai">Dashboard</a>
+                </div>
+                {auto_close_script}
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=content, status_code=status_code)
+
+    clean_reason = (reason or "").strip()
+    if not clean_reason:
+        return _glassy_html("Reason Required", "A reason is mandatory when turning down a leave request.", 400, is_success=False)
+
+    try:
+        claims = decode_action_token(token, "leave_decide")
+    except Exception:
+        return _glassy_html("Link Expired", "This action link is invalid or has expired.", 400, is_success=False)
+
+    request_id = claims["sub"]
+    approver_id = uuid.UUID(claims["approver_id"])
+
+    row = db.get(LeaveRequest, uuid.UUID(request_id))
+    if not row or row.deleted_at is not None:
+        return _glassy_html("Not Found", "Leave request was not found or was cancelled.", 404, is_success=False)
+
+    approver = db.get(User, approver_id)
+    if not approver:
+        return _glassy_html("Not Found", "Approver account not found.", 404, is_success=False)
+
+    if row.status != LeaveStatus.PENDING:
+        return _glassy_html("Already Decided", f"This leave request has already been {row.status.value.lower()}.", 409, is_success=False)
+
+    actor_label = approver.email.split('@')[0] if approver.email else "Admin"
+    result = leave_service.decide(
+        db,
+        request=row,
+        approver=approver,
+        approve=False,
+        note=f"{clean_reason} (Rejected via Email by @{actor_label})",
+    )
+    if not result.ok:
+        db.rollback()
+        return _glassy_html("Could Not Reject", f"{result.reason}", 409, is_success=False)
+
+    db.commit()
+    return _glassy_html(
+        "Leave Request Rejected",
+        f"You have successfully rejected this request. Reason provided: &ldquo;{clean_reason}&rdquo;. Slack and platform records have been synced.",
+        200,
+        is_success=False,
     )
 
 
@@ -586,3 +814,65 @@ def download_document(
         
     ext, media_type = kind_from_storage_key(row.medical_document_url, data)
     return Response(content=data, media_type=media_type)
+
+
+class PlannedAbsenceIn(BaseModel):
+    year: int
+    month: int
+    dates: list[date]
+
+
+class PlannedAbsenceOut(BaseModel):
+    year: int
+    month: int
+    today: date
+    dates: list[date]
+
+
+@router.get("/planned-absences", response_model=PlannedAbsenceOut)
+def my_planned_absences(
+    year: int = Query(...),
+    month: int = Query(..., ge=1, le=12),
+    db: Session = Depends(get_db),
+    emp: Employee = Depends(get_current_employee),
+) -> PlannedAbsenceOut:
+    from app.services.planned_absence import list_month
+
+    today = org_today()
+    return PlannedAbsenceOut(
+        year=year, month=month, today=today,
+        dates=list_month(db, emp.id, year, month),
+    )
+
+
+@router.put("/planned-absences", response_model=PlannedAbsenceOut)
+def save_planned_absences(
+    body: PlannedAbsenceIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    emp: Employee = Depends(get_current_employee),
+) -> PlannedAbsenceOut:
+    """Replace this month's future notices. Past dates in the month stay put."""
+    from app.services import leave as leave_service
+    from app.services.planned_absence import replace_month
+
+    if body.month < 1 or body.month > 12:
+        raise HTTPException(400, "Pick a real month")
+    today = org_today()
+    dates = replace_month(
+        db,
+        org_id=emp.org_id,
+        employee_id=emp.id,
+        year=body.year,
+        month=body.month,
+        wanted=set(body.dates),
+        today=today,
+    )
+    leave_service.audit(
+        db, org_id=emp.org_id, actor=user, entity="planned_absence",
+        entity_id=emp.id, action="update",
+        changes={"month": {"old": None, "new": f"{body.year}-{body.month:02d}"},
+                 "dates": {"old": None, "new": [d.isoformat() for d in dates]}},
+    )
+    db.commit()
+    return PlannedAbsenceOut(year=body.year, month=body.month, today=today, dates=dates)

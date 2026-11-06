@@ -29,9 +29,12 @@ from app.models.enums import UserRole
 from app.models.notification import Notification
 from app.services.email_templates import (
     leave_request_html,
+    day_close_html,
+    planned_absence_html,
     shift_summary_html,
     signup_approved_html,
     signup_request_html,
+    signup_you_can_sign_in_html,
 )
 
 ADMIN_NOTIFICATION_EMAILS: list[str] = [
@@ -301,15 +304,40 @@ def notify(
             f"Reject: {reject_url}\n"
         )
 
-        # Strictly deliver administrative leave notifications only to Krish and Accounting
-        recipients = set()
-        for admin_email in ADMIN_NOTIFICATION_EMAILS:
-            if not is_excluded_notification_email(admin_email):
-                recipients.add(admin_email.lower().strip())
-
+        # Deliver leave decision emails strictly to the individual admin whose token was minted,
+        # plus an informational copy to accounting@holbox.ai (sent only once, when notifying Krish).
         from threading import Thread
-        for target in recipients:
-            Thread(target=_send_email_task, args=(target, f"Leave Request: {applicant_name} ({days_badge_text})", plain_body, html_body, attachment_bytes, attachment_filename), daemon=True).start()
+
+        if user.email and not is_excluded_notification_email(user.email):
+            Thread(
+                target=_send_email_task,
+                args=(
+                    user.email.lower().strip(),
+                    f"Leave Request: {applicant_name} ({days_badge_text})",
+                    plain_body,
+                    html_body,
+                    attachment_bytes,
+                    attachment_filename,
+                ),
+                daemon=True,
+            ).start()
+
+        # Mirror a copy to accounting@holbox.ai once (tied to Krish's notification)
+        if user.email and user.email.lower().strip() == "krish@holbox.ai":
+            acct_email = "accounting@holbox.ai"
+            if not is_excluded_notification_email(acct_email):
+                Thread(
+                    target=_send_email_task,
+                    args=(
+                        acct_email,
+                        f"Leave Request: {applicant_name} ({days_badge_text})",
+                        plain_body,
+                        html_body,
+                        attachment_bytes,
+                        attachment_filename,
+                    ),
+                    daemon=True,
+                ).start()
 
     return row
 
@@ -320,13 +348,21 @@ def _send_email_task(
     html_body: str | None = None,
     attachment_bytes: bytes | None = None,
     attachment_filename: str | None = None,
+    allow_excluded: bool = False,
 ) -> None:
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
-    
-    # Never attempt real SMTP delivery to dummy, excluded or test domains
-    if not to_email or is_excluded_notification_email(to_email):
+
+    # Admin fan-out skips a few inboxes on purpose. A mail whose recipient
+    # IS the subject (you have been approved) must still arrive.
+    if not to_email:
+        return
+    if allow_excluded:
+        lower = to_email.lower().strip()
+        if any(lower.endswith(s) for s in (".local", ".test", ".example", "test.local")):
+            return
+    elif is_excluded_notification_email(to_email):
         return
 
     if not settings.smtp_host:
@@ -479,7 +515,7 @@ def send_shift_summary_email(
     ]
     for r in roster:
         lines.append(
-            f"- {r['name']} ({r['code']}): {r['status'].upper()} | In: {r['first_in']} | Out: {r['last_out']} | Breaks: {r.get('break_str', '0m')} | Worked: {r.get('hours_str', '-')}"
+            f"- {r['name']} ({r['code']}): {r['status'].upper()} | In: {r['first_in']} | Out: {r['last_out']} | Breaks: {r.get('break_str', '0m')} | Worked: {r.get('hours_str', '-')} | Extra: {r.get('extra_str', '—')}"
         )
     plain_body = "\n".join(lines)
 
@@ -492,6 +528,112 @@ def send_shift_summary_email(
     )
 
     recipients = [e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)]
+    for target in recipients:
+        Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()
+
+
+def send_day_close_email(
+    *,
+    shift_date: date,
+    sections: list[dict],
+    only_to: str | None = None,
+    preview: bool = False,
+) -> None:
+    """One attendance mail for every group. sections carry name, timing, stats, roster."""
+    from threading import Thread
+
+    label = shift_date.strftime("%A, %B %d, %Y")
+    subject = f"[Attendance] {shift_date.strftime('%d %b %Y')} — all groups"
+    if preview:
+        subject = f"[Preview] {subject}"
+    lines = [f"Attendance for {label}", "Through 11:59 PM. Extra is time past the shift end.", ""]
+    html_parts: list[str] = []
+    for section in sections:
+        lines.append(f"{section['shift_name']} ({section['shift_timing']})")
+        stats = section["stats"]
+        lines.append(
+            f"Scheduled: {stats.get('total', 0)} | Present: {stats.get('present', 0)} | "
+            f"Late: {stats.get('late', 0)} | Absent: {stats.get('absent', 0)} | On Leave: {stats.get('leave', 0)}"
+        )
+        for r in section["roster"]:
+            lines.append(
+                f"- {r.get('code', '')} {r['name']}: {str(r['status']).upper()} | "
+                f"In: {r['first_in']} | Out: {r['last_out']} | "
+                f"Breaks: {r.get('break_windows', '—')} ({r.get('break_str', '0m')}) | "
+                f"Worked: {r.get('hours_str', '—')} | Extra: {r.get('extra_str', '—')} | "
+                f"Punctuality: {r.get('punctuality', '—')} | "
+                f"Regularised by: {r.get('regularised_by', 'N/A')} | "
+                f"Leave: {r.get('leave_status', 'N/A')} ({r.get('leave_approved_by', 'N/A')}) | "
+                f"{r.get('remarks', '—')}"
+            )
+        lines.append("")
+        html_parts.append(shift_summary_html(
+            shift_name=section["shift_name"],
+            shift_timing=section["shift_timing"],
+            shift_date_label=label,
+            stats=stats,
+            roster=section["roster"],
+            embedded=True,
+        ))
+    plain_body = "\n".join(lines)
+    html_body = day_close_html(date_label=label, sections_html="".join(html_parts))
+    recipients = [only_to] if only_to else [
+        e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)
+    ]
+    for target in recipients:
+        Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()
+
+
+def send_planned_absence_email(
+    *,
+    as_of: date,
+    people: list[dict],
+    only_to: str | None = None,
+    preview: bool = False,
+) -> None:
+    """Nightly outlook: only people with leave or an advance notice."""
+    from threading import Thread
+    from app.services.email_templates import _e
+
+    label = as_of.strftime("%A, %-d %B %Y")
+    subject = f"Team availability outlook — {as_of.strftime('%-d %B %Y')}"
+    if preview:
+        subject = f"[Preview] {subject}"
+    lines = [
+        f"Team availability outlook as of {label}.",
+        "Only employees with a leave application or advance notice through the end of next month "
+        "(pending / approved / rejected — cancelled leave omitted).",
+        "Advance notices do not deduct leave balance. Leave rows are applications; a decision may still be pending.",
+        "A punch on a listed day still counts toward attendance.",
+        "",
+    ]
+    anyone_marked = False
+    rows_html = ""
+    for person in people:
+        dates = person.get("dates") or []
+        if not dates:
+            continue  # omit people with nothing scheduled
+        anyone_marked = True
+        shown = "; ".join(dates)
+        shown_html = "<br>".join(_e(d) for d in dates)
+        lines.append(f"- {person['name']} ({person['code']}): {shown}")
+        rows_html += f"""
+          <tr>
+            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-weight:700;color:#0f172a;font-size:13px;vertical-align:top;">
+              {_e(person['name'])} <span style="font-size:11px;font-family:ui-monospace,monospace;color:#94a3b8;">({_e(person['code'])})</span>
+            </td>
+            <td style="padding:11px 12px;border-bottom:1px solid #f1f5f9;font-size:13px;color:#334155;line-height:1.55;">{shown_html}</td>
+          </tr>
+        """
+    if not anyone_marked:
+        lines.append("No scheduled leave or advance notices for this window.")
+    plain_body = "\n".join(lines)
+    html_body = planned_absence_html(
+        date_label=label, rows_html=rows_html, anyone_marked=anyone_marked,
+    )
+    recipients = [only_to] if only_to else [
+        e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)
+    ]
     for target in recipients:
         Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()
 
@@ -580,4 +722,31 @@ def send_signup_approved_email(
     recipients = [e for e in ADMIN_NOTIFICATION_EMAILS if not is_excluded_notification_email(e)]
     for target in recipients:
         Thread(target=_send_email_task, args=(target, subject, plain_body, html_body, None, None), daemon=True).start()
+
+
+def send_signup_approved_to_applicant(
+    *,
+    full_name: str,
+    email: str,
+    emp_code: str,
+) -> None:
+    """Tell the person who applied that they can come back and sign in."""
+    from threading import Thread
+
+    subject = "You can sign in to Holbox attendance"
+    plain_body = (
+        f"Hi {full_name},\n\n"
+        f"An admin approved your request. Your employee code is {emp_code}.\n\n"
+        f"Sign in at https://attendance.holbox.ai/login with Continue with Google, "
+        f"using {email}. If you set a password when you applied, that works too.\n"
+    )
+    html_body = signup_you_can_sign_in_html(
+        full_name=full_name, email=email, emp_code=emp_code,
+    )
+    Thread(
+        target=_send_email_task,
+        args=(email, subject, plain_body, html_body),
+        kwargs={"allow_excluded": True},
+        daemon=True,
+    ).start()
 

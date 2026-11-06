@@ -35,7 +35,7 @@ def generate_shift_summary_image(
     roster: Sequence[dict],
 ) -> bytes:
     """Render a modern dark-mode attendance card into PNG bytes."""
-    width = 1100
+    width = 1240
     row_height = 46
     header_height = 200
     footer_height = 60
@@ -97,11 +97,12 @@ def generate_shift_summary_image(
     
     col_x = {
         "emp": 56,
-        "first_in": 360,
-        "last_out": 490,
-        "breaks": 620,
-        "worked": 750,
-        "status": 910,
+        "first_in": 300,
+        "last_out": 420,
+        "breaks": 540,
+        "worked": 670,
+        "extra": 830,
+        "status": 980,
     }
 
     draw.text((col_x["emp"], th_y + 10), "EMPLOYEE", fill="#94A3B8", font=font_th)
@@ -109,6 +110,7 @@ def generate_shift_summary_image(
     draw.text((col_x["last_out"], th_y + 10), "LAST OUT", fill="#94A3B8", font=font_th)
     draw.text((col_x["breaks"], th_y + 10), "BREAKS", fill="#94A3B8", font=font_th)
     draw.text((col_x["worked"], th_y + 10), "NET WORKED", fill="#94A3B8", font=font_th)
+    draw.text((col_x["extra"], th_y + 10), "EXTRA", fill="#94A3B8", font=font_th)
     draw.text((col_x["status"], th_y + 10), "STATUS", fill="#94A3B8", font=font_th)
 
     # 4. Table Rows
@@ -134,6 +136,7 @@ def generate_shift_summary_image(
         hours_str = r.get("hours_str") or "0m"
         draw.text((col_x["breaks"], curr_y + 14), break_str, fill="#94A3B8", font=font_td)
         draw.text((col_x["worked"], curr_y + 14), hours_str, fill="#38BDF8", font=font_td)
+        draw.text((col_x["extra"], curr_y + 14), r.get("extra_str") or "—", fill="#F8FAFC", font=font_td)
 
         # Status Badge
         st = (r.get("status") or "absent").lower()

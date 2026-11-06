@@ -431,8 +431,9 @@ export default function PunchScreen() {
     );
   }
 
-  // When direction is 'out', employee has checked in and next action is Check Out.
-  const isCurrentlyIn = today.direction === 'out' || (!!today.checkedInAt && !today.checkedOutAt);
+  // The server decides. A check-in from before 5:00 AM belongs to yesterday,
+  // and a missing checkout must not keep this button on Check Out.
+  const isCurrentlyIn = today.isCurrentlyIn ?? today.direction === 'out';
   const camDenied = camPerm && !camPerm.granted && !camPerm.canAskAgain;
   const locDenied = locPerm === 'denied';
 

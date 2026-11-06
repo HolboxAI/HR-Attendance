@@ -74,6 +74,31 @@ export function HolidayCalendar({
     router.refresh();
   }
 
+  async function saveHoliday(r: HolidayRow, patch: Partial<HolidayRow>) {
+    setBusy(true);
+    setError(null);
+    const res = await fetch(proxy(`/api/v1/admin/holidays/${r.id}`), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        day: patch.day ?? r.day,
+        name: patch.name ?? r.name,
+        is_optional: patch.is_optional ?? r.is_optional,
+        is_confirmed: patch.is_confirmed ?? r.is_confirmed,
+        note: patch.note ?? r.note ?? null,
+      }),
+    }).catch(() => null);
+    setBusy(false);
+    if (!res || !res.ok) {
+      const body = res ? await res.json().catch(() => null) : null;
+      setError(body?.detail ?? 'Could not update that holiday');
+      return;
+    }
+    setSuccess('Holiday updated');
+    setTimeout(() => setSuccess(null), 2000);
+    router.refresh();
+  }
+
   const unconfirmed = rows.filter((r) => !r.is_confirmed).length;
 
   return (
@@ -165,12 +190,47 @@ export function HolidayCalendar({
                   <td className="tnum whitespace-nowrap px-4 py-3 font-mono">
                     <span className="transition-transform duration-300 inline-block group-hover:translate-x-1">{plainDate(r.day)}</span>
                   </td>
-                  <td className="px-4 py-3 font-medium text-ink">{r.name}</td>
+                  <td className="px-4 py-3 font-medium text-ink">
+                    {canEdit ? (
+                      <input
+                        defaultValue={r.name}
+                        disabled={busy}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v && v !== r.name) void saveHoliday(r, { name: v });
+                        }}
+                        className="w-full min-w-[10rem] rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-ink hover:border-line focus:border-ink focus:outline-none"
+                      />
+                    ) : (
+                      r.name
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-ink-3 font-mono">
-                    {r.is_optional ? 'Optional' : 'Office closed'}
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void saveHoliday(r, { is_optional: !r.is_optional })}
+                        className="rounded-lg border border-line px-2 py-1 text-[10px] font-semibold hover:bg-surface-2"
+                        title="Toggle: office closed (leave day) vs optional (office open)"
+                      >
+                        {r.is_optional ? 'Optional (open)' : 'Leave day (closed)'}
+                      </button>
+                    ) : (
+                      r.is_optional ? 'Optional' : 'Office closed'
+                    )}
                   </td>
                   <td className="px-4 py-3 font-mono">
-                    {r.is_confirmed ? (
+                    {canEdit ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void saveHoliday(r, { is_confirmed: !r.is_confirmed })}
+                        className="rounded-lg border border-line px-2 py-1 text-[10px] font-semibold hover:bg-surface-2"
+                      >
+                        {r.is_confirmed ? 'Confirmed' : 'Check date → confirm'}
+                      </button>
+                    ) : r.is_confirmed ? (
                       <span className="text-ink font-semibold">Confirmed</span>
                     ) : (
                       <span className="text-ink-3">Check date</span>
@@ -178,12 +238,25 @@ export function HolidayCalendar({
                   </td>
                   {canEdit && (
                     <td className="px-4 py-3">
-                      <button
-                        type="button" disabled={busy} onClick={() => remove(r.id)}
-                        className="rounded-xl border border-line glass-panel px-3 py-1.5 text-xs font-mono font-semibold text-ink hover:bg-surface-2 transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          type="date"
+                          defaultValue={r.day}
+                          disabled={busy}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v && v !== r.day) void saveHoliday(r, { day: v });
+                          }}
+                          className="rounded-lg border border-line bg-surface-2 px-2 py-1 text-[10px] font-mono"
+                          title="Change date"
+                        />
+                        <button
+                          type="button" disabled={busy} onClick={() => remove(r.id)}
+                          className="rounded-xl border border-line glass-panel px-3 py-1.5 text-xs font-mono font-semibold text-ink hover:bg-surface-2 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </td>
                   )}
                 </tr>

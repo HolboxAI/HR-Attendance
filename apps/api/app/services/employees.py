@@ -215,9 +215,9 @@ def create(
     return EmployeeOutcome(True, employee=employee, temporary_password=temporary_pass)
 
 
-# Fields a PATCH may touch. Deliberately excludes emp_code (it is the stable
-# identifier every attendance row and export column hangs off) and is_active
-# (that is offboarding, which has to do more than flip a flag).
+# Fields a PATCH may set in place. emp_code is handled on its own below:
+# punches and days point at employee_id, so renaming the code keeps history.
+# is_active stays out of here; offboarding has to do more than flip a flag.
 EDITABLE = ("full_name", "email", "phone", "designation", "date_of_joining", "correction_limit")
 
 
@@ -227,6 +227,17 @@ def update(
     role: UserRole | None = None,
 ) -> EmployeeOutcome:
     recorded: dict = {}
+
+    if "emp_code" in changes and changes["emp_code"] is not None:
+        new_code = str(changes["emp_code"]).strip().upper()
+        if not new_code or len(new_code) > 32:
+            return EmployeeOutcome(False, reason="Employee code must be 1–32 characters")
+        if new_code != employee.emp_code:
+            clash = _by_code(db, employee.org_id, new_code)
+            if clash is not None:
+                return EmployeeOutcome(False, reason=f"{new_code} already exists")
+            recorded["emp_code"] = {"old": employee.emp_code, "new": new_code}
+            employee.emp_code = new_code
 
     for field in EDITABLE:
         if field not in changes or changes[field] is None:
@@ -318,7 +329,8 @@ def update(
 
 
 def deactivate(
-    db: Session, *, actor: User, employee: Employee, exit_date: date | None = None
+    db: Session, *, actor: User, employee: Employee, exit_date: date | None = None,
+    note: str | None = None,
 ) -> EmployeeOutcome:
     """Offboard. Nothing is deleted - attendance history has to survive."""
     if employee.id == actor.employee_id:
@@ -348,7 +360,31 @@ def deactivate(
     audit(db, org_id=employee.org_id, actor=actor, entity="employee",
           entity_id=employee.id, action="deactivated",
           changes={"is_active": {"old": True, "new": False},
-                   "date_of_exit": {"old": None, "new": str(employee.date_of_exit)}})
+                   "date_of_exit": {"old": None, "new": str(employee.date_of_exit)}},
+          note=note)
+
+    return EmployeeOutcome(True, employee=employee)
+
+
+def reactivate(
+    db: Session, *, actor: User, employee: Employee
+) -> EmployeeOutcome:
+    """Reactivate a former/inactive employee back to active service."""
+    if employee.is_active:
+        return EmployeeOutcome(False, reason=f"{employee.emp_code} is already active")
+
+    prev_exit = employee.date_of_exit
+    employee.is_active = True
+    employee.date_of_exit = None
+
+    user = db.scalar(select(User).where(User.employee_id == employee.id))
+    if user is not None:
+        user.is_active = True
+
+    audit(db, org_id=employee.org_id, actor=actor, entity="employee",
+          entity_id=employee.id, action="reactivated",
+          changes={"is_active": {"old": False, "new": True},
+                   "date_of_exit": {"old": str(prev_exit) if prev_exit else None, "new": None}})
 
     return EmployeeOutcome(True, employee=employee)
 

@@ -20,6 +20,7 @@ from app.api.routes.admin import visible_employees
 from app.db.session import get_db
 from app.models.employee import Employee, User
 from app.models.enums import UserRole
+from app.models.face import FaceEnrollment
 from app.models.org import Department
 from app.services import employees as employee_service
 from app.api.routes.enrolment import _employee, active_enrolment
@@ -66,6 +67,9 @@ class CreateRequest(BaseModel):
 
 
 class UpdateRequest(BaseModel):
+    # Attendance hangs off the employee row, not this code, so HR can rename
+    # it from the profile. The new code has to be unused.
+    emp_code: str | None = Field(default=None, min_length=1, max_length=32)
     full_name: str | None = None
     email: str | None = None
     phone: str | None = None
@@ -86,6 +90,7 @@ class CreatedResponse(BaseModel):
 
 class DeactivateRequest(BaseModel):
     date_of_exit: date | None = None
+    reason: str | None = None
 
 
 def to_out(db: Session, emp: Employee) -> EmployeeOut:
@@ -93,6 +98,12 @@ def to_out(db: Session, emp: Employee) -> EmployeeOut:
     manager = db.get(Employee, emp.manager_id) if emp.manager_id else None
     user = db.scalar(select(User).where(User.employee_id == emp.id))
     enrol = active_enrolment(db, emp)
+    if enrol is None:
+        enrol = db.scalar(
+            select(FaceEnrollment)
+            .where(FaceEnrollment.employee_id == emp.id)
+            .order_by(FaceEnrollment.enrolled_at.desc())
+        )
     avatar_url = f"/api/gateway/api/v1/employees/{emp.emp_code}/photo" if enrol else None
     return EmployeeOut(
         emp_code=emp.emp_code, full_name=emp.full_name, email=emp.email,
@@ -117,9 +128,25 @@ def _find(db: Session, employee_code: str) -> Employee:
 @router.get("", response_model=list[EmployeeOut])
 def list_employees(
     include_inactive: bool = False,
+    inactive_only: bool = False,
     db: Session = Depends(get_db),
     user: User = approver,
 ):
+    if inactive_only:
+        scope_admin = user.role in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN)
+        if scope_admin:
+            rows = db.scalars(
+                select(Employee).where(Employee.is_active.is_(False)).order_by(Employee.emp_code)
+            ).all()
+        else:
+            rows = db.scalars(
+                select(Employee).where(
+                    Employee.is_active.is_(False),
+                    (Employee.manager_id == user.employee_id) | (Employee.id == user.employee_id)
+                ).order_by(Employee.emp_code)
+            ).all()
+        return [to_out(db, e) for e in rows]
+
     rows = visible_employees(db, user)
     if include_inactive:
         # visible_employees only returns active people, by design - the board
@@ -128,6 +155,8 @@ def list_employees(
         scope_admin = user.role in (UserRole.HR_ADMIN, UserRole.SUPER_ADMIN)
         if scope_admin:
             rows = db.scalars(select(Employee).order_by(Employee.emp_code)).all()
+        else:
+            rows = visible_employees(db, user, include_inactive=True)
     return [to_out(db, e) for e in rows]
 
 
@@ -136,7 +165,7 @@ def get_employee(
     employee_code: str, db: Session = Depends(get_db), user: User = approver,
 ):
     emp = _find(db, employee_code)
-    if emp.is_active and emp.id not in {e.id for e in visible_employees(db, user)}:
+    if emp.id not in {e.id for e in visible_employees(db, user, include_inactive=True)}:
         # 404 rather than 403: whether a code exists is itself information a
         # manager outside the reporting line has no business confirming.
         raise HTTPException(404, f"No employee with code {employee_code}")
@@ -197,11 +226,27 @@ def deactivate_employee(
     """
     emp = _find(db, employee_code)
     result = employee_service.deactivate(
-        db, actor=actor, employee=emp, exit_date=body.date_of_exit
+        db, actor=actor, employee=emp, exit_date=body.date_of_exit, note=body.reason
     )
     if not result.ok:
         db.rollback()
         raise HTTPException(409, result.reason or "Could not deactivate")
+    db.commit()
+    return to_out(db, emp)
+
+
+@router.post("/{employee_code}/reactivate", response_model=EmployeeOut)
+def reactivate_employee(
+    employee_code: str,
+    db: Session = Depends(get_db),
+    actor: User = hr_only,
+):
+    """Reactivate a former/inactive employee back to active service."""
+    emp = _find(db, employee_code)
+    result = employee_service.reactivate(db, actor=actor, employee=emp)
+    if not result.ok:
+        db.rollback()
+        raise HTTPException(409, result.reason or "Could not reactivate")
     db.commit()
     return to_out(db, emp)
 

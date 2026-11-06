@@ -17,6 +17,7 @@ import {
   Trash2,
   UserCheck,
   UserPlus,
+  UserX,
   X,
 } from 'lucide-react';
 
@@ -60,11 +61,13 @@ export function Directory({
   const [query, setQuery] = useState('');
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
 
-  // Deletion modal state
+  // Deactivation / Ex-employee modal state
   const [deleteTarget, setDeleteTarget] = useState<DirectoryRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [exitDate, setExitDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [exitReason, setExitReason] = useState('');
 
   // Pending signups state
   const [pendingSignups, setPendingSignups] = useState<PendingSignup[]>(
@@ -158,28 +161,34 @@ export function Directory({
     setDeleteError(null);
 
     try {
-      const res = await fetch(`/api/gateway/api/v1/admin/employees/${deleteTarget.code}`, {
-        method: 'DELETE',
+      const res = await fetch(`/api/gateway/api/v1/admin/employees/${deleteTarget.code}/deactivate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date_of_exit: exitDate || undefined,
+          reason: exitReason.trim() || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setDeleteError(data.detail ?? 'Failed to delete employee.');
+        setDeleteError(data.detail ?? data.reason ?? 'Failed to move employee to Ex Employees.');
         setIsDeleting(false);
         return;
       }
 
-      // Remove from local list immediately
+      // Remove from local active directory immediately
       setLocalRows((prev) => prev.filter((r) => r.code !== deleteTarget.code));
       setDeleteSuccess(
-        data.message ?? `Employee ${deleteTarget.name} (${deleteTarget.code}) and all data deleted.`
+        `Employee ${deleteTarget.name} (${deleteTarget.code}) moved to Ex Employees. All historical attendance, punch logs, and leave records are preserved.`
       );
       setDeleteTarget(null);
+      setExitReason('');
       router.refresh();
 
       setTimeout(() => {
         setDeleteSuccess(null);
-      }, 6000);
+      }, 7000);
     } catch (err: any) {
       setDeleteError(err.message ?? 'An unexpected network error occurred.');
     } finally {
@@ -295,11 +304,17 @@ export function Directory({
         </div>
       )}
 
-      {/* Delete Success Notification Banner */}
+      {/* Delete / Move to Ex Employees Success Notification Banner */}
       {deleteSuccess && (
         <div className="flex items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200">
           <CheckCircle2 className="size-4 shrink-0" />
           <span className="flex-1">{deleteSuccess}</span>
+          <Link
+            href="/people/ex-employees"
+            className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] transition-colors shrink-0 shadow-xs"
+          >
+            View Ex Employees →
+          </Link>
           <button
             type="button"
             onClick={() => setDeleteSuccess(null)}
@@ -553,12 +568,14 @@ export function Directory({
                                 e.stopPropagation();
                                 setDeleteError(null);
                                 setDeleteTarget(r);
+                                setExitDate(new Date().toISOString().split('T')[0]);
+                                setExitReason('');
                               }}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 active:scale-95 transition-all cursor-pointer border border-transparent hover:border-rose-500/20"
-                              title={`Delete employee ${r.name} (${r.code})`}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 active:scale-95 transition-all cursor-pointer border border-transparent hover:border-amber-500/20 dark:text-amber-400"
+                              title={`Move ${r.name} (${r.code}) to Ex Employees`}
                             >
-                              <Trash2 className="size-3.5" />
-                              <span>Delete</span>
+                              <UserX className="size-3.5" />
+                              <span>Ex Employee</span>
                             </button>
                           )}
                         </td>
@@ -642,11 +659,13 @@ export function Directory({
                           e.stopPropagation();
                           setDeleteError(null);
                           setDeleteTarget(r);
+                          setExitDate(new Date().toISOString().split('T')[0]);
+                          setExitReason('');
                         }}
-                        className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 active:scale-95 transition-all cursor-pointer border border-transparent hover:border-rose-500/20"
-                        title={`Delete ${r.name}`}
+                        className="p-1.5 rounded-lg text-amber-600 hover:text-amber-700 hover:bg-amber-500/10 active:scale-95 transition-all cursor-pointer border border-transparent hover:border-amber-500/20 dark:text-amber-400"
+                        title={`Move ${r.name} to Ex Employees`}
                       >
-                        <Trash2 className="size-4" />
+                        <UserX className="size-4" />
                       </button>
                     )}
                   </div>
@@ -679,8 +698,8 @@ export function Directory({
           <div className="p-6 space-y-5">
             {/* Header Icon & Close */}
             <div className="flex items-start justify-between">
-              <div className="size-12 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 shadow-sm">
-                <Trash2 className="size-6" />
+              <div className="size-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shadow-sm">
+                <UserX className="size-6" />
               </div>
               <button
                 type="button"
@@ -701,25 +720,52 @@ export function Directory({
             {/* Title & Question */}
             <div className="space-y-1.5">
               <h3 className="font-display text-lg font-bold text-ink">
-                Delete Employee Permanently?
+                Move to Ex Employees?
               </h3>
               <p className="text-sm text-ink-2">
-                Are you sure you want to delete <strong className="text-ink">{deleteTarget.name}</strong> (<span className="font-mono text-xs font-semibold">{deleteTarget.code}</span>)?
+                Mark <strong className="text-ink">{deleteTarget.name}</strong> (<span className="font-mono text-xs font-semibold">{deleteTarget.code}</span>) as an Ex Employee who has left the company.
               </p>
             </div>
 
-            {/* Warning Note Box */}
-            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs leading-relaxed space-y-1.5">
-              <div className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
-                <AlertTriangle className="size-4 shrink-0" />
-                <span>Permanent Deletion Warning</span>
+            {/* Form Fields: Exit Date & Reason */}
+            <div className="space-y-3 pt-1">
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">
+                  Date of Exit
+                </label>
+                <input
+                  type="date"
+                  value={exitDate}
+                  onChange={(e) => setExitDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-line bg-surface-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                />
               </div>
-              <p className="text-[11px] opacity-90 leading-normal text-ink-2">
-                If you delete this employee, <strong>all history of this employee and data will be deleted as well</strong> — including attendance records, punch events, biometric reference photos, device bindings, leave requests &amp; balances, and login credentials.
-              </p>
-              <p className="text-[11px] font-semibold text-rose-500">
-                This action is irreversible and cannot be undone.
-              </p>
+              <div>
+                <label className="block text-xs font-semibold text-ink mb-1">
+                  Reason for Leaving <span className="text-ink-3 font-normal">(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Resigned, Internship Completed, Relocation"
+                  value={exitReason}
+                  onChange={(e) => setExitReason(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-line bg-surface-2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            </div>
+
+            {/* Data Preservation Info Box */}
+            <div className="p-3.5 rounded-xl border border-blue-500/25 bg-blue-500/10 text-xs text-ink space-y-1.5">
+              <div className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-300">
+                <Shield className="size-4 shrink-0" />
+                <span>Data Preservation &amp; Alert Summary</span>
+              </div>
+              <ul className="text-[11px] space-y-1 text-ink-2 pl-4 list-disc">
+                <li>All historical attendance days, punch records, and leaves are <strong>safely preserved</strong>.</li>
+                <li>They will be moved to the <strong>Ex Employees</strong> section and can be viewed anytime.</li>
+                <li>Slack daily summaries and shift-end check-out emails will be <strong>stopped</strong>.</li>
+                <li>Their mobile punch and login access will be <strong>revoked</strong>.</li>
+              </ul>
             </div>
 
             {/* Error Message */}
@@ -746,17 +792,17 @@ export function Directory({
                 type="button"
                 disabled={isDeleting}
                 onClick={handleConfirmDelete}
-                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold transition-all shadow-md shadow-rose-600/20 disabled:opacity-60 cursor-pointer flex items-center gap-2"
+                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold transition-all shadow-md shadow-amber-600/20 disabled:opacity-60 cursor-pointer flex items-center gap-2"
               >
                 {isDeleting ? (
                   <>
                     <Loader2 className="size-3.5 animate-spin" />
-                    <span>Deleting Everything…</span>
+                    <span>Moving to Ex Employees…</span>
                   </>
                 ) : (
                   <>
-                    <Trash2 className="size-3.5" />
-                    <span>Yes, Delete Everything</span>
+                    <UserX className="size-3.5" />
+                    <span>Move to Ex Employees</span>
                   </>
                 )}
               </button>

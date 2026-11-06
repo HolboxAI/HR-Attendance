@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.core.clock import org_today
 from app.models.employee import Employee, User
-from app.models.enums import AccrualRule, LeaveStatus
+from app.api.deps import RANK
+from app.models.enums import AccrualRule, LeaveStatus, UserRole
 from app.models.leave import (
     AccrualRun, AuditLog, CarryForwardRun, Holiday, LeaveBalance, LeavePolicy,
     LeaveRequest, LeaveType,
@@ -243,6 +244,134 @@ def set_available(
     return bal, True
 
 
+def monthly_credit_cap(leave_type: LeaveType) -> float:
+    """Max days HR may credit for one calendar month: annual quota ÷ 12.
+
+    Same cap whether the type accrues monthly or annually — Team balances
+    month mode edits that month's credit, not a lump-sum year dump.
+    """
+    if leave_type.accrual_rule == AccrualRule.NONE:
+        return 0.0
+    return round(float(leave_type.annual_quota) / 12.0, 2)
+
+
+def pending_days_held(
+    db: Session, employee: Employee, leave_type: LeaveType, period: str,
+    exclude: uuid.UUID | None = None,
+) -> float:
+    """Days already spoken for by pending requests (not yet in `used`)."""
+    stmt = select(LeaveRequest).where(
+        LeaveRequest.employee_id == employee.id,
+        LeaveRequest.leave_type_id == leave_type.id,
+        LeaveRequest.period == period,
+        LeaveRequest.status == LeaveStatus.PENDING,
+        LeaveRequest.deleted_at.is_(None),
+    )
+    if exclude is not None:
+        stmt = stmt.where(LeaveRequest.id != exclude)
+    total = 0.0
+    for row in db.scalars(stmt).all():
+        total += float(row.days_consumed)
+    return round(total, 2)
+
+
+def effective_available(
+    db: Session, employee: Employee, leave_type: LeaveType, period: str,
+    exclude: uuid.UUID | None = None,
+) -> float:
+    """What the person can still apply for: balance minus pending holds."""
+    bal = balance(db, employee, leave_type, period)
+    return round(float(bal.available) - pending_days_held(
+        db, employee, leave_type, period, exclude=exclude,
+    ), 2)
+
+
+def month_credit(
+    db: Session, employee: Employee, leave_type: LeaveType, period: str, month: int,
+) -> float:
+    """Amount already credited for this calendar month (0 if never accrued)."""
+    row = db.scalar(
+        select(AccrualRun).where(
+            AccrualRun.employee_id == employee.id,
+            AccrualRun.leave_type_id == leave_type.id,
+            AccrualRun.period == period,
+            AccrualRun.month == month,
+        )
+    )
+    return float(row.amount) if row else 0.0
+
+
+def set_month_credit(
+    db: Session,
+    *,
+    employee: Employee,
+    leave_type: LeaveType,
+    period: str,
+    year: int,
+    month: int,
+    amount: float,
+    actor: User,
+    note: str | None = None,
+) -> tuple[float, float, bool]:
+    """Set this month's accrual credit (0 … monthly cap). Adjusts accrued.
+
+    Returns (new_amount, cap, changed). Cap is annual_quota/12 for monthly types
+    — HR cannot give more than one month's fixed rate here.
+    """
+    if month < 1 or month > 12:
+        raise ValueError("Month must be 1–12")
+    cap = monthly_credit_cap(leave_type)
+    amount = round(float(amount), 2)
+    if amount < 0 or amount > cap + 1e-9:
+        raise ValueError(
+            f"Month credit for {leave_type.code} must be between 0 and {cap:g} "
+            f"(fixed monthly rate from annual quota {float(leave_type.annual_quota):g})"
+        )
+
+    row = db.scalar(
+        select(AccrualRun).where(
+            AccrualRun.employee_id == employee.id,
+            AccrualRun.leave_type_id == leave_type.id,
+            AccrualRun.period == period,
+            AccrualRun.month == month,
+        )
+    )
+    bal = balance(db, employee, leave_type, period)
+    old = float(row.amount) if row else 0.0
+    if round(old, 2) == amount:
+        return amount, cap, False
+
+    delta = amount - old
+    bal.accrued = float(bal.accrued) + delta
+    if row is None:
+        row = AccrualRun(
+            id=uuid.uuid4(),
+            employee_id=employee.id,
+            leave_type_id=leave_type.id,
+            period=period,
+            month=month,
+            amount=amount,
+            quota_at_run=float(leave_type.annual_quota),
+        )
+        db.add(row)
+    else:
+        row.amount = amount
+        row.quota_at_run = float(leave_type.annual_quota)
+
+    audit(
+        db, org_id=employee.org_id, actor=actor, entity="leave_accrual",
+        entity_id=row.id, action="set_month_credit",
+        changes={
+            "employee": {"old": employee.emp_code, "new": employee.emp_code},
+            "code": {"old": leave_type.code, "new": leave_type.code},
+            "month": {"old": f"{year}-{month:02d}", "new": f"{year}-{month:02d}"},
+            "amount": {"old": old, "new": amount},
+        },
+        note=note or f"{employee.emp_code} {leave_type.code} {year}-{month:02d} credit {old} → {amount}",
+    )
+    return amount, cap, True
+
+
 def next_period(pol: LeavePolicy, period: str) -> str:
     """The period label that comes immediately after this one."""
     _, end = period_bounds(pol, period)
@@ -428,6 +557,139 @@ def days_for(
     )
 
 
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    start = date(year, month, 1)
+    if month == 12:
+        end = date(year, 12, 31)
+    else:
+        end = date(year, month + 1, 1) - timedelta(days=1)
+    return start, end
+
+
+def _months_touched(start: date, end: date) -> list[tuple[int, int]]:
+    out: list[tuple[int, int]] = []
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        out.append((y, m))
+        if m == 12:
+            y, m = y + 1, 1
+        else:
+            m += 1
+    return out
+
+
+def days_in_calendar_month(
+    db: Session, employee: Employee, *, year: int, month: int,
+    start: date, end: date, half_day_start: bool, half_day_end: bool,
+) -> float:
+    """Working-day leave count that falls inside one calendar month."""
+    month_start, month_end = _month_bounds(year, month)
+    clipped_start = max(start, month_start)
+    clipped_end = min(end, month_end)
+    if clipped_end < clipped_start:
+        return 0.0
+    return days_for(
+        db, employee,
+        start=clipped_start, end=clipped_end,
+        half_day_start=bool(half_day_start and clipped_start == start),
+        half_day_end=bool(half_day_end and clipped_end == end),
+    )
+
+
+def leave_days_already_in_month(
+    db: Session, employee: Employee, *, year: int, month: int,
+    exclude: uuid.UUID | None = None,
+) -> float:
+    """Pending + approved (+ partial) leave days already booked in that month."""
+    month_start, month_end = _month_bounds(year, month)
+    rows = db.scalars(
+        select(LeaveRequest).where(
+            LeaveRequest.employee_id == employee.id,
+            LeaveRequest.status.in_([
+                LeaveStatus.PENDING, LeaveStatus.APPROVED, LeaveStatus.PARTIALLY_APPROVED,
+            ]),
+            LeaveRequest.from_date <= month_end,
+            LeaveRequest.to_date >= month_start,
+            LeaveRequest.deleted_at.is_(None),
+        )
+    ).all()
+    total = 0.0
+    for r in rows:
+        if exclude is not None and r.id == exclude:
+            continue
+        total += days_in_calendar_month(
+            db, employee, year=year, month=month,
+            start=r.from_date, end=r.to_date,
+            half_day_start=bool(r.half_day_start), half_day_end=bool(r.half_day_end),
+        )
+    return total
+
+
+def check_monthly_leave_max(
+    db: Session, employee: Employee, *, start: date, end: date,
+    half_day_start: bool = False, half_day_end: bool = False,
+    exclude: uuid.UUID | None = None,
+) -> LeaveOutcome | None:
+    """Refuse if any calendar month would go over this person's monthly max.
+
+    NULL monthly_leave_max means no cap. Returns None when under the limit.
+    """
+    cap = employee.monthly_leave_max
+    if cap is None:
+        return None
+    limit = float(cap)
+    if limit < 0:
+        return LeaveOutcome(False, reason="Monthly leave max is misconfigured")
+
+    for year, month in _months_touched(start, end):
+        already = leave_days_already_in_month(
+            db, employee, year=year, month=month, exclude=exclude,
+        )
+        adding = days_in_calendar_month(
+            db, employee, year=year, month=month,
+            start=start, end=end,
+            half_day_start=half_day_start, half_day_end=half_day_end,
+        )
+        total = round(already + adding, 2)
+        if total > limit + 1e-9:
+            label = date(year, month, 1).strftime("%b %Y")
+            return LeaveOutcome(
+                False,
+                reason=(
+                    f"Monthly leave max is {limit:g} day(s). "
+                    f"{label} would be {total:g} "
+                    f"({already:g} already booked + {adding:g} in this request)."
+                ),
+                available=max(0.0, round(limit - already, 2)),
+                requested=adding,
+            )
+    return None
+
+
+def set_monthly_leave_max(
+    db: Session, *, employee: Employee, monthly_leave_max: float | None,
+    actor: User, note: str | None = None,
+) -> tuple[float | None, bool]:
+    """Set or clear this person's monthly leave cap. Returns (value, changed)."""
+    if monthly_leave_max is not None:
+        if monthly_leave_max < 0 or monthly_leave_max > 31:
+            raise ValueError("Monthly leave max must be between 0 and 31 days")
+        monthly_leave_max = round(float(monthly_leave_max), 2)
+
+    old = None if employee.monthly_leave_max is None else float(employee.monthly_leave_max)
+    new = monthly_leave_max
+    changed = old != new
+    if changed:
+        employee.monthly_leave_max = new
+        audit(
+            db, org_id=employee.org_id, actor=actor, entity="employee",
+            entity_id=employee.id, action="set_monthly_leave_max",
+            changes={"monthly_leave_max": {"old": old, "new": new}},
+            note=note or f"Monthly leave max for {employee.emp_code}",
+        )
+    return new, changed
+
+
 def overlapping(db: Session, employee: Employee, start: date, end: date,
                 exclude: uuid.UUID | None = None) -> LeaveRequest | None:
     """Any live request touching this range.
@@ -482,17 +744,25 @@ def submit(
             False, reason="That range has no working days in it - nothing to apply for",
         )
 
+    capped = check_monthly_leave_max(
+        db, employee, start=start, end=end,
+        half_day_start=half_day_start, half_day_end=half_day_end,
+    )
+    if capped is not None:
+        return capped
+
     period = period_for(pol, start)
 
     # Unpaid types have no balance to run out of, which is the point of them.
+    # Pending requests hold days too — otherwise two pending apps can overbook.
     if leave_type.is_paid:
-        bal = balance(db, employee, leave_type, period)
-        if days > bal.available:
+        left = effective_available(db, employee, leave_type, period)
+        if days > left + 1e-9:
             return LeaveOutcome(
                 False,
-                reason=f"Not enough {leave_type.code}: you have "
-                       f"{bal.available:g} day(s) and asked for {days:g}",
-                available=bal.available, requested=days,
+                reason=f"Not enough available balance for {leave_type.code}: you have "
+                       f"{left:g} day(s) left and asked for {days:g}",
+                available=left, requested=days,
             )
 
     row = LeaveRequest(
@@ -535,9 +805,16 @@ def decide(
     if request.status not in (LeaveStatus.PENDING, LeaveStatus.PARTIALLY_APPROVED):
         return LeaveOutcome(False, reason=f"That request is already {request.status.value}")
 
-    # Nobody signs off their own leave, whatever their role. An hr_admin who
-    # could approve themselves is not an approval process, it is a formality.
-    if not allow_self_approval and approver.employee_id is not None and approver.employee_id == request.employee_id:
+    # Employees and managers still cannot sign off their own leave. HR and
+    # super admins can, for the same reason they can decide their own
+    # correction: nobody else is above them to do it.
+    is_admin = RANK.get(approver.role, -1) >= RANK[UserRole.HR_ADMIN]
+    if (
+        not allow_self_approval
+        and not is_admin
+        and approver.employee_id is not None
+        and approver.employee_id == request.employee_id
+    ):
         return LeaveOutcome(False, reason="You cannot decide your own leave request")
 
     employee = db.get(Employee, request.employee_id)
@@ -549,14 +826,26 @@ def decide(
         request.medical_document_required = True
         request.medical_document_deadline = medical_document_deadline or (datetime.now(timezone.utc) + timedelta(days=3))
     elif approve:
+        capped = check_monthly_leave_max(
+            db, employee,
+            start=request.from_date, end=request.to_date,
+            half_day_start=bool(request.half_day_start),
+            half_day_end=bool(request.half_day_end),
+            exclude=request.id,
+        )
+        if capped is not None:
+            return capped
         if leave_type.is_paid:
             bal = balance(db, employee, leave_type, request.period)
-            if float(request.days_consumed) > bal.available:
+            left = effective_available(
+                db, employee, leave_type, request.period, exclude=request.id,
+            )
+            if float(request.days_consumed) > left + 1e-9:
                 return LeaveOutcome(
                     False,
                     reason=f"{employee.full_name} no longer has the balance for this "
-                           f"({bal.available:g} left, {float(request.days_consumed):g} needed)",
-                    available=bal.available, requested=float(request.days_consumed),
+                           f"({left:g} left, {float(request.days_consumed):g} needed)",
+                    available=left, requested=float(request.days_consumed),
                 )
             bal.used = float(bal.used) + float(request.days_consumed)
         request.status = LeaveStatus.APPROVED
@@ -590,8 +879,8 @@ def decide(
             data={"leave_request_id": str(request.id)},
         )
 
-    # Sync decision back to Slack if this request was posted to Slack
-    if request.slack_channel_id and request.slack_message_ts:
+    # Sync decision back to Slack (admin ephemerals — never a public channel post)
+    if request.slack_channel_id or request.slack_message_ts:
         from app.services.slack import sync_leave_decision_to_slack
         from threading import Thread
         actor_name = approver.email.split("@")[0] if approver and approver.email else "Admin"
@@ -601,7 +890,7 @@ def decide(
                 actor_name = emp_rec.full_name
         
         source = "Slack" if (note and "via Slack" in note) else ("Email" if (note and "via Email" in note) else "Portal")
-        if source != "Slack":  # Slack interactions update the card directly
+        if source != "Slack":  # Slack interactions update the clicker's ephemeral card
             Thread(
                 target=sync_leave_decision_to_slack,
                 args=(request.slack_channel_id, request.slack_message_ts, employee.full_name, lt_name, request.from_date, request.to_date, float(request.days_consumed), request.reason or "No reason provided", approve, actor_name, source, partial_approve, note),
@@ -643,7 +932,7 @@ def cancel(
     if was == LeaveStatus.APPROVED:
         _recompute_range(db, employee, request.from_date, request.to_date)
 
-    if request.slack_channel_id and request.slack_message_ts:
+    if request.slack_channel_id or request.slack_message_ts:
         from app.services.slack import sync_leave_decision_to_slack
         from threading import Thread
         lt_obj = db.get(LeaveType, request.leave_type_id)

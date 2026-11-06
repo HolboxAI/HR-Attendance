@@ -230,6 +230,25 @@ loop = client.patch("/api/v1/admin/employees/BX012",
                     json={"manager_code": "BX012"}, headers=HIMESH)
 check("self-management refused", loop.status_code, 409)
 
+print("11b. An admin can rename the employee code; history stays on the person")
+renamed = client.patch("/api/v1/admin/employees/BX012",
+                       json={"emp_code": "bx099"}, headers=HIMESH)
+check("code renamed", renamed.status_code, 200)
+check("new code returned", renamed.json()["emp_code"], "BX099")
+check("old url is gone", client.get("/api/v1/admin/employees/BX012",
+                                    headers=HIMESH).status_code, 404)
+check("new url works", client.get("/api/v1/admin/employees/BX099",
+                                  headers=HIMESH).status_code, 200)
+clash = client.patch("/api/v1/admin/employees/BX099",
+                     json={"emp_code": "BX008"}, headers=HIMESH)
+check("taken code refused", clash.status_code, 409)
+back = client.patch("/api/v1/admin/employees/BX099",
+                    json={"emp_code": "BX012"}, headers=HIMESH)
+check("code restored", back.status_code, 200)
+db.expire_all()
+check("row is the same person", db.scalar(
+    select(Employee).where(Employee.emp_code == "BX012")).id, priya.id)
+
 print("12. Offboarding disables, never deletes")
 db.add(MobileDevice(id=uuid.uuid4(), employee_id=priya.id,
                     install_id="phone-1", platform="ios", is_active=True))

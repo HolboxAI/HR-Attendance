@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { format, parseISO, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns';
-import { Download, Calendar, ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle, Home, FileText } from 'lucide-react';
+import { Download, Calendar, ArrowLeft, Clock, CheckCircle2, XCircle, AlertCircle, Home, FileText, FileSpreadsheet } from 'lucide-react';
 
+import { EditAttendance } from '@/components/EditAttendance';
 import { statusGlyph, statusLabel } from '@/components/Status';
 import { getMonth, hhmm, hours, proxy } from '@/lib/api';
+import { capabilitiesFor } from '@/lib/capabilities';
+import { currentIdentity } from '@/lib/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +52,8 @@ export default async function MonthPage({
   const nextMonthStart = format(startOfMonth(addMonths(parsedStart, 1)), 'yyyy-MM-dd');
   const nextMonthEnd = format(endOfMonth(addMonths(parsedStart, 1)), 'yyyy-MM-dd');
 
+  const me = await currentIdentity();
+  const canEdit = capabilitiesFor(me?.role).canDecideCorrections;
   const data = await getMonth(code, undefined, undefined, startDate, endDate);
   if (!data) {
     return (
@@ -68,6 +73,9 @@ export default async function MonthPage({
 
   const pdfDownloadUrl = proxy(
     `/api/v1/admin/export/employee.pdf?employee_code=${encodeURIComponent(code)}&start_date=${startDate}&end_date=${endDate}`,
+  );
+  const excelDownloadUrl = proxy(
+    `/api/v1/admin/export/employee.csv?employee_code=${encodeURIComponent(code)}&start_date=${startDate}&end_date=${endDate}`,
   );
 
   const leavesByType = data.totals.leaves_by_type || {};
@@ -111,14 +119,26 @@ export default async function MonthPage({
           </p>
         </div>
 
-        {/* Action Controls & PDF Download */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Action Controls & Downloads (Excel & PDF) */}
+        <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={excelDownloadUrl}
+            download={`attendance_${code}_${startDate}_${endDate}.csv`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3.5 py-2 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:bg-emerald-500/20 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+            title="Download employee attendance report in Excel format"
+          >
+            <FileSpreadsheet className="size-4 text-emerald-500" />
+            <span>Download Excel</span>
+          </a>
           <a
             href={pdfDownloadUrl}
             download={`attendance_${code}_${startDate}_${endDate}.pdf`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 rounded-xl bg-ink text-ground px-4 py-2 text-xs font-mono font-bold uppercase tracking-wider shadow-sm hover:opacity-90 transition-all active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 rounded-xl bg-ink text-ground px-3.5 py-2 text-xs font-mono font-bold uppercase tracking-wider shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer whitespace-nowrap"
+            title="Download employee attendance report in PDF format"
           >
             <Download className="size-4" />
             <span>Download PDF</span>
@@ -274,22 +294,31 @@ export default async function MonthPage({
 
       {/* Attendance Detail Table */}
       <div className="overflow-x-auto rounded-2xl glass-panel border border-line">
-        <table className="w-full min-w-[760px] text-left text-xs">
+        <table className="w-full min-w-[1680px] text-left text-xs">
           <thead>
             <tr className="border-b border-line bg-surface-2 text-[10px] font-mono font-bold uppercase tracking-widest text-ink-3">
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">First In</th>
-              <th className="px-4 py-3">Last Out</th>
-              <th className="px-4 py-3">Worked</th>
-              <th className="px-4 py-3">Late</th>
-              <th className="px-4 py-3">Notes &amp; Regularization</th>
+              <th className="px-3 py-3">Date</th>
+              {canEdit && <th className="px-3 py-3">Edit</th>}
+              <th className="px-3 py-3">Shift</th>
+              <th className="px-3 py-3">Status</th>
+              <th className="px-3 py-3">In</th>
+              <th className="px-3 py-3">Out</th>
+              <th className="px-3 py-3">Late</th>
+              <th className="px-3 py-3">Break times</th>
+              <th className="px-3 py-3">Break</th>
+              <th className="px-3 py-3">Worked</th>
+              <th className="px-3 py-3">Extra</th>
+              <th className="px-3 py-3">Punctuality</th>
+              <th className="px-3 py-3">Regularised by</th>
+              <th className="px-3 py-3">Leave</th>
+              <th className="px-3 py-3">Approved by</th>
+              <th className="px-3 py-3">Remarks</th>
             </tr>
           </thead>
           <tbody>
             {data.days.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-ink-3 font-mono">
+                <td colSpan={16} className="px-4 py-8 text-center text-ink-3 font-mono">
                   No attendance records found for this period.
                 </td>
               </tr>
@@ -307,10 +336,23 @@ export default async function MonthPage({
                     }`}
                   >
                     {/* Date & Weekday */}
-                    <td className="tnum px-4 py-2.5 whitespace-nowrap font-mono">
+                    <td className="tnum px-3 py-2.5 whitespace-nowrap font-mono">
                       <span className="font-semibold text-ink">{d.date}</span>{' '}
                       <span className="text-ink-3 text-[11px]">({d.weekday})</span>
                     </td>
+                    {canEdit && (
+                      <td className="px-3 py-2.5">
+                        <EditAttendance
+                          employeeCode={code}
+                          date={d.date}
+                          status={d.status}
+                          firstIn={d.first_in}
+                          lastOut={d.last_out}
+                          workedLabel={hours(d.worked_minutes)}
+                        />
+                      </td>
+                    )}
+                    <td className="px-3 py-2.5 font-mono text-ink-2 whitespace-nowrap">{d.shift_allotted || '—'}</td>
 
                     {/* Status */}
                     <td className="px-4 py-2.5 whitespace-nowrap">
@@ -319,10 +361,10 @@ export default async function MonthPage({
                           {statusGlyph(d.status)}
                         </span>
                         <span className="font-medium text-ink">
-                          {statusLabel(d.status)}
+                          {statusLabel(d.status === 'wfh' ? 'present' : d.status)}
                           {isLeave && leaveBadge}
                         </span>
-                        {d.is_wfh && d.status !== 'wfh' && (
+                        {(d.status === 'wfh' || d.is_wfh) && (
                           <span className="rounded bg-cyan-500/10 border border-cyan-500/30 px-1.5 py-0.2 text-[9px] font-mono text-cyan-600 dark:text-cyan-400 font-semibold">
                             WFH
                           </span>
@@ -336,43 +378,27 @@ export default async function MonthPage({
                     </td>
 
                     {/* Punch Out */}
-                    <td className="tnum px-4 py-2.5 font-mono text-ink-2">
+                    <td className="tnum px-3 py-2.5 font-mono text-ink-2">
                       {hhmm(d.last_out)}
                     </td>
 
-                    {/* Hours */}
-                    <td className="tnum px-4 py-2.5 font-mono text-ink-2">
-                      {hours(d.worked_minutes)}
-                    </td>
-
                     {/* Late */}
-                    <td className="tnum px-4 py-2.5 font-mono text-st-late">
+                    <td className="tnum px-3 py-2.5 font-mono text-st-late">
                       {d.late_minutes ? `${d.late_minutes}m` : '—'}
                     </td>
-
-                    {/* Notes & Regularization */}
-                    <td className="px-4 py-2.5">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {d.is_regularized && (
-                          <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">
-                            Corrected
-                          </span>
-                        )}
-                        {d.exception_note && (
-                          <span className="text-xs text-st-late font-mono">
-                            {d.exception_note}
-                          </span>
-                        )}
-                        {d.leave_name && (
-                          <span className="text-xs text-ink-3 font-mono">
-                            {d.leave_name}
-                          </span>
-                        )}
-                        {!d.is_regularized && !d.exception_note && !d.leave_name && (
-                          <span className="text-ink-3/40 font-mono text-[11px]">—</span>
-                        )}
-                      </div>
+                    <td className="px-3 py-2.5 font-mono text-ink-2">{d.break_windows || '—'}</td>
+                    <td className="tnum px-3 py-2.5 font-mono text-ink-2">
+                      {d.break_minutes ? `${d.break_minutes}m` : '—'}
                     </td>
+                    <td className="tnum px-3 py-2.5 font-mono text-ink-2">
+                      {hours(d.worked_minutes)}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-ink-2">{d.extra_str || '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-ink-2">{d.punctuality || '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-ink-2">{d.regularised_by || 'N/A'}</td>
+                    <td className="px-3 py-2.5 font-mono text-ink-2">{d.leave_status || 'N/A'}</td>
+                    <td className="px-3 py-2.5 font-mono text-ink-2">{d.leave_approved_by || 'N/A'}</td>
+                    <td className="px-3 py-2.5 font-mono text-ink-2 max-w-[240px]">{d.remarks || '—'}</td>
                   </tr>
                 );
               })

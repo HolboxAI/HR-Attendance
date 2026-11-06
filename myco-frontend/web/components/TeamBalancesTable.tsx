@@ -4,22 +4,38 @@ import { useState } from 'react';
 import Link from 'next/link';
 import type { TeamBalanceRow } from '@/lib/format';
 import { HoverProfile } from '@/components/HoverProfile';
-import { BalanceCellEditor, EveryoneBalancesBar } from '@/components/EditLeaveBalances';
+import {
+  BalanceCellEditor,
+  EveryoneBalancesBar,
+  MonthCreditCellEditor,
+  MonthlyMaxCellEditor,
+} from '@/components/EditLeaveBalances';
 
 export function TeamBalancesTable({
   types,
   entries,
   canEdit,
+  editMode = 'year',
+  creditYear,
+  creditMonth,
 }: {
   types: string[];
-  entries: [string, { name: string; cells: Record<string, TeamBalanceRow> }][];
+  entries: [string, {
+    name: string;
+    monthlyLeaveMax: number | null;
+    cells: Record<string, TeamBalanceRow>;
+  }][];
   canEdit?: boolean;
+  editMode?: 'year' | 'month';
+  creditYear?: number;
+  creditMonth?: number;
 }) {
   const [hoveredCode, setHoveredCode] = useState<string | null>(null);
+  const monthMode = editMode === 'month' && creditYear != null && creditMonth != null;
 
   return (
     <div className="space-y-4">
-      {canEdit && <EveryoneBalancesBar types={types} />}
+      {canEdit && !monthMode && <EveryoneBalancesBar types={types} />}
       <div className="overflow-x-auto rounded-2xl glass-panel border border-line">
         <table className="w-full min-w-[560px] text-left text-xs">
           <thead>
@@ -28,9 +44,15 @@ export function TeamBalancesTable({
               {types.map((t) => (
                 <th key={t} className="px-4 py-3 text-right">
                   {t}
-                  <span className="block font-normal normal-case tracking-normal text-ink-3/70">available</span>
+                  <span className="block font-normal normal-case tracking-normal text-ink-3/70">
+                    {monthMode ? 'month credit' : 'available'}
+                  </span>
                 </th>
               ))}
+              <th className="px-4 py-3 text-right">
+                Max / month
+                <span className="block font-normal normal-case tracking-normal text-ink-3/70">leave days</span>
+              </th>
               <th className="px-4 py-3 text-right">
                 Exceeded
                 <span className="block font-normal normal-case tracking-normal text-ink-3/70">leaves</span>
@@ -68,7 +90,17 @@ export function TeamBalancesTable({
                     return (
                       <td key={t} className="tnum px-4 py-3 text-right font-mono">
                         {cell ? (
-                          canEdit ? (
+                          monthMode && canEdit ? (
+                            <MonthCreditCellEditor
+                              empCode={code}
+                              code={t}
+                              year={creditYear!}
+                              month={creditMonth!}
+                              credit={cell.month_credit ?? 0}
+                              cap={cell.month_credit_cap ?? 0}
+                              available={cell.available}
+                            />
+                          ) : canEdit ? (
                             <BalanceCellEditor
                               empCode={code}
                               code={t}
@@ -76,6 +108,13 @@ export function TeamBalancesTable({
                               used={cell.used}
                               accrued={cell.accrued}
                             />
+                          ) : monthMode ? (
+                            <>
+                              <span className="font-bold text-ink">{cell.month_credit ?? 0}</span>
+                              <span className="block text-[10px] text-ink-3 font-normal">
+                                max {cell.month_credit_cap ?? '—'} · year left {cell.available}
+                              </span>
+                            </>
                           ) : (
                             <>
                               <span className={cell.available <= 0 ? 'text-st-absent font-semibold' : 'font-bold text-ink'}>
@@ -90,6 +129,20 @@ export function TeamBalancesTable({
                       </td>
                     );
                   })}
+                  <td className="tnum px-4 py-3 text-right font-mono">
+                    {canEdit ? (
+                      <div className="flex justify-end">
+                        <MonthlyMaxCellEditor
+                          empCode={code}
+                          monthlyLeaveMax={e.monthlyLeaveMax}
+                        />
+                      </div>
+                    ) : (
+                      <span className="font-bold text-ink">
+                        {e.monthlyLeaveMax == null ? '—' : e.monthlyLeaveMax}
+                      </span>
+                    )}
+                  </td>
                   <td className="tnum px-4 py-3 text-right font-mono">
                     {exceeded.length > 0 ? (
                       <span className="text-st-absent font-bold">
@@ -107,7 +160,9 @@ export function TeamBalancesTable({
       </div>
       {canEdit && (
         <p className="text-[11px] text-ink-3 font-mono">
-          Hover a remaining number and click the pencil to edit that type for that person.
+          {monthMode
+            ? 'Month mode: pencil edits that month’s accrual credit only (cannot exceed annual÷12). Year remaining updates when credit changes.'
+            : 'Hover a remaining number or Max / month and click the pencil to edit. Empty Max / month means no booking cap.'}
         </p>
       )}
     </div>

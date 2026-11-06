@@ -37,6 +37,59 @@ export function saveEveryoneBalances(items: LeaveDraft[], note?: string) {
   return putBalances('/api/v1/admin/leave/balances/all', items, note);
 }
 
+async function putMonthlyMax(path: string, monthly_leave_max: number | null, note?: string) {
+  const res = await fetch(proxy(path), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      monthly_leave_max,
+      ...(note ? { note } : {}),
+    }),
+  }).catch(() => null);
+  if (!res) throw new Error('Could not reach the API');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const detail = body?.detail;
+    throw new Error(typeof detail === 'string' ? detail : `Save failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export function saveEmployeeMonthlyMax(empCode: string, monthly_leave_max: number | null) {
+  return putMonthlyMax(
+    `/api/v1/admin/leave/balances/${encodeURIComponent(empCode)}/monthly-max`,
+    monthly_leave_max,
+  );
+}
+
+export function saveEveryoneMonthlyMax(monthly_leave_max: number | null) {
+  return putMonthlyMax('/api/v1/admin/leave/balances/monthly-max/all', monthly_leave_max);
+}
+
+export async function saveEmployeeMonthCredit(
+  empCode: string,
+  code: string,
+  year: number,
+  month: number,
+  amount: number,
+) {
+  const res = await fetch(
+    proxy(`/api/v1/admin/leave/balances/${encodeURIComponent(empCode)}/month-credit`),
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, year, month, amount }),
+    },
+  ).catch(() => null);
+  if (!res) throw new Error('Could not reach the API');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const detail = body?.detail;
+    throw new Error(typeof detail === 'string' ? detail : `Save failed (${res.status})`);
+  }
+  return res.json();
+}
+
 /** Remaining CL / EL / SL on a person profile. */
 export function EmployeeLeaveEditor({
   empCode,
@@ -120,6 +173,102 @@ export function EmployeeLeaveEditor({
       <p className="text-[11px] text-ink-3 font-mono">
         Used days stay as they are. You are setting what this person has left of each type.
       </p>
+    </div>
+  );
+}
+
+/** Edit one month's accrual credit (capped server-side at quota/12). */
+export function MonthCreditCellEditor({
+  empCode,
+  code,
+  year,
+  month,
+  credit,
+  cap,
+  available,
+}: {
+  empCode: string;
+  code: string;
+  year: number;
+  month: number;
+  credit: number;
+  cap: number;
+  available: number;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(String(credit));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const n = Number(value);
+    if (Number.isNaN(n) || n < 0 || n > cap) {
+      setError(`Must be 0–${cap}`);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await saveEmployeeMonthCredit(empCode, code, year, month, n);
+      setEditing(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex flex-col items-end gap-0.5">
+        <button
+          type="button"
+          onClick={() => { setValue(String(credit)); setEditing(true); }}
+          className="group inline-flex items-center gap-1"
+          title={`Edit ${code} credit for ${year}-${month} (max ${cap})`}
+        >
+          <span className="font-bold text-ink">{credit}</span>
+          <Pencil className="size-3 text-ink-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </button>
+        <span className="block text-[10px] text-ink-3 font-normal">
+          max {cap} · year left {available}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={cap}
+          step={0.5}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="tnum w-16 rounded-lg border border-line bg-surface-2 px-1.5 py-1 text-right text-xs text-ink"
+          autoFocus
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          className="rounded-lg bg-ink px-2 py-1 text-[10px] font-bold uppercase text-ground disabled:opacity-60"
+        >
+          {busy ? '…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setEditing(false); setError(null); }}
+          className="text-[10px] text-ink-3"
+        >
+          ✕
+        </button>
+      </div>
+      {error && <span className="text-[10px] text-st-absent">{error}</span>}
     </div>
   );
 }
@@ -217,11 +366,108 @@ export function BalanceCellEditor({
   );
 }
 
+/** Pencil editor for one person's monthly leave max. Empty = clear (no cap). */
+export function MonthlyMaxCellEditor({
+  empCode,
+  monthlyLeaveMax,
+}: {
+  empCode: string;
+  monthlyLeaveMax: number | null;
+}) {
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(
+    monthlyLeaveMax == null ? '' : String(monthlyLeaveMax),
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    const raw = value.trim();
+    let next: number | null;
+    if (raw === '') {
+      next = null;
+    } else {
+      const n = Number(raw);
+      if (Number.isNaN(n) || n < 0 || n > 31) {
+        setError('0–31, or empty for no max');
+        return;
+      }
+      next = n;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await saveEmployeeMonthlyMax(empCode, next);
+      setEditing(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setValue(monthlyLeaveMax == null ? '' : String(monthlyLeaveMax));
+          setEditing(true);
+        }}
+        className="group inline-flex items-center gap-1"
+        title="Edit monthly leave max"
+      >
+        <span className="font-bold text-ink tnum">
+          {monthlyLeaveMax == null ? '—' : monthlyLeaveMax}
+        </span>
+        <Pencil className="size-3 text-ink-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={0}
+          max={31}
+          step={0.5}
+          placeholder="none"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="tnum w-16 rounded-lg border border-line bg-surface-2 px-1.5 py-1 text-right text-xs text-ink"
+          autoFocus
+        />
+        <button
+          type="button"
+          onClick={save}
+          disabled={busy}
+          className="rounded-lg bg-ink px-2 py-1 text-[10px] font-bold uppercase text-ground disabled:opacity-60"
+        >
+          {busy ? '…' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => { setEditing(false); setError(null); }}
+          className="text-[10px] text-ink-3"
+        >
+          ✕
+        </button>
+      </div>
+      {error && <span className="text-[10px] text-st-absent">{error}</span>}
+    </div>
+  );
+}
+
 export function EveryoneBalancesBar({ types }: { types: string[] }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<string, string>>(
     Object.fromEntries(types.map((t) => [t, ''])),
   );
+  const [monthlyMaxDraft, setMonthlyMaxDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -233,8 +479,23 @@ export function EveryoneBalancesBar({ types }: { types: string[] }) {
       .map((code) => ({ code, raw: drafts[code]?.trim() }))
       .filter((x) => x.raw !== '')
       .map((x) => ({ code: x.code, available: Number(x.raw) }));
-    if (items.length === 0) {
-      setError('Fill at least one leave type.');
+    const maxRaw = monthlyMaxDraft.trim();
+    const applyMax = maxRaw !== '';
+    let monthlyMax: number | null = null;
+    if (applyMax) {
+      if (maxRaw.toLowerCase() === 'none' || maxRaw === '-') {
+        monthlyMax = null;
+      } else {
+        const n = Number(maxRaw);
+        if (Number.isNaN(n) || n < 0 || n > 31) {
+          setError('Monthly max must be 0–31, or type none to clear.');
+          return;
+        }
+        monthlyMax = n;
+      }
+    }
+    if (items.length === 0 && !applyMax) {
+      setError('Fill at least one leave type, or a monthly max.');
       return;
     }
     if (items.some((i) => Number.isNaN(i.available) || i.available < 0)) {
@@ -243,8 +504,20 @@ export function EveryoneBalancesBar({ types }: { types: string[] }) {
     }
     setBusy(true);
     try {
-      await saveEveryoneBalances(items);
-      setOk(`Set remaining days for everyone: ${items.map((i) => `${i.code} ${i.available}`).join(', ')}.`);
+      const parts: string[] = [];
+      if (items.length > 0) {
+        await saveEveryoneBalances(items);
+        parts.push(items.map((i) => `${i.code} ${i.available}`).join(', '));
+      }
+      if (applyMax) {
+        await saveEveryoneMonthlyMax(monthlyMax);
+        parts.push(
+          monthlyMax == null
+            ? 'monthly max cleared'
+            : `monthly max ${monthlyMax}`,
+        );
+      }
+      setOk(`Applied to everyone: ${parts.join('; ')}.`);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save');
@@ -256,9 +529,9 @@ export function EveryoneBalancesBar({ types }: { types: string[] }) {
   return (
     <div className="rounded-2xl glass-panel border border-line p-4 space-y-3">
       <div>
-        <h2 className="text-sm font-semibold text-ink">Set remaining days for everyone</h2>
+        <h2 className="text-sm font-semibold text-ink">Set for everyone</h2>
         <p className="mt-0.5 text-[11px] text-ink-3 font-mono">
-          Applies to every active employee. Used days are kept. Leave a box empty to skip that type.
+          Remaining days and/or monthly leave max for every active employee. Leave a box empty to skip it. Type <span className="text-ink">none</span> in monthly max to remove the cap.
         </p>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -276,6 +549,17 @@ export function EveryoneBalancesBar({ types }: { types: string[] }) {
             />
           </label>
         ))}
+        <label className="text-[11px] font-mono uppercase tracking-wider text-ink-3">
+          Max / month
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="—"
+            value={monthlyMaxDraft}
+            onChange={(e) => setMonthlyMaxDraft(e.target.value)}
+            className="mt-1 block w-24 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-semibold text-ink"
+          />
+        </label>
         <button
           type="button"
           onClick={apply}
