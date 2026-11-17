@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ── config ───────────────────────────────────────────────────────────────────
-EC2_HOST="98.84.138.15"
+EC2_HOST="13.222.4.147"
 EC2_USER="ubuntu"
 # Common places your PEM might live — tried in order.
 PEM_CANDIDATES=(

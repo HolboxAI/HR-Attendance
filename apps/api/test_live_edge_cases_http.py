@@ -17,7 +17,7 @@ import urllib.error
 import uuid
 import sys
 
-BASE_URL = "http://98.84.138.15"
+BASE_URL = "http://13.222.4.147"
 API_URL = f"{BASE_URL}/api/v1"
 
 passed = 0
@@ -59,7 +59,7 @@ def api_request(path: str, method: str = "GET", data: dict = None, token: str = 
 
 def main():
     print("================================================================")
-    print("PHASE 5 LIVE EDGE CASES VERIFICATION — EC2 (98.84.138.15)")
+    print("PHASE 5 LIVE EDGE CASES VERIFICATION — EC2 (13.222.4.147)")
     print("================================================================\n")
 
     # -------------------------------------------------------------------------

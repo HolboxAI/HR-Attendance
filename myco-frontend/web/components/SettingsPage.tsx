@@ -472,7 +472,7 @@ export function SettingsPage({ user }: SettingsPageProps) {
               <div className="space-y-2 text-xs font-mono">
                 <div className="flex justify-between py-1 border-b border-line/40">
                   <span className="text-ink-3">Host Node:</span>
-                  <span className="text-ink font-semibold">98.84.138.15</span>
+                  <span className="text-ink font-semibold">13.222.4.147</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-line/40">
                   <span className="text-ink-3">Account:</span>

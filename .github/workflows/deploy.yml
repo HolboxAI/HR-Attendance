@@ -6,7 +6,7 @@ on:
 
 jobs:
   deploy:
-    name: Deploy to EC2 (98.84.138.15)
+    name: Deploy to EC2 (13.222.4.147)
     runs-on: ubuntu-latest
 
     steps:
@@ -20,12 +20,12 @@ jobs:
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || \
-          ssh-keyscan -H 98.84.138.15 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H 13.222.4.147 >> ~/.ssh/known_hosts 2>/dev/null
 
       # ── Find where the app lives & deploy ────────────────────────────────
       - name: Deploy to server
         env:
-          EC2_HOST: ${{ secrets.EC2_HOST || '98.84.138.15' }}
+          EC2_HOST: ${{ secrets.EC2_HOST || '13.222.4.147' }}
           EC2_USER: ${{ secrets.EC2_USER || 'ubuntu' }}
         run: |
           ssh -i ~/.ssh/deploy_key \
@@ -99,7 +99,7 @@ jobs:
       - name: Notify success
         if: success()
         run: |
-          echo "🚀 Deployed successfully to http://${{ secrets.EC2_HOST || '98.84.138.15' }}"
+          echo "🚀 Deployed successfully to http://${{ secrets.EC2_HOST || '13.222.4.147' }}"
 
       - name: Notify failure
         if: failure()

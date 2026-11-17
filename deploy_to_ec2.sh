@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-EC2_HOST="98.84.138.15"
+EC2_HOST="13.222.4.147"
 EC2_USER="ubuntu"
 SSH_KEY="$HOME/.ssh/holbox-ec2.pem"
 REMOTE_DIR="/home/ubuntu/boxcode-hrms"
