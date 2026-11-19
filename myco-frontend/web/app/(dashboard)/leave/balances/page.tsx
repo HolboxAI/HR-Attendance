@@ -23,11 +23,11 @@ export const dynamic = 'force-dynamic';
 export default async function TeamBalancesPage({
   searchParams,
 }: {
-  searchParams?: Promise<Record<string, string | string[] | undefined>> | Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const me = await currentIdentity();
   const caps = capabilitiesFor(me?.role);
-  const sp = await Promise.resolve(searchParams ?? {});
+  const sp = (await searchParams) ?? {};
   const modeRaw = typeof sp.mode === 'string' ? sp.mode : 'year';
   const mode = modeRaw === 'month' ? 'month' : 'year';
   const now = new Date();
