@@ -13,7 +13,7 @@ a mis-rendered time looks wrong, a mis-chosen date looks like missing data.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.core.config import settings
@@ -24,4 +24,13 @@ def org_now() -> datetime:
 
 
 def org_today() -> date:
-    return org_now().date()
+    """Current active shift date in the org's timezone (Asia/Kolkata).
+    
+    The operational day resets at 05:30 AM IST (00:00 UTC).
+    Punches and shifts between 00:00 and 05:30 IST belong to the previous day's shift,
+    so org_today() rolls over at 05:30 AM IST to match the shift cutover.
+    """
+    now = org_now()
+    if (now.hour, now.minute) < (5, 30):
+        return (now - timedelta(days=1)).date()
+    return now.date()

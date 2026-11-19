@@ -124,6 +124,12 @@ class StubFaceService:
             return FaceResult(True, 100.0, "identical image bytes")
         return FaceResult(False, None)
 
+    def match_candidate(self, reference_bytes: bytes, selfie_bytes: bytes, threshold: float = MATCH_THRESHOLD) -> FaceResult:
+        """Fast stub comparison for 1:N kiosk sweeps."""
+        if not reference_bytes or not selfie_bytes:
+            return FaceResult(False, None)
+        return FaceResult(True, 99.0)
+
 
 class RekognitionFaceService:
     def __init__(self, region: str, client=None) -> None:
@@ -254,6 +260,36 @@ class RekognitionFaceService:
             return FaceResult(False, None)
         similarity = matches[0]["Similarity"]
         return FaceResult(similarity >= DUPLICATE_SWEEP_THRESHOLD, similarity)
+
+    def match_candidate(
+        self,
+        reference_bytes: bytes,
+        selfie_bytes: bytes,
+        threshold: float = MATCH_THRESHOLD,
+    ) -> FaceResult:
+        """Fast 1:1 face comparison without repeating DetectFaces quality check.
+
+        Used by 1:N kiosk sweep where quality_check was already run on the candidate
+        selfie once upfront.
+        """
+        if not reference_bytes or not selfie_bytes:
+            return FaceResult(False, None)
+        try:
+            resp = self._client.compare_faces(
+                SourceImage={"Bytes": reference_bytes},
+                TargetImage={"Bytes": selfie_bytes},
+                SimilarityThreshold=threshold,
+            )
+        except Exception as exc:
+            code = _error_code(exc)
+            if code in CLIENT_IMAGE_ERRORS:
+                return FaceResult(False, None)
+            raise FaceUnavailable(f"{code or type(exc).__name__}: {exc}") from exc
+        matches = resp.get("FaceMatches", [])
+        if not matches:
+            return FaceResult(False, None)
+        similarity = matches[0]["Similarity"]
+        return FaceResult(similarity >= threshold, similarity)
 
 
 def get_face_service():

@@ -3,6 +3,12 @@ import path from 'node:path';
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  allowedDevOrigins: [
+    '10.7.5.154',
+    '10.7.4.210',
+    'localhost',
+    '127.0.0.1',
+  ],
   images: {
     remotePatterns: [
       {

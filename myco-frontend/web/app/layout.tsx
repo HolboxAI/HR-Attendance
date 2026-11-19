@@ -54,7 +54,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           try {
             var nav = performance.getEntriesByType('navigation')[0];
             var isReload = (nav && nav.type === 'reload') || (performance.navigation && performance.navigation.type === 1);
-            if (isReload && window.location.pathname !== '/' && window.location.pathname !== '/login') {
+            if (isReload && window.location.pathname !== '/' && window.location.pathname !== '/login' && !window.location.pathname.startsWith('/kiosk')) {
               window.location.replace('/');
             }
           } catch (e) {}

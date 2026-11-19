@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     admin, admin_corrections,
     admin_employees, admin_jobs, admin_leave, admin_location, admin_history, admin_shifts, admin_signups, auth, corrections,
-    enrolment, health, ingest, leave, mobile, notifications, profile, slack, wfh,
+    enrolment, health, ingest, kiosk, leave, mobile, notifications, profile, slack, wfh,
 )
 from app.core.config import settings
 
@@ -155,4 +155,5 @@ app.include_router(slack.router, prefix=settings.api_prefix)
 app.include_router(wfh.router, prefix=settings.api_prefix)
 app.include_router(admin_shifts.router, prefix=settings.api_prefix)
 app.include_router(admin_signups.router, prefix=settings.api_prefix)
+app.include_router(kiosk.router, prefix=settings.api_prefix)
 

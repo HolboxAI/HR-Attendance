@@ -35,6 +35,7 @@ class ShiftPolicy:
     half_day_after_minutes: int = 240
     full_day_after_minutes: int = 450
     cutover_hour: int = 5
+    cutover_minute: int = 30
     working_days: tuple[int, ...] = (0, 1, 2, 3, 4, 5)   # Mon=0 .. Sun=6
     tz: str = "Asia/Kolkata"
 
@@ -44,20 +45,23 @@ class ShiftPolicy:
 
     @property
     def effective_cutover_hour(self) -> int:
-        """The hour before which a punch belongs to YESTERDAY's shift.
-
-        This must sit AFTER the shift ends, or the punch-out that closes the
-        night is filed against the next day and both days resolve wrong - the
-        night shows "never left" and the morning shows a stray punch.
-
-        A configured value below the shift end is always a mistake, so we
-        correct it rather than silently losing punch-outs. Three hours of slack
-        covers overtime and someone finishing late.
-        """
+        """The hour before which a punch belongs to YESTERDAY's shift."""
         if not self.is_overnight:
             return self.cutover_hour
         floor = min(self.end_time.hour + 3, 23)
         return max(self.cutover_hour, floor)
+
+    @property
+    def effective_cutover_time(self) -> tuple[int, int]:
+        """The (hour, minute) before which a punch belongs to YESTERDAY's shift.
+
+        For standard shifts in IST, the operational day resets at 05:30 AM IST (00:00 UTC).
+        For overnight shifts, it must sit AFTER the shift ends + 3 hours slack.
+        """
+        if not self.is_overnight:
+            return (self.cutover_hour, self.cutover_minute)
+        floor = min(self.end_time.hour + 3, 23)
+        return (max(self.cutover_hour, floor), 0)
 
 
 @dataclass
@@ -85,10 +89,10 @@ class ResolvedDay:
 def shift_date_for(ts_utc: datetime, policy: ShiftPolicy) -> date:
     """Which shift-date does this punch belong to?
 
-    The work day runs until the cutover, 5:00 AM for a normal shift, not until
-    midnight. Someone who checks in at 8:54 PM and checks out at 12:54 AM is
+    The work day runs until the cutover (05:30 AM IST / 00:00 UTC for a normal shift),
+    not until midnight. Someone who checks in at 8:54 PM and checks out at 12:54 AM is
     still on yesterday, and the time past the scheduled end is overtime on
-    that day. 5:00 AM starts a new day, so the button goes back to Check In
+    that day. 05:30 AM starts a new day, so the button goes back to Check In
     even if they never punched out.
 
     An overnight shift uses a later cutover, after the shift has actually
@@ -96,7 +100,8 @@ def shift_date_for(ts_utc: datetime, policy: ShiftPolicy) -> date:
     shows "never left".
     """
     local = ts_utc.astimezone(ZoneInfo(policy.tz))
-    if local.hour < policy.effective_cutover_hour:
+    cut_h, cut_m = getattr(policy, "effective_cutover_time", (policy.effective_cutover_hour, 30 if policy.effective_cutover_hour == 5 else 0))
+    if (local.hour, local.minute) < (cut_h, cut_m):
         return (local - timedelta(days=1)).date()
     return local.date()
 

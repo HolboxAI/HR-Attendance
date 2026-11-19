@@ -23,6 +23,9 @@ from app.core.config import settings
 
 def client(service_name: str):
     import boto3  # lazy: stub-mode development never needs boto3 installed
+    from botocore.config import Config
+
+    cfg = Config(max_pool_connections=25, retries={"max_attempts": 2})
 
     if settings.aws_access_key_id and settings.aws_secret_access_key:
         return boto3.client(
@@ -30,8 +33,9 @@ def client(service_name: str):
             region_name=settings.aws_region,
             aws_access_key_id=settings.aws_access_key_id,
             aws_secret_access_key=settings.aws_secret_access_key,
+            config=cfg,
         )
-    return boto3.client(service_name, region_name=settings.aws_region)
+    return boto3.client(service_name, region_name=settings.aws_region, config=cfg)
 
 
 def credential_source() -> str:

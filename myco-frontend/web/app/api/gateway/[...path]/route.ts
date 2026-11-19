@@ -25,16 +25,26 @@ async function forward(request: Request, path: string[]) {
   // A Slack /checkout link carries its own short-lived token. The dashboard
   // cookie is a different person if this browser is already signed in, so the
   // punch must use the token the page sent.
-  const punchAuth = path.join('/') === 'api/v1/mobile/punch'
+  const joinedPath = path.join('/');
+  const punchAuth = joinedPath === 'api/v1/mobile/punch'
     ? request.headers.get('authorization')
     : null;
-  if (!token && !punchAuth) {
+
+  const isKioskOrPublic =
+    joinedPath.startsWith('api/v1/kiosk') ||
+    joinedPath.startsWith('api/v1/employees/') ||
+    joinedPath === 'api/v1/mobile/punch';
+
+  if (!token && !punchAuth && !isKioskOrPublic) {
     return NextResponse.json({ detail: 'Sign in to continue' }, { status: 401 });
   }
 
-  const headers: Record<string, string> = {
-    Authorization: punchAuth ?? `Bearer ${token}`,
-  };
+  const headers: Record<string, string> = {};
+  if (punchAuth) {
+    headers['Authorization'] = punchAuth;
+  } else if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const contentType = request.headers.get('content-type');
   // Multipart bodies carry a generated boundary, so the header has to be
   // passed through verbatim rather than rebuilt.

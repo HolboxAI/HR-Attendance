@@ -120,16 +120,16 @@ ok &= check("live break_minutes (5m)", r10.break_minutes, 5)
 ok &= check("is_currently_in", r10.is_currently_in, True)
 ok &= check("current_session_minutes (11:05 to 14:00 = 175m)", r10.current_session_minutes, 175)
 
-print("11. A day shift runs until 5:00 AM, not midnight")
-IIM = ShiftPolicy(start_time=time(18, 0), end_time=time(22, 0), cutover_hour=5)
+print("11. A day shift runs until 5:30 AM, not midnight")
+IIM = ShiftPolicy(start_time=time(18, 0), end_time=time(22, 0), cutover_hour=5, cutover_minute=30)
 ok &= check("20:54 on the 6th belongs to the 6th",
             shift_date_for(ist(2026, 10, 6, 20, 54), IIM), date(2026, 10, 6))
 ok &= check("00:54 checkout still belongs to the 6th",
             shift_date_for(ist(2026, 10, 7, 0, 54), IIM), date(2026, 10, 6))
-ok &= check("04:59 still belongs to the 6th",
-            shift_date_for(ist(2026, 10, 7, 4, 59), IIM), date(2026, 10, 6))
-ok &= check("05:00 is a new day",
-            shift_date_for(ist(2026, 10, 7, 5, 0), IIM), date(2026, 10, 7))
+ok &= check("05:29 still belongs to the 6th",
+            shift_date_for(ist(2026, 10, 7, 5, 29), IIM), date(2026, 10, 6))
+ok &= check("05:30 is a new day",
+            shift_date_for(ist(2026, 10, 7, 5, 30), IIM), date(2026, 10, 7))
 r11 = resolve_day([
     Punch(ist(2026, 10, 6, 20, 54), direction="in"),
     Punch(ist(2026, 10, 7, 0, 54), direction="out"),
