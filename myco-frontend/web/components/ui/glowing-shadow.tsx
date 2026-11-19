@@ -58,100 +58,36 @@ export function GlowingShadow({
   const isCircle = variant === "circle";
 
   return (
-    <>
-      <style jsx>{`
-        .light-glow-btn {
-          position: relative;
-          width: 100%;
-          border-radius: ${isCircle ? "50%" : "1.75rem"};
-          padding: 2.5px;
-          background: #ffffff;
-          border: 1.5px solid ${fallbackBorder};
-          display: flex;
-          align-items: stretch;
-          justify-content: stretch;
-          cursor: pointer;
-          touch-action: manipulation;
-          -webkit-tap-highlight-color: transparent;
-          -webkit-appearance: none;
-          appearance: none;
-          overflow: hidden;
-          box-shadow: ${shadow};
-          transition: transform 0.12s ease, box-shadow 0.15s ease;
-          outline: none;
-        }
-
-        .light-glow-btn:active:not(:disabled) {
-          transform: scale(0.97);
-          box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.08);
-        }
-
-        .light-glow-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        /* Ambient rotating edge glow */
-        .edge-spin-glow {
-          position: absolute;
-          top: -150%;
-          left: -150%;
-          width: 400%;
-          height: 400%;
-          z-index: 1;
-          background: ${gradient};
-          -webkit-animation: spin-glow 6s linear infinite;
-          animation: spin-glow 6s linear infinite;
-          pointer-events: none;
-          opacity: 0.85;
-          will-change: transform;
-        }
-
-        /* Interior card surface */
-        .inner-surface {
-          position: relative;
-          z-index: 2;
-          width: 100%;
-          height: 100%;
-          background: #ffffff;
-          border-radius: ${isCircle ? "50%" : "calc(1.75rem - 2.5px)"};
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          box-sizing: border-box;
-        }
-
-        @-webkit-keyframes spin-glow {
-          from {
-            -webkit-transform: rotate(0deg);
-          }
-          to {
-            -webkit-transform: rotate(360deg);
-          }
-        }
-
-        @keyframes spin-glow {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
-
-      <button
-        type="button"
-        className={`light-glow-btn ${className}`.trim()}
-        onClick={onClick}
-        disabled={disabled}
-        style={style}
+    <button
+      type="button"
+      className={`relative w-full p-[2.5px] bg-white flex items-stretch justify-stretch cursor-pointer touch-manipulation overflow-hidden outline-none transition-all duration-150 active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed ${
+        isCircle ? "rounded-full" : "rounded-3xl"
+      } ${className}`.trim()}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        border: `1.5px solid ${fallbackBorder}`,
+        boxShadow: shadow,
+        WebkitTapHighlightColor: "transparent",
+        WebkitAppearance: "none",
+        ...style,
+      }}
+    >
+      {/* Ambient rotating edge glow */}
+      <span
+        className="absolute -top-[150%] -left-[150%] w-[400%] h-[400%] z-[1] pointer-events-none opacity-85 will-change-transform animate-spin-glow"
+        style={{ background: gradient }}
+        aria-hidden="true"
+      />
+      {/* Interior card surface */}
+      <span
+        className={`relative z-[2] w-full h-full bg-white flex flex-col items-center justify-center box-border ${
+          isCircle ? "rounded-full" : "rounded-[calc(1.5rem-2px)]"
+        }`}
       >
-        <span className="edge-spin-glow" aria-hidden="true" />
-        <span className="inner-surface">{children}</span>
-      </button>
-    </>
+        {children}
+      </span>
+    </button>
   );
 }
 

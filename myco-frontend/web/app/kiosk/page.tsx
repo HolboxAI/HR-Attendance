@@ -68,8 +68,8 @@ function playSuccessChime() {
 }
 
 export default function KioskPage() {
-  // Terminal Lock / Auth State
-  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  // Terminal Lock / Auth State (default to false: renders lock screen immediately, no blocking spinner)
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
   const [loginId, setLoginId] = useState('Holbox.ai');
   const [loginPin, setLoginPin] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -96,13 +96,17 @@ export default function KioskPage() {
   const [countdown, setCountdown] = useState(4);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Read auth token from localStorage on mount
+  // Read auth token from localStorage on mount (instantly unlocks if already authenticated)
   useEffect(() => {
     try {
-      const auth = localStorage.getItem('bx_kiosk_auth');
-      setIsAuthorized(auth === 'true');
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const auth = window.localStorage.getItem('bx_kiosk_auth');
+        if (auth === 'true') {
+          setIsAuthorized(true);
+        }
+      }
     } catch {
-      setIsAuthorized(false);
+      // Storage restricted or disabled
     }
   }, []);
 
@@ -115,7 +119,9 @@ export default function KioskPage() {
 
     if (trimmedId === 'holbox.ai' && trimmedPin === '1234') {
       try {
-        localStorage.setItem('bx_kiosk_auth', 'true');
+        if (typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem('bx_kiosk_auth', 'true');
+        }
       } catch {
         // storage disabled or full
       }
@@ -130,7 +136,9 @@ export default function KioskPage() {
   // Lock Terminal
   const handleLockTerminal = () => {
     try {
-      localStorage.removeItem('bx_kiosk_auth');
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('bx_kiosk_auth');
+      }
     } catch {}
     setIsAuthorized(false);
     setLoginPin('');
@@ -141,76 +149,89 @@ export default function KioskPage() {
   // Fullscreen listener
   useEffect(() => {
     const handleFsChange = () => {
-      const doc = document as unknown as {
-        fullscreenElement?: Element;
-        webkitFullscreenElement?: Element;
-        mozFullScreenElement?: Element;
-      };
-      setIsFullscreen(
-        Boolean(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement)
-      );
+      try {
+        const doc = document as unknown as {
+          fullscreenElement?: Element;
+          webkitFullscreenElement?: Element;
+          mozFullScreenElement?: Element;
+        };
+        setIsFullscreen(
+          Boolean(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement)
+        );
+      } catch {}
     };
-    document.addEventListener('fullscreenchange', handleFsChange);
-    document.addEventListener('webkitfullscreenchange', handleFsChange);
+
+    try {
+      document.addEventListener('fullscreenchange', handleFsChange);
+      document.addEventListener('webkitfullscreenchange', handleFsChange);
+    } catch {}
+
     return () => {
-      document.removeEventListener('fullscreenchange', handleFsChange);
-      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      try {
+        document.removeEventListener('fullscreenchange', handleFsChange);
+        document.removeEventListener('webkitfullscreenchange', handleFsChange);
+      } catch {}
     };
   }, []);
 
   // Fullscreen toggle helper with iPad safety check
   const toggleFullscreen = () => {
-    const doc = document as unknown as {
-      fullscreenElement?: Element;
-      webkitFullscreenElement?: Element;
-      mozFullScreenElement?: Element;
-      exitFullscreen?: () => Promise<void>;
-      webkitExitFullscreen?: () => Promise<void>;
-      mozCancelFullScreen?: () => Promise<void>;
-    };
-    const docEl = document.documentElement as unknown as {
-      requestFullscreen?: () => Promise<void>;
-      webkitRequestFullscreen?: () => Promise<void>;
-      mozRequestFullScreen?: () => Promise<void>;
-    };
+    try {
+      const doc = document as unknown as {
+        fullscreenElement?: Element;
+        webkitFullscreenElement?: Element;
+        mozFullScreenElement?: Element;
+        exitFullscreen?: () => Promise<void>;
+        webkitExitFullscreen?: () => Promise<void>;
+        mozCancelFullScreen?: () => Promise<void>;
+      };
+      const docEl = document.documentElement as unknown as {
+        requestFullscreen?: () => Promise<void>;
+        webkitRequestFullscreen?: () => Promise<void>;
+        mozRequestFullScreen?: () => Promise<void>;
+      };
 
-    const hasFullscreenAPI =
-      typeof docEl.requestFullscreen === 'function' ||
-      typeof docEl.webkitRequestFullscreen === 'function' ||
-      typeof docEl.mozRequestFullScreen === 'function';
+      const hasFullscreenAPI =
+        Boolean(docEl) &&
+        (typeof docEl.requestFullscreen === 'function' ||
+          typeof docEl.webkitRequestFullscreen === 'function' ||
+          typeof docEl.mozRequestFullScreen === 'function');
 
-    if (!hasFullscreenAPI) {
-      // iPad Safari does not expose requestFullscreen on arbitrary elements
+      if (!hasFullscreenAPI) {
+        // iPad Safari does not expose requestFullscreen on document/divs
+        setShowIpadModal(true);
+        return;
+      }
+
+      const isCurrent = Boolean(
+        doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement
+      );
+
+      if (!isCurrent) {
+        const req =
+          docEl.requestFullscreen ||
+          docEl.webkitRequestFullscreen ||
+          docEl.mozRequestFullScreen;
+        if (req) {
+          req
+            .call(docEl)
+            .then(() => setIsFullscreen(true))
+            .catch(() => setShowIpadModal(true));
+        }
+      } else {
+        const exit =
+          doc.exitFullscreen ||
+          doc.webkitExitFullscreen ||
+          doc.mozCancelFullScreen;
+        if (exit) {
+          exit
+            .call(doc)
+            .then(() => setIsFullscreen(false))
+            .catch(() => {});
+        }
+      }
+    } catch {
       setShowIpadModal(true);
-      return;
-    }
-
-    const isCurrent = Boolean(
-      doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement
-    );
-
-    if (!isCurrent) {
-      const req =
-        docEl.requestFullscreen ||
-        docEl.webkitRequestFullscreen ||
-        docEl.mozRequestFullScreen;
-      if (req) {
-        req
-          .call(docEl)
-          .then(() => setIsFullscreen(true))
-          .catch(() => setShowIpadModal(true));
-      }
-    } else {
-      const exit =
-        doc.exitFullscreen ||
-        doc.webkitExitFullscreen ||
-        doc.mozCancelFullScreen;
-      if (exit) {
-        exit
-          .call(doc)
-          .then(() => setIsFullscreen(false))
-          .catch(() => {});
-      }
     }
   };
 
@@ -469,16 +490,7 @@ export default function KioskPage() {
 
   const currentActionMeta = activeAction ? actionLabels[activeAction] : null;
 
-  // 1. Initial Loading State (while reading localStorage)
-  if (isAuthorized === null) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="size-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
-      </div>
-    );
-  }
-
-  // 2. KIOSK AUTHENTICATION / LOCK SCREEN
+  // 1. KIOSK AUTHENTICATION / LOCK SCREEN (Rendered immediately when unauthenticated)
   if (!isAuthorized) {
     return (
       <div className="relative min-h-screen bg-slate-50 flex items-center justify-center p-6 select-none font-sans">
@@ -558,7 +570,7 @@ export default function KioskPage() {
     );
   }
 
-  // 3. MAIN KIOSK VIEW (UNLOCKED)
+  // 2. MAIN KIOSK VIEW (UNLOCKED)
   return (
     <div className="relative min-h-screen bg-white text-zinc-900 flex flex-col select-none overflow-hidden font-sans">
       {/* Top Left: Subtle Lock Terminal Button */}
