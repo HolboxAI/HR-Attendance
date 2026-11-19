@@ -7,11 +7,17 @@ import {
   CheckCircle2,
   Clock,
   Coffee,
+  HelpCircle,
+  KeyRound,
+  Lock,
+  LockOpen,
   LogIn,
   LogOut,
   Maximize2,
   Minimize2,
   RefreshCw,
+  Shield,
+  ShieldCheck,
   Sparkles,
   SwitchCamera,
   Upload,
@@ -62,13 +68,21 @@ function playSuccessChime() {
 }
 
 export default function KioskPage() {
+  // Terminal Lock / Auth State
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const [loginId, setLoginId] = useState('Holbox.ai');
+  const [loginPin, setLoginPin] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Fullscreen state & iPad Modal
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showIpadModal, setShowIpadModal] = useState(false);
 
   // Punch Flow state
   const [activeAction, setActiveAction] = useState<PunchAction | null>(null);
   const [step, setStep] = useState<'idle' | 'camera' | 'verifying' | 'result'>('idle');
 
-  // Camera & Image state using refs to avoid re-triggering effects
+  // Camera & Image state
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +95,124 @@ export default function KioskPage() {
   const [punchResult, setPunchResult] = useState<PunchResponse | null>(null);
   const [countdown, setCountdown] = useState(4);
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Read auth token from localStorage on mount
+  useEffect(() => {
+    try {
+      const auth = localStorage.getItem('bx_kiosk_auth');
+      setIsAuthorized(auth === 'true');
+    } catch {
+      setIsAuthorized(false);
+    }
+  }, []);
+
+  // Handle Terminal Login
+  const handleLogin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLoginError(null);
+    const trimmedId = loginId.trim().toLowerCase();
+    const trimmedPin = loginPin.trim();
+
+    if (trimmedId === 'holbox.ai' && trimmedPin === '1234') {
+      try {
+        localStorage.setItem('bx_kiosk_auth', 'true');
+      } catch {
+        // storage disabled or full
+      }
+      setIsAuthorized(true);
+      setLoginPin('');
+      setLoginError(null);
+    } else {
+      setLoginError('Invalid Terminal ID or PIN. Please enter Holbox.ai / 1234.');
+    }
+  };
+
+  // Lock Terminal
+  const handleLockTerminal = () => {
+    try {
+      localStorage.removeItem('bx_kiosk_auth');
+    } catch {}
+    setIsAuthorized(false);
+    setLoginPin('');
+    setLoginError(null);
+    resetToHome();
+  };
+
+  // Fullscreen listener
+  useEffect(() => {
+    const handleFsChange = () => {
+      const doc = document as unknown as {
+        fullscreenElement?: Element;
+        webkitFullscreenElement?: Element;
+        mozFullScreenElement?: Element;
+      };
+      setIsFullscreen(
+        Boolean(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement)
+      );
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    document.addEventListener('webkitfullscreenchange', handleFsChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFsChange);
+      document.removeEventListener('webkitfullscreenchange', handleFsChange);
+    };
+  }, []);
+
+  // Fullscreen toggle helper with iPad safety check
+  const toggleFullscreen = () => {
+    const doc = document as unknown as {
+      fullscreenElement?: Element;
+      webkitFullscreenElement?: Element;
+      mozFullScreenElement?: Element;
+      exitFullscreen?: () => Promise<void>;
+      webkitExitFullscreen?: () => Promise<void>;
+      mozCancelFullScreen?: () => Promise<void>;
+    };
+    const docEl = document.documentElement as unknown as {
+      requestFullscreen?: () => Promise<void>;
+      webkitRequestFullscreen?: () => Promise<void>;
+      mozRequestFullScreen?: () => Promise<void>;
+    };
+
+    const hasFullscreenAPI =
+      typeof docEl.requestFullscreen === 'function' ||
+      typeof docEl.webkitRequestFullscreen === 'function' ||
+      typeof docEl.mozRequestFullScreen === 'function';
+
+    if (!hasFullscreenAPI) {
+      // iPad Safari does not expose requestFullscreen on arbitrary elements
+      setShowIpadModal(true);
+      return;
+    }
+
+    const isCurrent = Boolean(
+      doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement
+    );
+
+    if (!isCurrent) {
+      const req =
+        docEl.requestFullscreen ||
+        docEl.webkitRequestFullscreen ||
+        docEl.mozRequestFullScreen;
+      if (req) {
+        req
+          .call(docEl)
+          .then(() => setIsFullscreen(true))
+          .catch(() => setShowIpadModal(true));
+      }
+    } else {
+      const exit =
+        doc.exitFullscreen ||
+        doc.webkitExitFullscreen ||
+        doc.mozCancelFullScreen;
+      if (exit) {
+        exit
+          .call(doc)
+          .then(() => setIsFullscreen(false))
+          .catch(() => {});
+      }
+    }
+  };
 
   // Stop camera tracks cleanly
   const stopCameraTracks = useCallback(() => {
@@ -100,7 +232,7 @@ export default function KioskPage() {
     setCameraError(null);
   }, [stopCameraTracks]);
 
-  // Inactivity timeout: auto-cancel if abandoned for 30s
+  // Inactivity timeout: auto-cancel if abandoned for 25s
   useEffect(() => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
     if (step === 'camera' || step === 'result') {
@@ -141,7 +273,6 @@ export default function KioskPage() {
             audio: false,
           });
         } catch {
-          // Fallback to basic unconstrained camera if ideal resolution fails
           mediaStream = await navigator.mediaDevices.getUserMedia({
             video: true,
             audio: false,
@@ -181,17 +312,6 @@ export default function KioskPage() {
     };
   }, [step, facingMode, stopCameraTracks]);
 
-  // Fullscreen toggle helper
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsFullscreen(true);
-    } else {
-      document.exitFullscreen().catch(() => {});
-      setIsFullscreen(false);
-    }
-  };
-
   // Card tapped
   const handleCardClick = (action: PunchAction) => {
     setActiveAction(action);
@@ -204,7 +324,6 @@ export default function KioskPage() {
     const video = videoRef.current;
     const canvas = canvasRef.current || document.createElement('canvas');
 
-    // Scale to max 640px dimension for ultra-fast upload & optimal Rekognition processing (<50KB)
     const maxDim = 640;
     let w = video.videoWidth || 640;
     let h = video.videoHeight || 480;
@@ -244,7 +363,7 @@ export default function KioskPage() {
     submitPunch(file);
   };
 
-  // Submit Punch (1:N search: no emp_code sent)
+  // Submit Punch (1:N face search)
   const submitPunch = async (photoBlob: Blob) => {
     if (!activeAction) return;
     setStep('verifying');
@@ -320,54 +439,144 @@ export default function KioskPage() {
 
   const actionLabels: Record<
     PunchAction,
-    { title: string; subtitle: string; color: string; borderHover: string; bgBadge: string; textBadge: string; icon: any }
+    { title: string; subtitle: string; color: string; icon: typeof LogIn }
   > = {
     check_in: {
       title: 'Clock In',
       subtitle: 'Arriving at Office',
       color: 'bg-emerald-50 text-emerald-700',
-      borderHover: 'hover:border-emerald-500 hover:shadow-emerald-500/10',
-      bgBadge: 'bg-emerald-600',
-      textBadge: 'text-white',
       icon: LogIn,
     },
     check_out: {
       title: 'Clock Out',
       subtitle: 'Leaving for the Day',
       color: 'bg-rose-50 text-rose-700',
-      borderHover: 'hover:border-rose-500 hover:shadow-rose-500/10',
-      bgBadge: 'bg-rose-600',
-      textBadge: 'text-white',
       icon: LogOut,
     },
     break_out: {
       title: 'Break Out',
       subtitle: 'Lunch / Tea Break',
       color: 'bg-amber-50 text-amber-700',
-      borderHover: 'hover:border-amber-500 hover:shadow-amber-500/10',
-      bgBadge: 'bg-amber-600',
-      textBadge: 'text-white',
       icon: Coffee,
     },
     break_in: {
       title: 'Break In',
       subtitle: 'Resume Shift',
       color: 'bg-sky-50 text-sky-700',
-      borderHover: 'hover:border-sky-500 hover:shadow-sky-500/10',
-      bgBadge: 'bg-sky-600',
-      textBadge: 'text-white',
       icon: Sparkles,
     },
   };
 
   const currentActionMeta = activeAction ? actionLabels[activeAction] : null;
 
+  // 1. Initial Loading State (while reading localStorage)
+  if (isAuthorized === null) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="size-8 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  // 2. KIOSK AUTHENTICATION / LOCK SCREEN
+  if (!isAuthorized) {
+    return (
+      <div className="relative min-h-screen bg-slate-50 flex items-center justify-center p-6 select-none font-sans">
+        <div className="w-full max-w-md bg-white rounded-3xl p-8 sm:p-10 shadow-2xl border border-slate-200/80 flex flex-col items-center">
+          {/* Logo / Badge */}
+          <div className="size-16 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-6 shadow-xs">
+            <Lock className="size-8" />
+          </div>
+
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold tracking-wide uppercase mb-2">
+              <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+              Holbox Terminal
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Kiosk Locked
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Enter terminal credentials to unlock this attendance device.
+            </p>
+          </div>
+
+          {loginError && (
+            <div className="w-full mb-6 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 flex items-center gap-2.5 text-xs font-semibold text-rose-700">
+              <AlertCircle className="size-4 shrink-0" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="w-full flex flex-col gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Terminal ID
+              </label>
+              <input
+                type="text"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck="false"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                placeholder="Holbox.ai"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Terminal PIN / Password
+              </label>
+              <input
+                type="password"
+                inputMode="numeric"
+                autoComplete="current-password"
+                value={loginPin}
+                onChange={(e) => setLoginPin(e.target.value)}
+                placeholder="••••"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-medium text-sm tracking-widest focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full mt-2 py-3.5 px-6 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-md shadow-indigo-600/25 active:scale-98 transition-all cursor-pointer"
+            >
+              <LockOpen className="size-4" />
+              Unlock Terminal
+            </button>
+          </form>
+
+          <p className="text-[11px] text-slate-400 text-center mt-6 leading-relaxed">
+            Locked for attendance terminal security.<br />
+            Once unlocked, you can safely lock Guided Access on this iPad.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. MAIN KIOSK VIEW (UNLOCKED)
   return (
     <div className="relative min-h-screen bg-white text-zinc-900 flex flex-col select-none overflow-hidden font-sans">
-      {/* Fullscreen Toggle */}
+      {/* Top Left: Subtle Lock Terminal Button */}
       <button
+        type="button"
+        onClick={handleLockTerminal}
+        className="absolute top-6 left-6 z-20 flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-zinc-200 bg-white/90 backdrop-blur-sm text-zinc-600 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 transition-all shadow-xs text-xs font-bold cursor-pointer"
+        title="Lock Terminal"
+      >
+        <Lock className="size-3.5" />
+        <span>Lock Terminal</span>
+      </button>
+
+      {/* Top Right: Fullscreen Toggle */}
+      <button
+        type="button"
         onClick={toggleFullscreen}
-        className="absolute top-6 right-6 z-20 p-2.5 rounded-xl border border-zinc-200/80 bg-white/80 backdrop-blur-sm text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors shadow-xs"
+        className="absolute top-6 right-6 z-20 p-2.5 rounded-xl border border-zinc-200 bg-white/90 backdrop-blur-sm text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 transition-colors shadow-xs cursor-pointer"
         title="Toggle Fullscreen"
       >
         {isFullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
@@ -381,19 +590,15 @@ export default function KioskPage() {
           </h2>
         </div>
 
-        {/* 4 Large Touch Cards with Light Glowing Edges */}
+        {/* 4 Large Touch Cards with High-Visibility Glowing Edges */}
         <div className="grid grid-cols-2 gap-6 w-full max-w-3xl">
           {/* 1. CLOCK IN */}
           <GlowingShadow
             edgeColor="emerald"
             onClick={() => handleCardClick('check_in')}
-            onTouchEnd={(e) => {
-              e.preventDefault();
-              handleCardClick('check_in');
-            }}
             className="w-full active:scale-95 transition-transform duration-150"
           >
-            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none pointer-events-none">
+            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none">
               <div className="size-20 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-inner">
                 <LogIn className="size-10" />
               </div>
@@ -413,13 +618,9 @@ export default function KioskPage() {
           <GlowingShadow
             edgeColor="rose"
             onClick={() => handleCardClick('check_out')}
-            onTouchEnd={(e) => {
-              e.preventDefault();
-              handleCardClick('check_out');
-            }}
             className="w-full active:scale-95 transition-transform duration-150"
           >
-            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none pointer-events-none">
+            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none">
               <div className="size-20 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-inner">
                 <LogOut className="size-10" />
               </div>
@@ -439,13 +640,9 @@ export default function KioskPage() {
           <GlowingShadow
             edgeColor="amber"
             onClick={() => handleCardClick('break_out')}
-            onTouchEnd={(e) => {
-              e.preventDefault();
-              handleCardClick('break_out');
-            }}
             className="w-full active:scale-95 transition-transform duration-150"
           >
-            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none pointer-events-none">
+            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none">
               <div className="size-20 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-inner">
                 <Coffee className="size-10" />
               </div>
@@ -465,13 +662,9 @@ export default function KioskPage() {
           <GlowingShadow
             edgeColor="sky"
             onClick={() => handleCardClick('break_in')}
-            onTouchEnd={(e) => {
-              e.preventDefault();
-              handleCardClick('break_in');
-            }}
             className="w-full active:scale-95 transition-transform duration-150"
           >
-            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none pointer-events-none">
+            <div className="flex flex-col items-center text-center gap-4 p-8 w-full select-none">
               <div className="size-20 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center shadow-inner">
                 <Sparkles className="size-10" />
               </div>
@@ -489,11 +682,82 @@ export default function KioskPage() {
         </div>
       </main>
 
+      {/* IPAD FULLSCREEN & GUIDED ACCESS MODAL */}
+      {showIpadModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-zinc-200 flex flex-col items-center relative">
+            <button
+              type="button"
+              onClick={() => setShowIpadModal(false)}
+              className="absolute top-5 right-5 p-2 rounded-xl text-zinc-400 hover:text-zinc-800 hover:bg-zinc-100 transition-colors"
+            >
+              <X className="size-5" />
+            </button>
+
+            <div className="size-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mb-4 shadow-xs">
+              <Maximize2 className="size-7" />
+            </div>
+
+            <h3 className="text-xl font-bold text-zinc-900 text-center">iPad Fullscreen Setup</h3>
+            <p className="text-xs text-zinc-500 text-center mt-1 mb-5">
+              Apple Safari requires web apps to be added to the Home Screen for true borderless full screen.
+            </p>
+
+            <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs text-slate-700 flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <span className="size-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  1
+                </span>
+                <p className="pt-0.5">
+                  Tap the Safari <strong>Share button (⎋)</strong> in the top toolbar.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="size-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  2
+                </span>
+                <p className="pt-0.5">
+                  Scroll down and tap <strong>Add to Home Screen</strong>, then tap <strong>Add</strong>.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="size-6 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  3
+                </span>
+                <p className="pt-0.5">
+                  Open <strong>Holbox Kiosk</strong> from your iPad Home Screen. It will launch in full screen with zero address bars!
+                </p>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <span className="size-6 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0 text-xs">
+                  4
+                </span>
+                <p className="pt-0.5">
+                  Triple-click the Top or Home button to start <strong>Guided Access</strong> and lock the kiosk.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowIpadModal(false)}
+              className="w-full mt-6 py-3.5 px-6 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* CAMERA SCAN MODAL */}
       {step === 'camera' && currentActionMeta && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-zinc-200 flex flex-col items-center gap-5 relative">
             <button
+              type="button"
               onClick={resetToHome}
               className="absolute top-5 right-5 p-2 rounded-xl text-zinc-400 hover:text-zinc-800 hover:bg-zinc-100 transition-colors"
             >
@@ -563,7 +827,7 @@ export default function KioskPage() {
                 <button
                   type="button"
                   onClick={() => setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'))}
-                  className="p-3.5 rounded-2xl border border-zinc-200 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 text-xs font-bold transition-colors"
+                  className="p-3.5 rounded-2xl border border-zinc-200 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 text-xs font-bold transition-colors cursor-pointer"
                 >
                   <SwitchCamera className="size-4" />
                   Flip
@@ -572,7 +836,7 @@ export default function KioskPage() {
                 <button
                   type="button"
                   onClick={captureAndSubmit}
-                  className="flex-1 py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-base shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 active:scale-95 transition-all"
+                  className="flex-1 py-4 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-base shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
                 >
                   <Camera className="size-5" />
                   Scan & Verify
@@ -581,8 +845,9 @@ export default function KioskPage() {
             )}
 
             <button
+              type="button"
               onClick={resetToHome}
-              className="text-xs font-semibold text-zinc-500 hover:text-zinc-800 transition-colors"
+              className="text-xs font-semibold text-zinc-500 hover:text-zinc-800 transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -665,8 +930,9 @@ export default function KioskPage() {
             {/* Done / Try Again */}
             <div className="w-full flex flex-col gap-2 mt-2">
               <button
+                type="button"
                 onClick={resetToHome}
-                className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm transition-all active:scale-95 ${
+                className={`w-full py-3.5 px-6 rounded-2xl font-bold text-sm transition-all active:scale-95 cursor-pointer ${
                   punchResult.accepted
                     ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
                     : 'bg-zinc-900 hover:bg-zinc-800 text-white'
