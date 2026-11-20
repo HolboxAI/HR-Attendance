@@ -1,93 +1,195 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
-export interface GlowingShadowButtonProps {
+interface GlowingShadowProps {
   children: ReactNode;
   className?: string;
-  onClick?: () => void;
+  /** Card tiles on the dashboard, or the round check-in control. */
   variant?: "card" | "circle";
-  edgeColor?: "emerald" | "rose" | "amber" | "sky" | "rainbow";
-  style?: React.CSSProperties;
-  disabled?: boolean;
 }
 
-export type GlowingShadowProps = GlowingShadowButtonProps;
+const STYLE_ID = "bx-glowing-shadow-style";
 
-const GRADIENTS = {
-  emerald:
-    "conic-gradient(from 0deg, #10b981 0%, #34d399 25%, #059669 50%, #34d399 75%, #10b981 100%)",
-  rose:
-    "conic-gradient(from 0deg, #f43f5e 0%, #fb7185 25%, #e11d48 50%, #fb7185 75%, #f43f5e 100%)",
-  amber:
-    "conic-gradient(from 0deg, #f59e0b 0%, #fbbf24 25%, #d97706 50%, #fbbf24 75%, #f59e0b 100%)",
-  sky:
-    "conic-gradient(from 0deg, #0ea5e9 0%, #38bdf8 25%, #0284c7 50%, #38bdf8 75%, #0ea5e9 100%)",
-  rainbow:
-    "conic-gradient(from 0deg, #10b981 0%, #6366f1 25%, #ec4899 50%, #f59e0b 75%, #10b981 100%)",
-};
+const CSS = `
+@property --hue { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --rotate { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --bg-y { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --bg-x { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --glow-translate-y { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --bg-size { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --glow-opacity { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --glow-blur { syntax: "<number>"; inherits: true; initial-value: 0; }
+@property --glow-scale { syntax: "<number>"; inherits: true; initial-value: 2; }
+@property --glow-radius { syntax: "<number>"; inherits: true; initial-value: 2; }
+@property --white-shadow { syntax: "<number>"; inherits: true; initial-value: 0; }
 
-const BORDER_COLORS = {
-  emerald: "rgba(16, 185, 129, 0.45)",
-  rose: "rgba(244, 63, 94, 0.45)",
-  amber: "rgba(245, 158, 11, 0.45)",
-  sky: "rgba(14, 165, 233, 0.45)",
-  rainbow: "rgba(99, 102, 241, 0.45)",
-};
+.bx-glow {
+  --card-color: rgba(18, 18, 22, 0.92);
+  --card-radius: 1rem;
+  --border-width: 2px;
+  --bg-size: 1;
+  --hue: 0;
+  --hue-speed: 1;
+  --rotate: 0;
+  --animation-speed: 4s;
+  --interaction-speed: 0.55s;
+  --glow-scale: 1.15;
+  --scale-factor: 1;
+  --glow-blur: 0.9;
+  --glow-opacity: 0.85;
+  --glow-radius: 100;
+  --glow-rotate-unit: 1deg;
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  min-height: 8.5rem;
+  color: white;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  border-radius: var(--card-radius);
+  cursor: default;
+  isolation: isolate;
+  overflow: hidden;
+}
+html:not(.bx-dark-mode) .bx-glow {
+  --card-color: rgba(255, 255, 255, 0.94);
+}
+.bx-glow:before,
+.bx-glow:after {
+  content: "";
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: var(--card-radius);
+  pointer-events: none;
+}
+.bx-glow:before {
+  z-index: 0;
+  background: hsl(0deg 0% 16%) radial-gradient(
+    30% 30% at calc(var(--bg-x) * 1%) calc(var(--bg-y) * 1%),
+    hsl(calc(var(--hue) * var(--hue-speed) * 1deg) 100% 90%) calc(0% * var(--bg-size)),
+    hsl(calc(var(--hue) * var(--hue-speed) * 1deg) 100% 80%) calc(20% * var(--bg-size)),
+    hsl(calc(var(--hue) * var(--hue-speed) * 1deg) 100% 60%) calc(40% * var(--bg-size)),
+    transparent 100%
+  );
+  animation: bx-glow-hue var(--animation-speed) linear infinite,
+             bx-glow-rotate-bg var(--animation-speed) linear infinite;
+  transition: --bg-size var(--interaction-speed) ease;
+}
+.bx-glow-face {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  width: auto;
+  margin: var(--border-width);
+  background: var(--card-color);
+  border-radius: calc(var(--card-radius) - var(--border-width));
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.bx-glow-orb {
+  --glow-translate-y: 0;
+  display: block;
+  position: absolute;
+  z-index: 0;
+  width: 22%;
+  height: 36%;
+  left: 39%;
+  top: 32%;
+  pointer-events: none;
+  animation: bx-glow-rotate var(--animation-speed) linear infinite;
+  transform: rotateZ(calc(var(--rotate) * var(--glow-rotate-unit)));
+  transform-origin: center;
+  border-radius: calc(var(--glow-radius) * 1px);
+}
+.bx-glow-orb:after {
+  content: "";
+  display: block;
+  filter: blur(calc(var(--glow-blur) * 10px));
+  width: 130%;
+  height: 130%;
+  left: -15%;
+  top: -15%;
+  background: hsl(calc(var(--hue) * var(--hue-speed) * 1deg) 100% 60%);
+  position: relative;
+  border-radius: calc(var(--glow-radius) * 1px);
+  animation: bx-glow-hue var(--animation-speed) linear infinite;
+  transform: scaleY(calc(var(--glow-scale) * var(--scale-factor) / 1.1))
+             scaleX(calc(var(--glow-scale) * var(--scale-factor) * 1.2))
+             translateY(calc(var(--glow-translate-y) * 1%));
+  opacity: var(--glow-opacity);
+}
+@keyframes bx-glow-rotate-bg {
+  0% { --bg-x: 0; --bg-y: 0; }
+  25% { --bg-x: 100; --bg-y: 0; }
+  50% { --bg-x: 100; --bg-y: 100; }
+  75% { --bg-x: 0; --bg-y: 100; }
+  100% { --bg-x: 0; --bg-y: 0; }
+}
+@keyframes bx-glow-rotate {
+  from { --rotate: -70; --glow-translate-y: -65; }
+  to { --rotate: 290; --glow-translate-y: -65; }
+}
+@keyframes bx-glow-hue {
+  0% { --hue: 0; }
+  100% { --hue: 360; }
+}
 
-const SHADOW_COLORS = {
-  emerald: "0 10px 30px -4px rgba(16, 185, 129, 0.16), 0 2px 8px -1px rgba(0, 0, 0, 0.04)",
-  rose: "0 10px 30px -4px rgba(244, 63, 94, 0.16), 0 2px 8px -1px rgba(0, 0, 0, 0.04)",
-  amber: "0 10px 30px -4px rgba(245, 158, 11, 0.16), 0 2px 8px -1px rgba(0, 0, 0, 0.04)",
-  sky: "0 10px 30px -4px rgba(14, 165, 233, 0.16), 0 2px 8px -1px rgba(0, 0, 0, 0.04)",
-  rainbow: "0 10px 30px -4px rgba(99, 102, 241, 0.16), 0 2px 8px -1px rgba(0, 0, 0, 0.04)",
-};
+.bx-glow.bx-glow-circle {
+  --card-radius: 50%;
+  --border-width: 3px;
+  --glow-blur: 0.85;
+  --glow-scale: 1.15;
+  --glow-opacity: 0.8;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  cursor: pointer;
+}
+.bx-glow.bx-glow-circle .bx-glow-face {
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.75rem;
+}
+.bx-glow.bx-glow-circle .bx-glow-orb {
+  width: 26%;
+  height: 26%;
+  left: 37%;
+  top: 37%;
+}
+`;
 
 export function GlowingShadow({
   children,
   className = "",
-  onClick,
   variant = "card",
-  edgeColor = "rainbow",
-  style,
-  disabled = false,
-}: GlowingShadowButtonProps) {
-  const gradient = GRADIENTS[edgeColor] || GRADIENTS.rainbow;
-  const fallbackBorder = BORDER_COLORS[edgeColor] || BORDER_COLORS.rainbow;
-  const shadow = SHADOW_COLORS[edgeColor] || SHADOW_COLORS.rainbow;
-  const isCircle = variant === "circle";
+}: GlowingShadowProps) {
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let style = document.getElementById(STYLE_ID) as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
+      style.id = STYLE_ID;
+      document.head.appendChild(style);
+    }
+    // Always write current CSS so a circle variant is not stuck with an older
+    // card-only stylesheet from a previous visit in the same tab.
+    style.textContent = CSS;
+  }, []);
+
+  const shape = variant === "circle" ? "bx-glow-circle" : "";
 
   return (
-    <button
-      type="button"
-      className={`relative w-full p-[2.5px] bg-white flex items-stretch justify-stretch cursor-pointer touch-manipulation overflow-hidden outline-none transition-all duration-150 active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed ${
-        isCircle ? "rounded-full" : "rounded-3xl"
-      } ${className}`.trim()}
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        border: `1.5px solid ${fallbackBorder}`,
-        boxShadow: shadow,
-        WebkitTapHighlightColor: "transparent",
-        WebkitAppearance: "none",
-        ...style,
-      }}
-    >
-      {/* Ambient rotating edge glow */}
-      <span
-        className="absolute -top-[150%] -left-[150%] w-[400%] h-[400%] z-[1] pointer-events-none opacity-85 will-change-transform animate-spin-glow"
-        style={{ background: gradient }}
-        aria-hidden="true"
-      />
-      {/* Interior card surface */}
-      <span
-        className={`relative z-[2] w-full h-full bg-white flex flex-col items-center justify-center box-border ${
-          isCircle ? "rounded-full" : "rounded-[calc(1.5rem-2px)]"
-        }`}
-      >
-        {children}
-      </span>
-    </button>
+    <div className={`bx-glow ${shape} ${className}`.trim()}>
+      <span className="bx-glow-orb" aria-hidden />
+      <div className="bx-glow-face">{children}</div>
+    </div>
   );
 }
 

@@ -23,7 +23,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { GlowingShadow } from '@/components/ui/glowing-shadow';
+import { KioskCard } from './KioskCard';
 
 interface PunchResponse {
   accepted: boolean;
@@ -605,7 +605,7 @@ export default function KioskPage() {
         {/* 4 Large Touch Cards with High-Visibility Glowing Edges */}
         <div className="grid grid-cols-2 gap-6 w-full max-w-3xl">
           {/* 1. CLOCK IN */}
-          <GlowingShadow
+          <KioskCard
             edgeColor="emerald"
             onClick={() => handleCardClick('check_in')}
             className="w-full active:scale-95 transition-transform duration-150"
@@ -624,10 +624,10 @@ export default function KioskPage() {
                 Tap to Scan Face
               </span>
             </div>
-          </GlowingShadow>
+          </KioskCard>
 
           {/* 2. CLOCK OUT */}
-          <GlowingShadow
+          <KioskCard
             edgeColor="rose"
             onClick={() => handleCardClick('check_out')}
             className="w-full active:scale-95 transition-transform duration-150"
@@ -646,10 +646,10 @@ export default function KioskPage() {
                 Tap to Scan Face
               </span>
             </div>
-          </GlowingShadow>
+          </KioskCard>
 
           {/* 3. BREAK OUT */}
-          <GlowingShadow
+          <KioskCard
             edgeColor="amber"
             onClick={() => handleCardClick('break_out')}
             className="w-full active:scale-95 transition-transform duration-150"
@@ -668,10 +668,10 @@ export default function KioskPage() {
                 Tap to Scan Face
               </span>
             </div>
-          </GlowingShadow>
+          </KioskCard>
 
           {/* 4. BREAK IN */}
-          <GlowingShadow
+          <KioskCard
             edgeColor="sky"
             onClick={() => handleCardClick('break_in')}
             className="w-full active:scale-95 transition-transform duration-150"
@@ -690,7 +690,7 @@ export default function KioskPage() {
                 Tap to Scan Face
               </span>
             </div>
-          </GlowingShadow>
+          </KioskCard>
         </div>
       </main>
 

@@ -466,28 +466,3 @@ html:not(.bx-dark-mode) .bx-light header::before {
     transparent 100%
   ) !important;
 }
-
-/* 3. Glowing Card Border Spin Animation */
-@keyframes spin-glow {
-  from {
-    -webkit-transform: rotate(0deg);
-    transform: rotate(0deg);
-  }
-  to {
-    -webkit-transform: rotate(360deg);
-    transform: rotate(360deg);
-  }
-}
-@-webkit-keyframes spin-glow {
-  from {
-    -webkit-transform: rotate(0deg);
-  }
-  to {
-    -webkit-transform: rotate(360deg);
-  }
-}
-.animate-spin-glow {
-  -webkit-animation: spin-glow 6s linear infinite;
-  animation: spin-glow 6s linear infinite;
-}
-

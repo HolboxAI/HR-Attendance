@@ -41,7 +41,6 @@ export function Shell({
   const lastScrollY = useRef(0);
   const router = useRouter();
   const pathname = usePathname();
-  const isPunchPage = pathname === '/checkin' || pathname === '/punch' || pathname?.startsWith('/kiosk');
 
   const needsEnrolment = Boolean(email) && !faceEnrolled;
 
@@ -108,26 +107,24 @@ export function Shell({
       </div>
 
       {/* Desktop Fixed Glass Sidebar Container */}
-      {!isPunchPage && (
-        <div
-          className={`my-3.5 hidden h-[calc(100vh-28px)] lg:flex z-30 transition-all duration-300 ease-in-out shrink-0 relative ${
-            sidebarOpen ? 'w-60 ml-3.5' : 'w-0 ml-0 overflow-hidden pointer-events-none p-0 my-0 border-0'
+      <div
+        className={`my-3.5 hidden h-[calc(100vh-28px)] lg:flex z-30 transition-all duration-300 ease-in-out shrink-0 relative ${
+          sidebarOpen ? 'w-60 ml-3.5' : 'w-0 ml-0 overflow-hidden pointer-events-none p-0 my-0 border-0'
+        }`}
+      >
+        <aside
+          className={`h-full w-60 flex-col rounded-2xl glass-panel flex shadow-xl overflow-hidden backdrop-blur-2xl transition-all duration-300 ${
+            sidebarOpen ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-full pointer-events-none'
           }`}
         >
-          <aside
-            className={`h-full w-60 flex-col rounded-2xl glass-panel flex shadow-xl overflow-hidden backdrop-blur-2xl transition-all duration-300 ${
-              sidebarOpen ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-full pointer-events-none'
-            }`}
-          >
-            <SidebarBrand open={sidebarOpen} onToggle={toggleSidebar} />
-            <SidebarNav caps={caps} />
-            <SidebarFooter />
-          </aside>
-        </div>
-      )}
+          <SidebarBrand open={sidebarOpen} onToggle={toggleSidebar} />
+          <SidebarNav caps={caps} />
+          <SidebarFooter />
+        </aside>
+      </div>
 
       {/* Mobile drawer */}
-      {!isPunchPage && drawer && (
+      {drawer && (
         <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
           <button
             type="button"
@@ -155,7 +152,7 @@ export function Shell({
         >
           <div className="flex items-center gap-3">
             {/* Show open hamburger button in topbar ONLY when sidebar is collapsed on desktop */}
-            {!sidebarOpen && !isPunchPage && (
+            {!sidebarOpen && (
               <button
                 type="button"
                 onClick={toggleSidebar}
@@ -172,21 +169,19 @@ export function Shell({
             )}
 
             {/* Mobile drawer hamburger button */}
-            {!isPunchPage && (
-              <button
-                type="button"
-                onClick={() => setDrawer(true)}
-                className="lg:hidden size-9 rounded-xl glass-panel border border-line flex items-center justify-center text-ink hover:bg-surface-2 transition-all cursor-pointer shadow-xs active:scale-95"
-                title="Open navigation"
-                aria-label="Open navigation"
-              >
-                <MenuToggle
-                  open={drawer}
-                  onOpenChange={() => {}}
-                  className="size-4 text-ink pointer-events-none"
-                />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setDrawer(true)}
+              className="lg:hidden size-9 rounded-xl glass-panel border border-line flex items-center justify-center text-ink hover:bg-surface-2 transition-all cursor-pointer shadow-xs active:scale-95"
+              title="Open navigation"
+              aria-label="Open navigation"
+            >
+              <MenuToggle
+                open={drawer}
+                onOpenChange={() => {}}
+                className="size-4 text-ink pointer-events-none"
+              />
+            </button>
 
             <div className="flex items-center gap-2">
               <span className="font-display text-sm sm:text-base font-bold tracking-tight text-ink">

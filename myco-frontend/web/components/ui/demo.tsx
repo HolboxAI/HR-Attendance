@@ -13,7 +13,6 @@ import { GlowCard } from "@/components/ui/spotlight-card";
 import { SignInPage } from "@/components/ui/sign-in-flow-1";
 import { LiquidMetalButton } from "@/components/ui/liquid-metal-button";
 import { GlowingShadow } from "@/components/ui/glowing-shadow";
-import { BackgroundPaths } from "@/components/ui/background-paths";
 
 export function AuroraBackgroundDemo() {
   return (
@@ -121,10 +120,6 @@ export function GlowingShadowDemo() {
       </GlowingShadow>
     </div>
   );
-}
-
-export function DemoBackgroundPaths() {
-  return <BackgroundPaths title="Background Paths" />;
 }
 
 export { DemoOne as AnimatedThemeToggleDemo, Default as GlowCardDemo };
